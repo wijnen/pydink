@@ -7,9 +7,8 @@
 #		sprite
 #			id.txt		script, x, y, etc.
 #tile
-#	nn.png				tile map (00-41)
-#	hard-nn.png			hardness for tile map (same range)
-#	hard-nnn.png			other hardness (anything not in tile map, max 800)
+#	name-tile.png			tile map (00-41)
+#	name-hard.png			hardness for tile map, or for screen
 #anim
 #	name.gif			sequence
 #	name.txt			info about name.gif if it exists, generated sequence otherwise
@@ -51,21 +50,17 @@ class World:
 				if not os.path.exists (dirname):
 					continue
 				self.room[n].tiles = []
-				f = open (os.path.join (dirname, "info.txt"))
+				f = open (os.path.join (dirname, "info" + os.extsep + "txt"))
 				for ty in range (8):
 					ln = f.readline ()
-					self.room[n].tiles += (re.findall (r'\b(\d+),(\d+)\b', ln),)
-					assert len (self.room[n].tiles) == 12
-				r = re.match ('script = (.*)', f.readline ())
-				self.room[n].script = r.group (1)
-				r = re.match ('midi = (.*)', f.readline ())
-				self.room[n].midi = r.group (1)
-				ln = f.readline ().strip ()
-				if ln == "indoor":
-					self.room[n].indoor = True
-				else:
-					self.room[n].indoor = False
-					assert ln == "outdoor"
+					self.room[n].tiles += ([(x[0], int (x[1]), int (x[2])) for x in [y.split (',') for y in ln.split ()]],)
+					assert len (self.room[n].tiles[-1]) == 12
+				info = readlines (f)
+				self.room[n].hard = get (info, 'hard', '')
+				self.room[n].script = get (info, 'script', '')
+				self.room[n].music = get (info, 'music', '')
+				self.room[n].indoor = bool (get (info, 'indoor', True))
+				assert info == {}
 				self.room[n].sprite = {}
 				sdir = os.path.join (dirname, "sprite")
 				for s in os.listdir (sdir):
@@ -91,10 +86,7 @@ class World:
 					self.room[n].sprite[s].top = int (get (info, 'top', 0))
 					self.room[n].sprite[s].right = int (get (info, 'right', 0))
 					self.room[n].sprite[s].bottom = int (get (info, 'bottom', 0))
-					if 'warp_map' in info:
-						self.room[n].sprite[s].warp_map = int (get (info, 'warp_map'))
-						self.room[n].sprite[s].warp_x = int (get (info, 'warp_x'))
-						self.room[n].sprite[s].warp_y = int (get (info, 'warp_y'))
+					self.room[n].sprite[s].warp = [int (x) for x in get (info, 'warp', '').split (',')]
 					self.room[n].sprite[s].touch_seq = get (info, 'parm_seq')
 					self.room[n].sprite[s].base_die = get (info, 'base_die')
 					self.room[n].sprite[s].gold = int (get (info, 'gold'))
@@ -107,8 +99,29 @@ class World:
 					self.room[n].sprite[s].nohit = bool (get (info, 'nohit'))
 					self.room[n].sprite[s].touch_damage = bool (get (info, 'touch_damage'))
 					assert info == {}
+	def write (self, root):
+		# Write dink.dat
+		# Write hard.dat
+		# Write map.dat
+
 
 class Tile:
+	def __init__ (self, parent):
+		self.parent = parent
+		self.hard = {}
+		self.tile = {}
+		for t in os.listdir (os.path.join (parent.root, "tile")):
+			ext = os.extsep + 'png'
+			h = '-hard' + ext
+			if not t.endswith (h):
+				continue
+			base = t[:-len (h)]
+			t = base + '-tile' + os.extsep + 'png'
+			if os.path.exists (t):
+				self.tile[base] = Image.open (t).convert ('RGBA')
+			self.hard[base] = Image.open (h).convert ('RGBA')
+	def write (self, root):
+		# Write tiles/*
 
 class Anim:
 	def __init__ (self, parent):
@@ -124,7 +137,7 @@ class Anim:
 			if os.path.exists (gif):
 				f = Image.open (gif)
 				while True:
-					self.data[base].frames += ((f.info['duration'], f.convert ('RGBA').tostring ()),)
+					self.data[base].frames += ((f.info['duration'], f.convert ('RGBA')),)
 					try:
 						f.seek (len (self.data[base].frames))
 					except EOFError:
@@ -148,26 +161,29 @@ class Anim:
 				self.data[base].type = get (info, 'type', 'normal')
 				assert self.data[base].type in ('normal', 'black', 'leftalign', 'noanim')
 				assert info == {}
+	def write (self, root):
+		# Write graphics/*
+		# Write dink.ini
 
 class Sound:
 	def __init__ (self, parent):
 		self.parent = parent
 		self.sound = {}
 		self.music = {}
-		for l in open (os.path.join (parent.root, "sound.txt")).readlines ():
-			w = l.split ()
-			assert len (w) == 2 or len (w) == 3
-			if len (w) == 2:
-				w += (-1,)
-			assert w[0] not in self.sound
-			self.sound[w[0]] = w[1:]
-		for l in open (os.path.join (parent.root, "music.txt")).readlines ():
-			w = l.split ()
-			assert len (w) == 2 or len (w) == 3
-			if len (w) == 2:
-				w += (-1,)
-			assert w[0] not in self.music
-			self.music[w[0]] = w[1:]
+		ext = os.extsep + 'wav'
+		self.sound = [s[:-len (ext)] for s in os.listdir (os.path.join (parent.root, "sound")) if s.endswith (ext)]
+		ext = os.extsep + 'mid'
+		self.music = [s[:-len (ext)] for s in os.listdir (os.path.join (parent.root, "music")) if s.endswith (ext)]
+	def write (self, root):
+		# Write sound/*
+		dst = os.path.join (root, 'sound')
+		src = os.path.join (self.parent.root, 'sound')
+		for s in self.sound:
+			f = s + os.extsep + 'wav'
+			open (os.join (dst, f), 'w').write (open (os.join (src, f)).read ())
+		for s in range (len (self.music)):
+			f = self.music[s] + os.extsep + 'mid'
+			open (os.join (dst, str (s) + os.extsep + 'mid'), 'w').write (open (os.join (src, f)).read ())
 
 class Script:
 	def __init__ (self, parent):
@@ -180,12 +196,40 @@ class Script:
 			base = s[:-len (ext)]
 			assert base not in self.data
 			self.data[base] = open (s).read ()
+	def write (self, root):
+		# Write Story/*
+		for name in self.data:
+			f = open (os.path.join (os.path.join (root, 'story'), name + os.extsep + 'c'), 'w')
+			# TODO: preprocess script
+			f.write (self.data[name])
 
 class Dink:
-	def read (self, root):
+	def __init__ (self, root):
 		self.root = root
 		self.world = World (self)
 		self.tile = Tile (self)
 		self.anim = Anim (self)
 		self.sound = Sound (self)
 		self.script = Script (self)
+		self.info = open (os.path.join (root, 'info' + os.extsep + 'txt')).read ()
+		p = os.path.join (root, 'preview' + os.extsep + 'png')
+		if os.path.exists (p):
+			self.preview = Image.open (p).convert ('RGBA')
+	def write (self, root):
+		# Write dink.dat
+		# Write hard.dat
+		# Write map.dat
+		self.world.write (root)
+		# Write tiles/*
+		self.tile.write (root)
+		# Write dink.ini
+		# Write graphics/*
+		self.anim.write (root)
+		# Write sound/*
+		self.sound.write (root)
+		# Write Story/*
+		self.script.write (root)
+		# Write the rest
+		if 'preview' in dir (self):
+			self.preview.write (os.path.join (root, preview + os.extsep + 'bmp'))
+		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)
