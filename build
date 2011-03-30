@@ -3,18 +3,63 @@ import sys
 import layout
 import os
 
-sys.exit (0)
+created = False
+def check (f, content = None):
+	global created
+	if not os.path.exists (f):
+		created = True
+		if content == None:
+			os.mkdir (f)
+			print 'Created directory %s\n' % f
+		else:
+			open (f, 'w').write (content)
+			print 'Created file %s\n' % f
+
 assert len (sys.argv) == 2
 root = sys.argv[1]
-if not os.path.exists (root):
-	os.path.mkdir (root)
-	os.path.mkdir (os.path.join (root, 'tile'))
-	os.path.mkdir (os.path.join (root, 'anim'))
-	os.path.mkdir (os.path.join (root, 'music'))
-	os.path.mkdir (os.path.join (root, 'sound'))
-	os.path.mkdir (os.path.join (root, 'script'))
-	open (os.path.join (root, 'info' + os.extsep + 'txt'), 'w').write ('This file should claim copyright and describe the dmod.')
+base = os.path.basename (root)
+if base == '':
+	base = os.path.basename (os.path.dirname (root))
+
+check (root)
+check (os.path.join (root, 'world'))
+check (os.path.join (root, 'tile'))
+check (os.path.join (root, 'seq'))
+check (os.path.join (root, 'music'))
+check (os.path.join (root, 'sound'))
+check (os.path.join (root, 'script'))
+check (os.path.join (root, 'image'))
+check (os.path.join (root, 'info' + os.extsep + 'txt'), '%s\n\nThis file should claim copyright and describe the dmod.' % base)
+check (os.path.join (root, 'title' + os.extsep + 'txt'), '''\
+#music = titlemusic
+sprites = 0
+#sprite-1 = logo 1		0 0
+#color = 0
+#background = background
+buttons = 3
+button-1 = 76 40	game-start
+button-2 = 524 40	game-continue
+button-3 = 560 440	game-quit
+#button-4 = 104 440	game-ordering
+#run = custom-start
+pointer = dink 8
+''')
+check (os.path.join (os.path.join (root, 'seq'), 'external' + os.extsep + 'txt'), '''\
+# name = filename nframes delay
+external = tile\s 13
+button-ordering = graphics\startme\options\but1- 2
+button-quit = graphics\startme\options\but3- 2
+button-start = graphics\startme\options\but7- 2
+button-continue = graphics\startme\options\but9- 2
+''')
+if created:
+	print 'Content created: not running build.'
 	sys.exit (0)
 
-d = layout.Dink (root)
-d.write ('/tmp/dmod')
+data = layout.Dink (root)
+home = os.path.expanduser ('~')
+dmods = os.path.join (home, 'dmods')
+if not os.path.exists (dmods):
+	os.mkdir (dmods)
+dmod = os.path.join (dmods, base)
+data.write (dmod)
