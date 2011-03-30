@@ -487,6 +487,9 @@ def preprocess (script, dink):
 		assert (t == ';')
 	return ret
 
+class Sprite:
+	pass
+
 class Room:
 	def __init__ (self, parent, root):
 		self.parent = parent
@@ -506,7 +509,8 @@ class Room:
 		sdir = os.path.join (root, "sprite")
 		for s in os.listdir (sdir):
 			info = readlines (open (os.path.join (sdir, s)))
-			base = re.match ('(.+?)(-.*)?(\..*)?', s).group (1)
+			base = re.match ('(.+?)(-[^-]*?)?(\..*)?$', s).group (1)
+			self.sprite[s] = Sprite ()
 			info, self.sprite[s].x = get (info, 'x', int)
 			info, self.sprite[s].y = get (info, 'y', int)
 			info, self.sprite[s].seq = get (info, 'seq', base)
@@ -514,7 +518,7 @@ class Room:
 			info, self.sprite[s].type = get (info, 'type', 1)	# 0 for background, 1 for person or sprite, 3 for invisible
 			info, self.sprite[s].size = get (info, 'size', 100)
 			info, self.sprite[s].active = get (info, 'active', True)
-			info, self.sprite[s].brain = get (info, 'brain', '')
+			info, self.sprite[s].brain = get (info, 'brain', 'bisshop')
 			info, self.sprite[s].script = get (info, 'script', '')
 			info, self.sprite[s].speed = get (info, 'speed', 1)
 			info, self.sprite[s].base_walk = get (info, 'base_walk', '')
@@ -528,7 +532,11 @@ class Room:
 			info, self.sprite[s].top = get (info, 'top', 0)
 			info, self.sprite[s].right = get (info, 'right', 0)
 			info, self.sprite[s].bottom = get (info, 'bottom', 0)
-			info, self.sprite[s].warp = [int (x) for x in get (info, 'warp', '').split (',')]
+			info, w = get (info, 'warp', '')
+			if w == '':
+				self.sprite[s].warp = None
+			else:
+				self.sprite[s].warp = [int (x) for x in w.split (',')]
 			info, self.sprite[s].touch_seq = get (info, 'touch_seq', '')
 			info, self.sprite[s].base_die = get (info, 'base_die', '')
 			info, self.sprite[s].gold = get (info, 'gold', 0)
@@ -591,7 +599,6 @@ class World:
 					mdat.write ('\0' * 4)
 					mdat.write (make_lsb (self.parent.tile.find_hard (s.hard, x, y, bmp, tx, ty), 4))
 					mdat.write ('\0' * 68)
-					print 'written %x/%x' % (self.parent.tile.find_bmp (bmp) * 128 + ty * 12 + tx, self.parent.tile.find_hard (s.hard, x, y, bmp, tx, ty))
 			mdat.write ('\0' * 320)
 			# sprites
 			# sprite 0 is never used...
@@ -600,7 +607,7 @@ class World:
 				spr = s.sprite[sp]
 				mdat.write (make_lsb (spr.x, 4))
 				mdat.write (make_lsb (spr.y, 4))
-				mdat.write (make_lsb (parent.seq.find_seq (spr.seq), 4))
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.seq), 4))
 				mdat.write (make_lsb (spr.frame, 4))
 				mdat.write (make_lsb (spr.type, 4))
 				mdat.write (make_lsb (spr.size, 4))
@@ -611,10 +618,10 @@ class World:
 				mdat.write (make_string (spr.script, 14))
 				mdat.write ('\0' * 38)
 				mdat.write (make_lsb (spr.speed, 4))
-				mdat.write (make_lsb (spr.base_walk, 4))
-				mdat.write (make_lsb (spr.base_idle, 4))
-				mdat.write (make_lsb (spr.base_attack, 4))
-				mdat.write (make_lsb (spr.base_hit, 4))
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_walk), 4))
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_idle), 4))
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_attack), 4))
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_hit), 4))
 				mdat.write (make_lsb (spr.timer, 4))
 				mdat.write (make_lsb (spr.que, 4))
 				mdat.write (make_lsb (spr.hard, 4))
@@ -622,13 +629,15 @@ class World:
 				mdat.write (make_lsb (spr.top, 4))
 				mdat.write (make_lsb (spr.right, 4))
 				mdat.write (make_lsb (spr.bottom, 4))
-				if spr.warp != []:
+				if spr.warp != None:
 					mdat.write (make_lsb (0, 4))
 					mdat.write (make_lsb (spr.warp[0], 4))
 					mdat.write (make_lsb (spr.warp[1], 4))
 					mdat.write (make_lsb (spr.warp[2], 4))
-				mdat.write (make_lsb (parent.seq.find_seq (spr.touch_seq), 4))
-				mdat.write (make_lsb (spr.base_die, 4))
+				else:
+					mdat.write ('\0' * 16)
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.touch_seq), 4))
+				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_die), 4))
 				mdat.write (make_lsb (spr.gold, 4))
 				mdat.write (make_lsb (spr.hitpoints, 4))
 				mdat.write (make_lsb (spr.strength, 4))
@@ -858,6 +867,8 @@ class Seq:
 				while nextseq in codes:
 					nextseq += 1
 	def find_seq (self, name):
+		if not name:
+			return 0
 		return self.data[name].code
 	def write (self, root):
 		# Write graphics/*
