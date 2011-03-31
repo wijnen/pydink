@@ -509,12 +509,12 @@ class Room:
 		sdir = os.path.join (root, "sprite")
 		for s in os.listdir (sdir):
 			info = readlines (open (os.path.join (sdir, s)))
-			base = re.match ('(.+?)(-[^-]*?)?(\..*)?$', s).group (1)
+			base = re.match ('(.+?)(-\d*?)?(\..*)?$', s).group (1)
 			self.sprite[s] = Sprite ()
 			info, self.sprite[s].x = get (info, 'x', int)
 			info, self.sprite[s].y = get (info, 'y', int)
 			info, self.sprite[s].seq = get (info, 'seq', base)
-			info, self.sprite[s].frame = get (info, 'frame', 0)
+			info, self.sprite[s].frame = get (info, 'frame', 1)
 			info, self.sprite[s].type = get (info, 'type', 1)	# 0 for background, 1 for person or sprite, 3 for invisible
 			info, self.sprite[s].size = get (info, 'size', 100)
 			info, self.sprite[s].active = get (info, 'active', True)
@@ -561,8 +561,16 @@ class World:
 				dirname = os.path.join (d, '%03d-%02d-%02d' % (n, x, y))
 				if not os.path.exists (dirname):
 					continue
-				print 'Adding room %d (%d, %d)' % (n, x, y)
 				self.room[n] = Room (parent, dirname)
+		for f in os.listdir (d):
+			r = re.match ('(\d{3})-(\d{2})-(\d{2})$', f)
+			if r == None:
+				if re.match ('\d+-', f) != None:
+					sys.stderr.write ("Warning: not using %s as room\n" % f)
+				continue
+			n, x, y = [int (k) for k in r.groups ()]
+			if x >= 32 or y >= 24 or n != y * 32 + x + 1:
+				sys.stderr.write ("Warning: not using %s as room (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
 	def write (self, root):
 		# Write dink.dat
 		ddat = open (os.path.join (root, 'dink.dat'), "wb")
