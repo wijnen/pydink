@@ -524,7 +524,6 @@ class Room:
 			info, self.sprite[s].base_walk = get (info, 'base_walk', '')
 			info, self.sprite[s].base_idle = get (info, 'base_idle', '')
 			info, self.sprite[s].base_attack = get (info, 'base_attack', '')
-			info, self.sprite[s].base_hit = get (info, 'base_hit', '')
 			info, self.sprite[s].timer = get (info, 'timer', 33)
 			info, self.sprite[s].que = get (info, 'que', 0)
 			info, self.sprite[s].hard = get (info, 'hard', True)
@@ -629,7 +628,7 @@ class World:
 				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_walk), 4))
 				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_idle), 4))
 				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_attack), 4))
-				mdat.write (make_lsb (self.parent.seq.find_seq (spr.base_hit), 4))
+				mdat.write (make_lsb (0, 4))	# hit
 				mdat.write (make_lsb (spr.timer, 4))
 				mdat.write (make_lsb (spr.que, 4))
 				mdat.write (make_lsb (spr.hard, 4))
@@ -743,6 +742,8 @@ class Oneseq:
 	pass
 class Oneframe:
 	pass
+class External:
+	pass
 
 class Seq:
 	def __init__ (self, parent):
@@ -756,35 +757,60 @@ class Seq:
 			info = readlines (dinkfile)
 			if info == {}:
 				break
-			info, dinkdir = get (info, 'dir', 'graphics')
-			if dinkdir.endswith ('\\'):
-				dinkdir = dinkdir[:-1]
 			keys = [x for x in info.keys () if x.find (':') < 0]
 			for k in keys:
 				v = info[k]
 				del info[k]
 				v = v.split ()
 				if v[0] == '-':
-					code = None
+					code = -1
 				else:
 					code = int (v[0])
 					assert code not in codes
 					codes += (code,)
 				f = v[1]
-				n = int (v[2])
-				v = v[3:]
+				now = v[2] == 'y'
+				n = int (v[3])
+				s = int (v[4])
+				r = v[5] == 'r'
+				v = v[6:]
 				assert k not in self.dink
-				if len (v) == 1:
-					self.dink[k] = [dinkdir + '\\' + f, n, [[None] * 7 for x in range (n + 1)], v[0]]
+				self.dink[k] = External ()
+				if len (v) == 1 and (v[0] == 'notanim' or v[0] == 'leftalign' or v[0] == 'black'):
+					self.dink[k].default = [None] * 7
+					self.dink[k].type = v[0]
 				else:
-					self.dink[k] = [dinkdir + '\\' + f, n, [[None] * 7 for x in range (n)] + [v], 'normal']
-				self.dink[k] += (code,)
+					if v[-1] == None or v[-1] == 'None':
+						vd = None
+					else:
+						vd = int (v[-1])
+					self.dink[k].default = [int (x) for x in v[:-1]] + [vd]
+					self.dink[k].type = 'normal'
+				self.dink[k].file = f
+				self.dink[k].now = now
+				self.dink[k].num = n
+				self.dink[k].special = s
+				self.dink[k].repeat = r
+				self.dink[k].info = [[None] * 7 for x in range (n)]
+				self.dink[k].code = code
+				if k + ':preload' in info:
+					self.dink[k].preload = info[k + ':preload']
+					del info[k + ':preload']
+				else:
+					self.dink[k].preload = ''
 				for i in range (int (n)):
 					key = '%s:%d' % (k, i + 1)
 					if key in info:
 						box = info[key].split ()
-						assert len (box) == 7
-						self.dink[k][2][i] = [int (x) for x in box]
+						if len (box) == 6 or len (box) == 7 or len (box) == 2 or len (box) == 3:
+							self.dink[k].info[i] = [int (x) for x in box]
+							if len (box) == 6 or len (box) == 2:
+								self.dink[k].info[i] += (None,)
+						elif len (box) == 1:
+							self.dink[k].info[i] = [None] * 6 + box
+						else:
+							print box
+							raise AssertionError ('invalid box')
 						del info[key]
 		infofile = open (os.path.join (d, 'info' + os.extsep + 'txt'))
 		while True:
@@ -794,19 +820,25 @@ class Seq:
 			if 'external' in info:
 				info, base = get (info, 'external')
 				assert base not in self.data
-				d = self.dink[base][:-1]
+				d = self.dink[base]
 				self.data[base] = Oneseq ()
-				self.data[base].code = self.dink[base][-1]
-				self.data[base].filename = d[0]
-				self.data[base].frames = [None] * d[1]
-				box = d[2]
-				deftype = d[3]
+				code = d.code
+				self.data[base].filename = d.file
+				self.data[base].frames = []
+				repeat = d.repeat
+				box = d.info
+				default_box = d.default
+				deftype = d.type
+				special = d.special
+				preload = d.preload
+				num = d.num
 			else:
-				code = None
+				code = -1
 				info, base = get (info, 'name')
 				assert base not in self.data
 				self.data[base] = Oneseq ()
 				self.data[base].frames = []
+				repeat = False
 				gif = os.path.join (d, base + os.extsep + 'gif')
 				assert os.path.exists (gif)
 				f = Image.open (gif)
@@ -818,35 +850,49 @@ class Seq:
 						break
 				w = self.data[base].frames[0][1].size[0]
 				h = self.data[base].frames[0][1].size[1]
-				box = [[None] * 7] * len (self.data[base].frames) + [[w / 2, h * 8 / 10, -w * 4 / 10, -h / 10, w * 4 / 10, h / 10, self.data[base].frames[0][0]]]
-				info, self.data[base].filename = 'graphics\%s-' % base
+				box = [[None] * 7] * len (self.data[base].frames)
+				default_box = [w / 2, h * 8 / 10, -w * 4 / 10, -h / 10, w * 4 / 10, h / 10, self.data[base].frames[0][0]]
+				info, self.data[base].filename = 'graphics\\%s-' % base
 				deftype = 'normal'
-			info, self.data[base].num = get (info, 'frames', len (self.data[base].frames))
-			info, self.data[base].special = get (info, 'special', 1)
+				special = 1
+				preload = ''
+				num = len (self.data[base].frames)
+			info, self.data[base].num = get (info, 'frames', num)
+			info, self.data[base].repeat = get (info, 'repeat', repeat)
+			info, self.data[base].special = get (info, 'special', special)
 			info, self.data[base].now = get (info, 'load-now', False)
+			info, self.data[base].code = get (info, 'code', code)
+			info, f = get (info, 'preload', preload)
+			if f:
+				self.data[base].preload = f
+			else:
+				self.data[base].preload = ''
 			info, defbox = get (info, 'box', '')
 			if defbox == '':
 				defbox = [None] * 6
 			else:
 				defbox = defbox.split ()
 			assert len (defbox) == 6
-			info, delay = get (info, 'delay', 0)
+			info, delay = get (info, 'delay', 30)
 			defbox += [delay]
 			self.data[base].desc = []
 			for f in range (self.data[base].num):
 				self.data[base].desc += (Oneframe (),)
-				if f >= len (self.data[base].frames):
-					# these are generated frames. They need a source.
+				if len (box[f]) == 3:
+					# These are external frames with a target. Num is not valid, so just use it without checking.
+					info, self.data[base].desc[-1].seq = get (info, 'seq-%d' % (f + 1), box[f][0])
+					info, self.data[base].desc[-1].frame = get (info, 'frame-%d' % (f + 1), box[f][1])
+				elif f >= len (self.data[base].frames):
+					# these are generated frames. They need a target.
 					info, self.data[base].desc[-1].seq = get (info, 'seq-%d' % (f + 1))
 					info, self.data[base].desc[-1].frame = get (info, 'frame-%d' % (f + 1), 1)
-				info, self.data[base].desc[-1].frame = get (info, 'frame-%d' % (f + 1), 1)
 				info, curbox = get (info, 'box-%d' % f, '')
 				if curbox == '':
 					curbox = box[f][:6]
-					if curbox[0] == None:
+					if len (curbox) != 6 or curbox[0] == None:
 						curbox = defbox[:6]
 						if curbox[0] == None:
-							curbox = box[-1][:6]
+							curbox = default_box[:6]
 				else:
 					curbox = [int (x) for x in curbox.split ()]
 				assert len (curbox) == 6
@@ -858,18 +904,57 @@ class Seq:
 				self.data[base].desc[-1].bottom = curbox[5]
 				info, dl = get (info, 'delay-%d' % f, 0)
 				if dl == 0:
-					dl = box[f][6]
+					dl = box[f][-1]
 					if dl == None:
-						dl = defbox[6]
+						dl = defbox[-1]
 						if dl == None:
-							dl = box[-1][6]
+							dl = default_box[-1]
 				self.data[base].desc[-1].delay = dl
 			info, self.data[base].type = get (info, 'type', deftype)
-			assert self.data[base].type in ('normal', 'black', 'leftalign', 'noanim')
+			assert self.data[base].type in ('normal', 'black', 'leftalign', 'notanim')
 			assert info == {}
+		for base in self.dink:
+			if base in self.data:
+				continue
+			self.data[base] = Oneseq ()
+			self.data[base].filename = self.dink[base].file
+			self.data[base].frames = []
+			self.data[base].type = self.dink[base].type
+			self.data[base].num = self.dink[base].num
+			self.data[base].special = self.dink[base].special
+			self.data[base].now = self.dink[base].now
+			self.data[base].code = self.dink[base].code
+			self.data[base].repeat = self.dink[base].repeat
+			self.data[base].preload = self.dink[base].preload
+			box = self.dink[base].info
+			default_box = self.dink[base].default
+			self.data[base].desc = []
+			for f in range (self.data[base].num):
+				self.data[base].desc += (Oneframe (),)
+				curbox = box[f][:6]
+				if curbox[0] == None:
+					curbox = default_box[:6]
+				else:
+					curbox = [int (x) for x in curbox[:-1]] + [curbox[-1]]
+				if len (curbox) == 6:
+					self.data[base].desc[-1].x = curbox[0]
+					self.data[base].desc[-1].y = curbox[1]
+					self.data[base].desc[-1].left = curbox[2]
+					self.data[base].desc[-1].top = curbox[3]
+					self.data[base].desc[-1].right = curbox[4]
+					self.data[base].desc[-1].bottom = curbox[5]
+				elif len (curbox) == 3:
+					self.data[base].desc[-1].seq = curbox[0]
+					self.data[base].desc[-1].frame = curbox[1]
+				else:
+					assert len (curbox) == 1
+				dl = box[f][-1]
+				if dl == None:
+					dl = default_box[-1]
+				self.data[base].desc[-1].delay = dl
 		nextseq = 1
 		for s in self.data:
-			if self.data[s].code == None:
+			if self.data[s].code == -1:
 				self.data[s].code = nextseq
 				nextseq += 1
 				while nextseq in codes:
@@ -877,6 +962,8 @@ class Seq:
 	def find_seq (self, name):
 		if not name:
 			return 0
+		if type (name) == int:
+			return name
 		return self.data[name].code
 	def write (self, root):
 		# Write graphics/*
@@ -886,41 +973,77 @@ class Seq:
 			os.mkdir (d)
 		ini = open (os.path.join (root, 'dink.ini'), 'w')
 		for g in self.data:
-			delay = self.data[g].desc[0].delay
+			if self.data[g].preload:
+				ini.write ('// Preload\n')
+				ini.write ('load_sequence_now %s %d\n' % (self.data[g].preload, self.data[g].code))
+			if len (self.data[g].desc) > 0:
+				delay = self.data[g].desc[0].delay
+			else:
+				delay = None
 			if self.data[g].now:
 				now = '_now'
 			else:
 				now = ''
 			if self.data[g].type == 'normal':
-				ini.write ('load_sequence%s %s %d %d %d %d %d %d %d %d\n' % (now, self.data[g].filename, self.data[g].code, delay, self.data[g].desc[0].x, self.data[g].desc[0].y, self.data[g].desc[0].left, self.data[g].desc[0].top, self.data[g].desc[0].right, self.data[g].desc[0].bottom))
+				if len (self.data[g].desc) == 0 or 'x' not in dir (self.data[g].desc[0]):
+					if delay != None:
+						ini.write ('load_sequence%s %s %d %d\n' % (now, self.data[g].filename, self.data[g].code, delay))
+					else:
+						ini.write ('load_sequence%s %s %d\n' % (now, self.data[g].filename, self.data[g].code))
+				else:
+					if delay != None:
+						ini.write ('load_sequence%s %s %d %d %d %d %d %d %d %d\n' % (now, self.data[g].filename, self.data[g].code, delay, self.data[g].desc[0].x, self.data[g].desc[0].y, self.data[g].desc[0].left, self.data[g].desc[0].top, self.data[g].desc[0].right, self.data[g].desc[0].bottom))
+					else:
+						ini.write ('load_sequence%s %s %d %d %d %d %d %d %d\n' % (now, self.data[g].filename, self.data[g].code, self.data[g].desc[0].x, self.data[g].desc[0].y, self.data[g].desc[0].left, self.data[g].desc[0].top, self.data[g].desc[0].right, self.data[g].desc[0].bottom))
 			else:
 				ini.write ('load_sequence%s %s %d %s\n' % (now, self.data[g].filename, self.data[g].code, self.data[g].type.upper ()))
 			for n, f in zip (range (len (self.data[g].frames)), self.data[g].frames):
 				if f != None:
 					f[1].save (os.path.join (d, (g + '-%02d' + os.extsep + 'bmp') % (n + 1)))
 			for f in range (len (self.data[g].desc)):
-				if f >= len (self.data[g].frames):
+				if 'seq' in dir (self.data[g].desc[f]):
 					ini.write ('set_frame_frame %d %d %d %d\n' % (self.data[g].code, f + 1, self.find_seq (self.data[g].desc[f].seq), self.data[g].desc[f].frame))
-				if ((self.data[g].type != 'normal' or self.data[g].desc[0].x, self.data[g].desc[0].y, self.data[g].desc[0].left, self.data[g].desc[0].top, self.data[g].desc[0].right, self.data[g].desc[0].bottom) != (self.data[g].desc[f].x, self.data[g].desc[f].y, self.data[g].desc[f].left, self.data[g].desc[f].top, self.data[g].desc[f].right, self.data[g].desc[f].bottom)) and self.data[g].desc[f].right != None and self.data[g].desc[f].right - self.data[g].desc[f].left != 0:
-					ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\n' % (self.data[g].code, f + 1, self.data[g].desc[f].x, self.data[g].desc[f].y, self.data[g].desc[f].left, self.data[g].desc[f].top, self.data[g].desc[f].right, self.data[g].desc[f].bottom))
-				if f > 0 and self.data[g].desc[f].delay != self.data[g].desc[0].delay:
-					ini.write ('set_frame_delay %d %d %d\n' % (self.data[g].code, f + 1, self.data[g].desc[f].delay))
+				if 'x' in dir (self.data[g].desc[f]):
+					if 'x' not in dir (self.data[g].desc[0]) or (((self.data[g].type != 'normal' or self.data[g].desc[0].x, self.data[g].desc[0].y, self.data[g].desc[0].left, self.data[g].desc[0].top, self.data[g].desc[0].right, self.data[g].desc[0].bottom) != (self.data[g].desc[f].x, self.data[g].desc[f].y, self.data[g].desc[f].left, self.data[g].desc[f].top, self.data[g].desc[f].right, self.data[g].desc[f].bottom)) and self.data[g].desc[f].right != None and self.data[g].desc[f].right - self.data[g].desc[f].left != 0):
+						ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\n' % (self.data[g].code, f + 1, self.data[g].desc[f].x, self.data[g].desc[f].y, self.data[g].desc[f].left, self.data[g].desc[f].top, self.data[g].desc[f].right, self.data[g].desc[f].bottom))
+				if 'seq' in dir (self.data[g].desc[f]) or (f > 0 and self.data[g].desc[f].delay != self.data[g].desc[0].delay):
+					ini.write ('set_frame_delay %d %d %d\n' % (self.data[g].code, f + 1, int (self.data[g].desc[f].delay)))
 				if f != 0 and self.data[g].special == f + 1:
 					ini.write ('set_frame_special %d %d\n' % (self.data[g].code, f + 1))
+			if self.data[g].repeat:
+				ini.write ('set_frame_frame %d %d -1\n' % (self.data[g].code, len (self.data[g].desc) + 1))
 
 class Sound:
 	def __init__ (self, parent):
 		self.parent = parent
 		ext = os.extsep + 'wav'
-		self.sound = [s[:-len (ext)] for s in os.listdir (os.path.join (parent.root, "sound")) if s.endswith (ext)]
+		self.sound = {}
+		other = []
+		codes = []
+		for s in os.listdir (os.path.join (parent.root, "sound")):
+			if not s.endswith (ext):
+				continue
+			r = re.match ('(\d+)-', s)
+			if not r:
+				other += (s[:-len (ext)],)
+			else:
+				code = int (r.group (1))
+				self.sound[s[len (r.group (0)):]] = code
+				assert code not in codes
+				codes += (code,)
+		i = 1
+		for s in other:
+			while i in codes:
+				i += 1
+			self.sound[s] = i
+			i += 1
 		ext = os.extsep + 'mid'
 		self.music = [s[:-len (ext)] for s in os.listdir (os.path.join (parent.root, "music")) if s.endswith (ext)]
 	def find_sound (self, name):
 		"""Find wav file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
 			return 0
-		assert name in self.sound
-		return self.sound.index (name) + 1
+		return self.sound[name]
 	def find_music (self, name):
 		"""Find midi file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
@@ -957,7 +1080,7 @@ class Script:
 		info, self.title_music = get (info, 'music', '')
 		info, self.title_color = get (info, 'color', 0)
 		info, self.title_bg = get (info, 'background', '')
-		info, p = get (info, 'pointer', 'pointer 1')
+		info, p = get (info, 'pointer', 'special 8')
 		p = p.split ()
 		self.title_pointer_seq, self.title_pointer_frame = p[0], int (p[1])
 		info, self.title_run = get (info, 'run', '')
@@ -979,6 +1102,7 @@ class Script:
 			b = b.split ()
 			assert len (b) == 5
 			self.title_sprite += ((b[0], int (b[1]), int (b[2]), int (b[3]), 'button', b[4]),)
+		assert info == {}
 	def write (self, root):
 		# Write Story/*
 		d = os.path.join (root, 'story')
@@ -1027,9 +1151,9 @@ sp_touch_damage (&crap, -1);
 		s.write ('void main ()\n{')
 		global the_globals
 		for v in the_globals:
-			s.write ('\tmake_global_int ("%s", %d);\n' % (v, the_globals[v]))
+			s.write ('\tmake_global_int ("&%s", %d);\n' % (v, the_globals[v]))
 		for t in range (max_tmp):
-			s.write ('\tmake_global_int ("tmp%s", %d);\n' % (t, 0))
+			s.write ('\tmake_global_int ("&tmp%s", %d);\n' % (t, 0))
 		s.write ('\tkill_this_task ();\n}\n')
 
 class Dink:

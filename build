@@ -42,7 +42,7 @@ button-2 = 524 40	game-continue
 button-3 = 560 440	game-quit
 #button-4 = 104 440	game-ordering
 #run = custom-start
-pointer = dink 8
+pointer = special 8
 ''')
 check (os.path.join (os.path.join (root, 'seq'), 'external' + os.extsep + 'txt'), '''\
 # name = filename nframes delay
@@ -56,10 +56,22 @@ if created:
 	print 'Content created: not running build.'
 	sys.exit (0)
 
+def rmr (path):
+	for f in os.listdir (path):
+		fullpath = os.path.join (path, f)
+		if os.path.isdir (fullpath):
+			rmr (fullpath)
+		else:
+			os.remove (fullpath)
+	os.rmdir (path)
+
 data = layout.Dink (root)
 home = os.path.expanduser ('~')
 dmods = os.path.join (home, 'dmods')
 if not os.path.exists (dmods):
 	os.mkdir (dmods)
 dmod = os.path.join (dmods, base)
+if os.path.exists (dmod):
+	rmr (dmod)
+
 data.write (dmod)

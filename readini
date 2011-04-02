@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+import sys
+
+# sequence info:
+# - filename
+# - frame x y l t r b delay
+# - frame seq frame
+# - special
+# - repeat
+# - now
+# - type
+
+seqs = {}
+
+class Frame:
+	def __init__ (self, target = None, info = None, delay = None):
+		self.target = target
+		self.info = info
+		self.delay = delay
+	def __repr__ (self):
+		return '\nFrame (target = %s, info = %s, delay = %s)' % (self.target, self.info, self.delay)
+
+class Seq:
+	def __init__ (self, file = None, special = 1, now = False, type = 'normal', repeat = False, frames = None, defaults = None, num = 1, preload = None):
+		self.file = file
+		self.special = special
+		self.now = now
+		self.type = type
+		self.repeat = repeat
+		self.preload = preload
+		if frames:
+			self.frames = frames
+		else:
+			self.frames = {}
+		if defaults:
+			self.defaults = defaults
+		else:
+			self.defaults = Frame ()
+		self.num = num
+	def use (self, key):
+		if key in self.frames:
+			return
+		self.frames[key] = Frame ()
+		if self.num < key:
+			self.num = key
+	def __repr__ (self):
+		return 'Seq (file = "%s", special = %s, now = %s, type = "%s", repeat = %s, frames = %s, defaults = %s, num = %d, preload = %s)' % (self.file, self.special, self.now, self.type, self.repeat, self.frames, self.defaults, self.num, self.preload)
+
+def use (key):
+	global seqs
+	if key in seqs:
+		return
+	seqs[key] = Seq ()
+
+for l in [x.lower ().split () for x in sys.stdin.readlines ()]:
+	if l == [] or l[0].startswith ('//') or l[0].startswith (';') or l[0] == 'starting_dink_x' or l[0] == 'starting_dink_y' or l[0] == 'starting_dink_map':
+		pass
+	elif l[0] == 'load_sequence' or l[0] == 'load_sequence_now':
+		s = int (l[2])
+		use (s)
+		if seqs[s].file:
+			assert not seqs[s].preload
+			assert seqs[s].file
+			preload = seqs[s].file
+			seqs[s] = Seq ()
+			seqs[s].preload = preload
+		seqs[s].file = l[1]
+		seqs[s].now = l[0] == 'load_sequence_now'
+		if len (l) == 3:
+			pass
+		elif len (l) == 4:
+			# Ignore bug in original source.
+			if l[3] == 'notanin':
+				l[3] = 'notanim'
+			if l[3] == 'black' or l[3] == 'notanim' or l[3] == 'leftalign':
+				seqs[s].type = l[3]
+			else:
+				seqs[s].defaults.delay = int (l[3])
+		elif len (l) == 5:
+				seqs[s].defaults.delay = int (l[3])
+				seqs[s].type = l[4]
+		elif len (l) == 9:
+			seqs[s].defaults.info = [int (x) for x in l[3:]]
+		elif len (l) == 10:
+			seqs[s].defaults.delay = int (l[3])
+			seqs[s].defaults.info = [int (x) for x in l[4:]]
+		else:
+			raise AssertionError ('invalid line for load_sequence')
+	elif l[0] == 'set_sprite_info':
+		s = int (l[1])
+		f = int (l[2])
+		use (s)
+		seqs[s].use (f)
+		seqs[s].frames[f].info =  [int (x) for x in l[3:]]
+	elif l[0] == 'set_frame_delay':
+		s = int (l[1])
+		f = int (l[2])
+		use (s)
+		seqs[s].use (f)
+		seqs[s].frames[f].delay =  int (l[3])
+	elif l[0] == 'set_frame_frame':
+		s = int (l[1])
+		f = int (l[2])
+		use (s)
+		if len (l) == 5:
+			seqs[s].use (f)
+			seqs[s].frames[f].target =  [int (l[3]), int (l[4])]
+		else:
+			seqs[s].repeat = True
+	elif l[0] == 'set_frame_special':
+		s = int (l[1])
+		f = int (l[2])
+		use (s)
+		seqs[s].special = int (l[3])
+	else:
+		print l
+		raise AssertionError ('invalid command in input')
+
+if len (sys.argv) == 1:
+	for s in seqs:
+		print seqs[s].file
+	sys.exit (0)
+
+names = {}
+for n in [x.strip ().split (None, 1) for x in open (sys.argv[1]).readlines ()]:
+	if len (n) == 1:
+		continue
+	names[n[1]] = n[0]
+
+def make_delay (s):
+	if s.type != 'normal':
+		return s.type
+	if s.defaults.info:
+		return ' '.join ([str (x) for x in s.defaults.info + [s.defaults.delay]])
+	else:
+		return str (s.defaults.delay)
+
+for s in seqs:
+	if seqs[s].file not in names:
+		continue
+	print '%s = %d %s %s %d %d %s %s' % (names[seqs[s].file], s, seqs[s].file, ('n', 'y')[seqs[s].now], seqs[s].num, seqs[s].special, ('n', 'r')[seqs[s].repeat], make_delay (seqs[s]))
+	if seqs[s].preload:
+		print '%s:preload = %s' % (names[seqs[s].file], seqs[s].preload)
+	for f in range (1, seqs[s].num + 1):
+		if f not in seqs[s].frames:
+			continue
+		if seqs[s].frames[f].target:
+			if seqs[s].frames[f].delay == None:
+				print '%s:%d = %d %d' % (names[seqs[s].file], f, seqs[s].frames[f].target[0], seqs[s].frames[f].target[1])
+			else:
+				print '%s:%d = %d %d %d' % (names[seqs[s].file], f, seqs[s].frames[f].target[0], seqs[s].frames[f].target[1], seqs[s].frames[f].delay)
+		else:
+			if seqs[s].frames[f].info == None:
+				if seqs[s].frames[f].delay == None:
+					raise AssertionError ('strange frame')
+				else:
+					print '%s:%d = %d' % (names[seqs[s].file], f, seqs[s].frames[f].delay)
+			else:
+				if seqs[s].frames[f].delay == None:
+					print '%s:%d = %d %d %d %d %d %d' % (names[seqs[s].file], f, seqs[s].frames[f].info[0], seqs[s].frames[f].info[1], seqs[s].frames[f].info[2], seqs[s].frames[f].info[3], seqs[s].frames[f].info[4], seqs[s].frames[f].info[5])
+				else:
+					print '%s:%d = %d %d %d %d %d %d %d' % (names[seqs[s].file], f, seqs[s].frames[f].info[0], seqs[s].frames[f].info[1], seqs[s].frames[f].info[2], seqs[s].frames[f].info[3], seqs[s].frames[f].info[4], seqs[s].frames[f].info[5], seqs[s].frames[f].delay)
