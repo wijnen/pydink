@@ -44,14 +44,6 @@ button-3 = 560 440	game-quit
 #run = custom-start
 pointer = special 8
 ''')
-check (os.path.join (os.path.join (root, 'seq'), 'external' + os.extsep + 'txt'), '''\
-# name = filename nframes delay
-external = tile\s 13
-button-ordering = graphics\startme\options\but1- 2
-button-quit = graphics\startme\options\but3- 2
-button-start = graphics\startme\options\but7- 2
-button-continue = graphics\startme\options\but9- 2
-''')
 if created:
 	print 'Content created: not running build.'
 	sys.exit (0)
