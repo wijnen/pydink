@@ -70,7 +70,7 @@ the_globals = {
 		"missle_source": 0
 	}
 
-seq_names = r'''\
+seq_names = r'''
 idle 10
 duck 20
 pig 40
@@ -296,8 +296,8 @@ hammergoblindie 765
 horngoblindie 785
 goblindie 805
 giantdie 825
-'''
-tile_names = r'''\
+'''.split ('\n')
+tile_names = r'''
 out1
 out2
 out3
@@ -339,8 +339,8 @@ rfloor1
 rfloor2
 cave6
 grass
-'''
-dink_ini = r'''\
+'''.split ('\n')
+dink_ini = r'''
 ;dink .ini file, be sure to back it up before you change it!
 ;NOTE:  This file is rarely directly editted - the DINKEDIT.EXE program can make changes to
 ;it directly, allowing you to graphically set 'depth dots' and hardboxes. 
@@ -1392,7 +1392,7 @@ SET_SPRITE_INFO 424 3 138 128 -147 -32 77 39
 SET_SPRITE_INFO 424 4 121 191 -124 -35 124 64
 SET_SPRITE_INFO 424 8 25 148 -7 -104 7 25
 
-'''
+'''.split ('\n')
 
 def convert_image (im):
 	k = Image.eval (im.convert ('RGBA'), lambda (v): [v, 254][v == 255])
@@ -1535,23 +1535,69 @@ def build (expr, as_bool):
 		op = expr[0]
 	return tmp, b0 + b1 + '%s = %s;\n%s %s %s;\n' % (tmp, e0, tmp, op, e1)
 
+def mangle_function (name, args, dink):
+	'''\
+	Handle special arguments of:
+	add_item
+	add_magic
+	create_sprite
+	editor_type
+	get_rand_sprite_with_this_brain
+	get_sprite_with_this_brain
+	playmidi
+	playsound
+	preload_seq
+	sp_base_attack
+	sp_base_death
+	sp_base_idle
+	sp_base_walk
+	sp_brain
+	sp_sound
+
+	return name, args, before.'''
+	if name == 'add_item' or name == 'add_magic':
+		assert len (args) == 3
+		assert args[1][0] == '"'
+		return name, [args[0], str (dink.seq.find_seq (args[1][1:-1])), args[2]], ''
+	elif name == 'create_sprite':
+		assert len (args) == 5
+		assert args[2][0] == '"'
+		return name, [args[0], args[1], str (brains.index[args[2]]), str (dink.seq.find_seq (args[3][1:-1])), args[4]], ''
+	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
+		assert len (args) == 2
+		assert args[0][0] == '"'
+		return name, [str (brains.index[args[0][1:-1]]), args[1]], ''
+	elif name == 'playmidi':
+		assert len (args) == 1
+		assert args[0][0] == '"'
+		return name, [str (dink.sound.find_music (args[0][1:-1]))], ''
+	elif name == 'playsound':
+		assert len (args) == 4 or len (args) == 5
+		assert args[0][0] == '"'
+		return name, [str (dink.sound.find_sound (args[0][1:-1]))] + args[1:], ''
+	elif name == 'preload_seq':
+		assert len (args) == 1
+		assert args[0][0] == '"'
+		return name, [str (dink.seq.find_seq (args[0][1:-1]))], ''
+	elif name == 'sp_base_attack' or name == 'sp_base_death' or name == 'sp_base_idle' or name == 'sp_base_walk':
+		assert len (args) == 2
+		assert args[1][0] == '"'
+		return name, [args[0], str (dink.seq.find_collection (args[1][1:-1]))], ''
+	elif name == 'sp_brain':
+		assert len (args) == 1 or len (args) == 2
+		if len (args) == 2:
+			v = brains.index (args[1][1:-1])
+		else:
+			v = -1
+		return name, [args[0], str (v)], ''
+	elif name == 'sp_sound':
+		assert len (args) == 2
+		assert args[1][0] == '"'
+		return name, [args[0], str (dink.sound.find_sound (args[1][1:-1]))], ''
+	else:
+		return name, args, ''
+
 def read_args (script):
-	# TODO: handle special arguments of:
-	# add_item
-	# add_magic
-	# create_sprite
-	# editor_type
-	# get_rand_sprite_with_this_brain
-	# get_sprite_with_this_brain
-	# playmidi
-	# playsound
-	# preload_seq
-	# sp_base_attack
-	# sp_base_death
-	# sp_base_idle
-	# sp_base_walk
-	# sp_brain
-	# sp_sound
 	args = []
 	b = ''
 	if script[0] == ')':
@@ -1639,7 +1685,8 @@ def parse_expr (script, allow_cmd = False, restart = True, as_bool = None):
 						# Read away the opening parenthesis.
 						t, script, isname = token (script)
 						b, args, script = read_args (script)
-						ret += ([name, args, b],)
+						f, a, bf = mangle_function (name, args, parent)
+						ret += ([f, a, b + bf],)
 						need_operator = True
 						continue
 					ret += ('&' + t,)
@@ -1804,7 +1851,8 @@ def preprocess (script, dink):
 					ret += b + c + i + 'choice_end ();\n'
 				else:
 					b, args, script = read_args (script)
-					ret += b + i + name + '(' + ', '.join (args) + ');\n'
+					f, a, bf = mangle_function (name, args, dink)
+					ret += b + bf + i + f + '(' + ', '.join (a) + ');\n'
 		realatend = atend
 		atend = ''
 		t, script, isname = token (script)
@@ -2302,8 +2350,8 @@ class Seq:
 			else:
 				print l
 				raise AssertionError ('invalid line in dink.ini')
-		# Link names to sequences from dink.ini.
-		n = 0
+		# Link names to sequences from dink.ini. Start at 1, because the first character is a newline.
+		n = 1
 		# Read collections.
 		while n < len (seq_names):
 			l = seq_names[n].strip ()
@@ -2439,6 +2487,8 @@ class Seq:
 		if type (name) == int:
 			return name
 		return self.seq[name].code
+	def find_collection (self, name):
+		return self.collection[name].code
 	def write_seq (self, ini, seq):
 		if seq.preload:
 			ini.write ('// Preload\n')
