@@ -1,0 +1,18 @@
+python dink editor
+
+- interface with gui.gui
+- always show background(?), optionally show visible sprites, all sprites and/or hardness
+- show information on pointer move: background tile, sprite properties
+- edit script through custom command
+- cut-n-paste regions
+- generate regions with generators which also work from console
+- cut-n-paste from console
+- cut-n-paste sprites, also from console
+- edit warp by clicking on destination
+- properties for "current" sprite and for sprite under mouse both visible
+- current sprite need not be in same screen (important for warp clicking)
+- copy selected properties from one sprite to another, or a group of others
+- allow property selections to be stored
+- allow sprite groups to be stored
+- select a sprite group by expression
+- statistics from a sprite group

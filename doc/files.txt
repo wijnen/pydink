@@ -39,25 +39,29 @@ seq/external.txt
 	name:n			: description of frame n, a list of 7 numbers, which are x y left top right bottom delay; x y are the position of the hot spot, ltrb is the hardness box from the hot spot, delay is the number of ms to show this frame or a target sequence code, frame and delay
 
 seq/info.txt
-	Contains information about all sequences. It contains a list of blocks, separated by empty lines. Each block describes exactly one sequence. External sequences can be defined here to give extra information.
+	Contains information about all sequences. It contains a list of blocks, separated by empty lines. Each block describes exactly one sequence.
 
-	external							: name of the sequence in external.txt (required for external, forbidden otherwise)
-	name								: name of the sequence a file name.gif must exist (forbidden for external, required otherwise)
+	collection							: name of a collection
+	direction							: for parts of a collection: direction number; required for collection parts, forbidden otherwise
+	name								: name of the sequence; a file name.gif must exist; required for self-defined non-collection sequences, forbidden otherwise
+	append								: name of an internal sequence, to be appended to; forbidden if not applicable
 	frames[detected]						: number of frames, including generated frames
 	special[1]							: special frame (the one which hits during an attack)
 	load-now[no]							: if yes, loads the sequence in cache immediately
-	code[from external or auto]					: use this code for this sequence
-	type[normal]							: normal, black, leftalign or noanim
+	code[from internal or auto]					: use this code for this sequence; defining one code twice is forbidden
+	type[normal]							: normal, black, leftalign or notanim
 	delay[detected or 30]						: default delay between frames
 	repeat[no]							: if yes, auto-repeat this sequence
-	box[w/2 h*8/10 -w*4/10 -h/10 w*4/10 h/10]			: default hot spot and hardness box
+	box[w/2 h*8/10 -w*4/10 -h/10 w*4/10 h/10]			: default hot spot and hardness box (x y left top right bottom)
 	seq-n[required for n > real frames, forbidden otherwise]	: name of sequence from which frame n is copied
 	frame-n[required for n > real frames, forbidden otherwise]	: frame which is copied as n
 	box-n								: hot spot and hardness box for this frame
 	delay-n								: number of ms that this frame is used
 
 world/nnn-xx-yy/info.txt
-	Contains tile and hardness info about a screen. nnn is the number of the screen, xx and yy are the coordinates. They must match. This file starts with 8 lines of 12 sets of three values: a tiles file and two coordinates in it. These define the background tiles in the screen. After this, some key-value-pairs follow. No empty line is allowed between them.
+	Contains tile and hardness info about a screen. nnn is the number of the screen, xx and yy are the coordinates. They must match.
+	This file starts with 8 lines of 12 sets of three values: a tiles file and two coordinates in it. These define the background tiles in the screen.
+	After this, some key-value-pairs follow. No empty line is allowed between them.
 
 	hard[from tiles]	: if given, hardness data is read from this file instead of what comes with the tiles used
 	script[none]		: the base script for the room; it is run when entering the room
@@ -77,15 +81,15 @@ world/nnn-xx-yy/sprite/name[-nn].txt
 	brain[bisshop]		: brain
 	script[none]		: script
 	speed[1]		: speed: 1 is normal, 2 is herb boots
-	base_walk		: animation for walking
-	base_idle		: animation for standing still
-	base_attack		: animation for attacking
-	base_die		: animation for dying
+	base_walk		: collection for walking
+	base_idle		: collection for standing still
+	base_attack		: collection for attacking
+	base_die		: collection for dying
 	timer[33]		: delay: larger is slower
 	que[0]			: offset of depth
 	hard[yes]		: if no, sprite is not hard
 	left, top, right, bottom: if set and not 0, override sprite hardness box
-	warp[no warp]		: if set, it must be three numbers separated by commas: map, x, y
+	warp[no warp]		: if set, it must be three numbers: map x y
 	touch_seq		: sequence to play when the sprite is touched
 	gold			: general-purpose variable not used by the game
 	hitpoints[0]		: life counter of sprite, it is immortal if set to 0
@@ -105,4 +109,4 @@ script/*.c
 	- You cannot use goto.
 	- Variables do not start with &, except in printed strings.
 	- Choice is a function with a variable number of arguments. Each time there may be a test (bool) and there must be a string.
-	- sequences, brains, music and sounds are referenced by name, not number. (not implemented yet)
+	- sequences, brains, music and sounds are referenced by name, not number.

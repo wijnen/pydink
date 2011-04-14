@@ -1462,7 +1462,7 @@ def token (script, allow_comment = False):
 				continue
 			return s[:p + 2], s[p + 2:].lstrip (), False
 		break
-	l = ['&&', '||', '==', '!=', '>=', '<=', '>', '<', '!', '+=', '-=', '/=', '*=', '=', '+', '-', '*', '/', ',', ';', '{', '}', '?', ':', '(', ')']
+	l = ['//', '/*', '&&', '||', '==', '!=', '>=', '<=', '>', '<', '!', '+=', '-=', '/=', '*=', '=', '+', '-', '*', '/', ',', ';', '{', '}', '?', ':', '(', ')']
 	for i in l:
 		if s.startswith (i):
 			return i, s[len (i):].lstrip (), False
@@ -1710,8 +1710,15 @@ def preprocess (script, dink):
 			continue
 		if not t:
 			break
-		if t.startswith ('//') or t.startswith ('/*'):
-			ret += i + t
+		if t.startswith ('//'):
+			comment = script.split ('\n', 1)[0]
+			ret += i + t + comment + '\n'
+			script = script[len (comment) + 1:]
+			continue
+		if t.startswith ('/*'):
+			comment = script.split ('*/', 1)[0]
+			ret += i + t + comment + '*/\n'
+			script = script[len (comment) + 2:]
 			continue
 		if len (indent) == 0:
 			assert t == 'void'
@@ -1907,7 +1914,7 @@ class Room:
 			if w == '':
 				self.sprite[s].warp = None
 			else:
-				self.sprite[s].warp = [int (x) for x in w.split (',')]
+				self.sprite[s].warp = [int (x) for x in w.split ()]
 			info, self.sprite[s].touch_seq = get (info, 'touch_seq', '')
 			info, self.sprite[s].base_die = get (info, 'base_die', '')
 			info, self.sprite[s].gold = get (info, 'gold', 0)

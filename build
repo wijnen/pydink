@@ -30,21 +30,192 @@ check (os.path.join (root, 'sound'))
 check (os.path.join (root, 'script'))
 check (os.path.join (root, 'image'))
 check (os.path.join (root, 'info' + os.extsep + 'txt'), '%s\n\nThis file should claim copyright and describe the dmod.' % base)
-check (os.path.join (root, 'title' + os.extsep + 'txt'), '''\
+title = os.path.join (root, 'title' + os.extsep + 'txt')
+check (title, '''\
 #music = titlemusic
 sprites = 0
 #sprite-1 = logo 1		0 0
 #color = 0
 #background = background
-buttons = 3
-button-1 = 76 40	game-start
-button-2 = 524 40	game-continue
-button-3 = 560 440	game-quit
-#button-4 = 104 440	game-ordering
+buttons = 4
+button-1 = button-start 1	76 40	game-start
+button-2 = button-continue 1	524 40	game-continue
+button-3 = button-quit 1	560 440	game-quit
+button-4 = button-ordering 1	104 440	game-credits
 #run = custom-start
 pointer = special 8
 ''')
+check (os.path.join (root, os.path.join ('seq', 'info' + os.extsep + 'txt')), '''\
+#collection = walk
+#append = name_of_defined_sequence
+#name = name_of_sequence
+#direction = direction_for_collection
+#box = x y left top right bottom
+#delay = 33
+#box-2 = x y left top right bottom
+#delay-3 = 50
+#frames = 3
+#repeat = yes
+#special = 1
+#load-now = no
+#code = 900
+#preload = sequence
+#type = normal
+''')
+sprite_scripts = []
+button_scripts = []
+other_scripts = ['escape', 'dnomagic', 'dnotalk', 'button6', 'button7']
+for l in open (title).readlines ():
+	w = l.split ('=', 1)
+	if len (w) != 2:
+		continue
+	if w[0].strip () == 'run':
+		other_scripts += w[1].strip ()
+		continue
+	if not w[0].strip ().startswith ('button-') and not w[0].strip ().startswith ('sprite-'):
+		continue
+	if w[0].strip ().startswith ('button-'):
+		w = w[1].split ()
+		if len (w) >= 5:
+			button_scripts += (w[4],)
+	else:
+		w = w[1].split ()
+		if len (w) >= 6:
+			sprite_scripts += (w[5],)
+r = os.path.join (root, 'world')
+for rn in os.listdir (r):
+	rf = os.path.join (r, rn)
+	other_scripts += [x.split ('=', 1)[1].strip () for x in open (os.path.join (rf, 'info' + os.extsep + 'txt')).readlines () if x.strip ().startswith ('script')]
+	rfs = os.path.join (rf, 'sprite')
+	for s in os.listdir (rfs):
+		sf = os.path.join (rfs, s)
+		sprite_scripts += [x.split ('=', 1)[1].strip () for x in open (sf).readlines () if x.strip ().startswith ('script')]
+button_click = '''\
+	player_map = 1;
+	sp_x (1, 334);
+	sp_y (1, 161);
+	sp_base_walk (1, "walk");
+	sp_base_attack (1, "hit");
+	set_dink_speed (3);
+	set_mode (2);
+	reset_timer ();
+	sp_dir (1, 4);
+	sp_brain (1, "human");
+	sp_que (1, 0);
+	sp_noclip (1, 0);
+	load_screen ();
+	draw_screen ();
+	draw_status ();
+	kill_this_task ();
+'''
+for s in button_scripts:
+	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
+void main ()
+{
+}
+
+void buttonon ()
+{
+	sp_pframe (current_sprite, 2);
+}
+
+void buttonoff ()
+{
+	sp_pframe (current_sprite, 1);
+}
+
+void click ()
+{
+''' + button_click + '''\
+}
+''')
+	button_click = '	// TODO\n'
+for s in sprite_scripts:
+	if s in button_scripts:
+		continue
+	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
+// TODO
+void main ()
+{
+}
+
+void talk ()
+{
+}
+
+void touch ()
+{
+}
+
+void hit ()
+{
+}
+''')
+for s in other_scripts:
+	if s in sprite_scripts:
+		continue
+	if s == 'escape':
+		script_main = 'kill_game ();\n'
+	else:
+		script_main = '// TODO\n'
+	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
+void main ()
+{
+''' + script_main + '''\
+}
+''')
 if created:
+	room = os.path.join (os.path.join (root, 'world'), '001-00-00')
+	check (room)
+	check (os.path.join (room, 'info' + os.extsep + 'txt'), '''\
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+#hard = alternate-hardness-map
+#music = midi-name
+#script = run-when-entered
+#indoor = no
+''')
+	sprite = os.path.join (room, 'sprite')
+	check (sprite)
+	check (os.path.join (sprite, 'church'), '''\
+x = 300
+y = 300
+#frame = 1
+#type = 1
+#size = 100
+#active = 1
+brain = none
+#script =
+#speed = 1
+#base_walk = collection
+#base_idle = collection
+#base_attack = collection
+#base_die = collection
+#timer = 33
+#que = 0
+#hard = yes
+#left = 0
+#top = 0
+#right = 0
+#bottom = 0
+#warp = room x y
+#touch_seq = sequence
+#gold = 0
+#hitpoints = 0
+#strength = 0
+#defense = 0
+#exp = 0
+#sound = sample-name
+#vision = 0
+#nohit = no
+#touch_damage = 0
+''')
 	print 'Content created: not running build.'
 	sys.exit (0)
 
