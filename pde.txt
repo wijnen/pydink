@@ -16,3 +16,9 @@ python dink editor
 - allow sprite groups to be stored
 - select a sprite group by expression
 - statistics from a sprite group
+
+tile editor:
+- alle letters zijn geheugens
+- select met links, plak met midden
+- ` tot 0: toon tile-screen, ga terug met escape of door iets te selecteren.
+- klink links op scherm ernaast: ga daarheen.
