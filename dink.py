@@ -786,8 +786,12 @@ class Sprite:
 	pass
 
 class Room:
-	def __init__ (self, parent, root):
+	def __init__ (self, parent, root = None):
 		self.parent = parent
+		self.sprite = {}
+		if root == None:
+			self.tiles = [[[0, 0, 0] for x in range (12)] for y in range (8)]
+			return
 		f = open (os.path.join (root, 'info' + os.extsep + 'txt'))
 		self.tiles = []
 		for ty in range (8):
@@ -800,7 +804,6 @@ class Room:
 		info, self.music = get (info, 'music', '')
 		info, self.indoor = get (info, 'indoor', False)
 		assert info == {}
-		self.sprite = {}
 		sdir = os.path.join (root, "sprite")
 		codes = []
 		for s in os.listdir (sdir):

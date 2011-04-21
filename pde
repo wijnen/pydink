@@ -6,6 +6,8 @@ import re
 import os
 import sys
 import dink
+import random
+import math
 
 class View (gtk.DrawingArea):
 	def __init__ (self):
@@ -30,7 +32,7 @@ class View (gtk.DrawingArea):
 	def start (self, widget):
 		tiledir = '/usr/share/games/dink/dink/Tiles'
 		bmps = [None] * 41
-		# TODO: use local tile overrides.
+		# TODO: use local tile overrides. Actually, let dink.py do this.
 		for f in os.listdir (tiledir):
 			r = re.match ('ts(\d\d).bmp', f.lower ())
 			if r == None:
@@ -211,6 +213,7 @@ class View (gtk.DrawingArea):
 				self.slot = slot
 				self.draw_cursors ()
 	def button_on (self, widget, e):
+		self.grab_focus ()
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
 		if e.button == 1:
@@ -230,7 +233,7 @@ class View (gtk.DrawingArea):
 					ny = self.screen[1]
 				self.set_screen ((nx, ny))
 				return
-			x, y = self.pos_from_event (e)
+			x, y = self.pos_from_event (e, True)
 			if self.slot in self.selection:
 				self.remove_cursor (self.slot)
 			self.selection[self.slot] = [x, y, x, y, self.screen]
@@ -247,34 +250,67 @@ class View (gtk.DrawingArea):
 			if n not in data.world.room:
 				return
 			for ty in range (s[3] - s[1] + 1):
+				if y + ty < 0:
+					continue
 				if y + ty >= 8:
 					break
 				for tx in range (s[2] - s[0] + 1):
+					if x + tx < 0:
+						continue
 					if x + tx >= 12:
 						break
-					if type (s[4]) == int:
-						k = 0
-						if s[0] >= 12:
-							sx = s[0] - 12
-							k += 1
-						else:
-							sx = s[0]
-						if s[1] >= 8:
-							sy = s[1] - 8
-							k += 2
-						else:
-							sy = s[1]
-						data.world.room[n].tiles[y + ty][x + tx] = [4 * s[4] + k, sx + tx, sy + ty]
+					tile = self.get_tile (s, (0, 0), (tx, ty))
+					if tile != None:
+						data.world.room[n].tiles[y + ty][x + tx] = tile
 						self.put_tile (x + tx, y + ty)
-					else:
-						sn = s[4][1] * 32 + s[4][0] + 1
-						if sn in data.world.room:
-							data.world.room[n].tiles[y + ty][x + tx] = data.world.room[sn].tiles[s[1] + ty][s[0] + tx]
-							self.put_tile (x + tx, y + ty)
+			self.draw_cursors ()
 		elif e.button == 3:	# paste previous selection into current selection.
 			if type (self.screen) == int:
 				return
-			# TODO
+			if self.slot not in self.selection or self.lastslot not in self.selection:
+				return
+			if self.selection[self.slot][4] != self.screen:
+				return
+			src = self.normalize (self.selection[self.lastslot])
+			dst = self.normalize (self.selection[self.slot])
+			x, y = self.pos_from_event (e)
+			off_x = dst[0] - x
+			off_y = dst[1] - y
+			n = self.screen[1] * 32 + self.screen[0] + 1
+			if n not in data.world.room:
+				return
+			for ty in range (dst[3] - dst[1] + 1):
+				for tx in range (dst[2] - dst[0] + 1):
+					tile = self.get_tile (src, (off_x, off_y), (tx, ty))
+					if tile != None:
+						data.world.room[n].tiles[dst[1] + ty][dst[0] + tx] = tile
+						self.put_tile (dst[0] + tx, dst[1] + ty)
+			self.draw_cursors ()
+	def get_tile (self, src, offset, t):
+		if the_gui.random:
+			x = src[0] + random.randrange (src[2] - src[0] + 1)
+			y = src[1] + random.randrange (src[3] - src[1] + 1)
+		else:
+			x = src[0] + (offset[0] + t[0]) % (src[2] - src[0] + 1)
+			y = src[1] + (offset[1] + t[1]) % (src[3] - src[1] + 1)
+		if type (src[4]) == int:
+			k = 0
+			if x >= 12:
+				sx = x - 12
+				k += 1
+			else:
+				sx = x
+			if y >= 8:
+				sy = y - 8
+				k += 2
+			else:
+				sy = y
+			return [4 * src[4] + k, sx, sy]
+		else:
+			sn = src[4][1] * 32 + src[4][0] + 1
+			if sn not in data.world.room:
+				return None
+			return data.world.room[sn].tiles[y][x]
 	def button_off (self, widget, e):
 		if e.button == 1:
 			self.selecting = False
@@ -283,7 +319,7 @@ class View (gtk.DrawingArea):
 	def move (self, widget, e):
 		if not self.selecting:
 			return
-		x, y = self.pos_from_event (e)
+		x, y = self.pos_from_event (e, True)
 		c = self.selection[self.slot]
 		if c[2:4] == [x, y]:
 			return
@@ -291,31 +327,59 @@ class View (gtk.DrawingArea):
 		c[2:4] = [x, y]
 		self.selection[self.slot] = c
 		self.put_cursor (self.slot, self.currentgc)
-	def pos_from_event (self, e):
+	def pos_from_event (self, e, clamp = False):
 		if type (self.screen) == int:
 			if e.x >= 12 * 50:
 				e.x -= 20
 			if e.y >= 8 * 50:
 				e.y -= 20
-			x = int (e.x / 50)
-			y = int (e.y / 50)
+			x = int (math.floor (e.x / 50))
+			y = int (math.floor (e.y / 50))
 			if x >= 24:
 				x = 23
 			if y >= 16:
 				y = 15
+			if x < 0:
+				x = 0
+			if y < 0:
+				y = 0
 		else:
-			x = int ((e.x - (6 * 50 + 10)) / 50)
-			y = int ((e.y - (4 * 50 + 10)) / 50)
-			if x >= 12:
-				x = 11
-			if y >= 8:
-				y = 7
-		if x < 0:
-			x = 0
-		if y < 0:
-			y = 0
+			if e.x < 6 * 50:
+				e.x += 10
+			elif e.x >= 18 * 50 + 10:
+				e.x -= 10
+			if e.y < 4 * 50:
+				e.y += 10
+			elif e.y >= 12 * 50 + 10:
+				e.y -= 10
+			x = int (math.floor ((e.x - (6 * 50 + 10)) / 50))
+			y = int (math.floor ((e.y - (4 * 50 + 10)) / 50))
+			if clamp:
+				if x < 0:
+					x = 0
+				elif x >= 12:
+					x = 11
+				if y < 0:
+					y = 0
+				elif y >= 8:
+					y = 7
 		return x, y
+	def create (self, arg):
+		if type (self.screen) == int:
+			return
+		n = self.screen[1] * 32 + self.screen[0] + 1
+		if n in data.world.room:
+			return
+		data.world.room[n] = dink.Room (data)
+		self.update ()
+		self.grab_focus ()
+	def grab (self, arg):
+		self.grab_focus ()
 
 root = sys.argv[1]
 data = dink.Dink (root)
-gui.gui (external = {'view': View ()}) ()
+view = View ()
+the_gui = gui.gui (external = {'view': view})
+the_gui.create_screen = view.create
+the_gui.grab = view.grab
+the_gui ()

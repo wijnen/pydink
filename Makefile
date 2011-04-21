@@ -1,5 +1,5 @@
 test: pde pde.gui
-	./pde
+	./pde test
 
 %: %.in
 	../xmlgen/xmlgen <$< >$@

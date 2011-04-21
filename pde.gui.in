@@ -1,3 +1,8 @@
 gtk
 	Window
-		External id=view
+		VBox
+			External id=view
+			Button clicked=create_screen
+				'Create screen
+			CheckButton value=random toggled=grab
+				'Random
