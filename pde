@@ -5,7 +5,7 @@ import gui
 import re
 import os
 import sys
-import layout
+import dink
 
 class View (gtk.DrawingArea):
 	def __init__ (self):
@@ -189,8 +189,8 @@ class View (gtk.DrawingArea):
 				print 'ctrl-c is not implemented yet'
 			elif e.keyval == ord ('v'):	# paste TODO
 				print 'ctrl-v is not implemented yet'
-			elif e.keyval == ord ('s'):	# save TODO
-				print 'ctrl-s is not implemented yet'
+			elif e.keyval == ord ('s'):	# save
+				data.save ()
 			elif e.keyval == ord ('S'):	# save as TODO
 				print 'ctrl-shift-s is not implemented yet'
 			elif e.keyval == ord ('q'):	# quit
@@ -317,5 +317,5 @@ class View (gtk.DrawingArea):
 		return x, y
 
 root = sys.argv[1]
-data = layout.Dink (root)
+data = dink.Dink (root)
 gui.gui (external = {'view': View ()}) ()

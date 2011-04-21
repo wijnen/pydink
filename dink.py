@@ -339,6 +339,16 @@ def get (d, member, default = None):
 	del d[member]
 	return d, ret
 
+def put (f, member, value, default = None):
+	assert value != None
+	if value == default:
+		return
+	if type (value) == bool:
+		v = '%s' % ['no', 'yes'][value]
+	else:
+		v = str (value)
+	f.write ('%s = %s\n' % (member, v))
+
 def make_lsb (num, size):
 	ret = ''
 	for i in range (size):
@@ -792,10 +802,18 @@ class Room:
 		assert info == {}
 		self.sprite = {}
 		sdir = os.path.join (root, "sprite")
+		codes = []
 		for s in os.listdir (sdir):
 			info = readlines (open (os.path.join (sdir, s)))
-			base = re.match ('(.+?)(-\d*?)?(\..*)?$', s).group (1)
+			r = re.match ('(.+?)(-\d*?)?(\..*)?$', s)
+			base = r.group (1)
 			self.sprite[s] = Sprite ()
+			if r.group (2) != None:
+				self.sprite[s].num = int (r.group (2))
+				assert self.sprite[s].num not in codes
+				codes += (self.sprite[s].num,)
+			else:
+				self.sprite[s].num = None
 			info, self.sprite[s].x = get (info, 'x', int)
 			info, self.sprite[s].y = get (info, 'y', int)
 			info, self.sprite[s].seq = get (info, 'seq', base)
@@ -803,7 +821,7 @@ class Room:
 			info, self.sprite[s].type = get (info, 'type', 1)	# 0 for background, 1 for person or sprite, 3 for invisible
 			info, self.sprite[s].size = get (info, 'size', 100)
 			info, self.sprite[s].active = get (info, 'active', True)
-			info, self.sprite[s].brain = get (info, 'brain', 'bisshop')
+			info, self.sprite[s].brain = get (info, 'brain', 'none')
 			info, self.sprite[s].script = get (info, 'script', '')
 			info, self.sprite[s].speed = get (info, 'speed', 1)
 			info, self.sprite[s].base_walk = get (info, 'base_walk', '')
@@ -833,6 +851,65 @@ class Room:
 			info, self.sprite[s].nohit = get (info, 'nohit', False)
 			info, self.sprite[s].touch_damage = get (info, 'touch_damage', 0)
 			assert info == {}
+		code = 0
+		for s in self.sprite:
+			if self.sprite[s].num != None:
+				continue
+			while code in codes:
+				code += 1
+			self.sprite[s].num = code
+	def save (self, n):
+		y = (n - 1) / 32
+		x = n - y * 32 - 1
+		d = os.path.join (self.parent.root, 'world', '%03d-%02d-%02d' % (n, x, y))
+		if not os.path.isdir (d):
+			os.mkdir (d)
+		f = open (os.path.join (d, 'info' + os.extsep + 'txt'), 'w')
+		for y in range (8):
+			f.write (' '.join ([','.join ([str (z) for z in self.tiles[y][x]]) for x in range (12)]) + '\n')
+		put (f, 'hard', self.hard, '')
+		put (f, 'script', self.script, '')
+		put (f, 'music', self.music, '')
+		put (f, 'indoor', self.indoor, False)
+		sd = os.path.join (d, 'sprite')
+		os.mkdir (sd)
+		for s in self.sprite:
+			r = re.match ('(.+?)(-\d*?)?(\..*)?$', s)
+			base = r.group (1)
+			f = open (os.path.join (sd, '%s-%d' % (s, self.sprite[s].num)), 'w')
+			put (f, 'x', self.sprite[s].x)
+			put (f, 'y', self.sprite[s].y)
+			put (f, 'seq', self.sprite[s].seq, base)
+			put (f, 'frame', self.sprite[s].frame, 1)
+			put (f, 'type', self.sprite[s].type, 1)
+			put (f, 'size', self.sprite[s].size, 100)
+			put (f, 'active', self.sprite[s].active, True)
+			put (f, 'brain', self.sprite[s].brain, 'none')
+			put (f, 'script', self.sprite[s].script, '')
+			put (f, 'speed', self.sprite[s].speed, 1)
+			put (f, 'base_walk', self.sprite[s].base_walk, '')
+			put (f, 'base_idle', self.sprite[s].base_idle, '')
+			put (f, 'base_attack', self.sprite[s].base_attack, '')
+			put (f, 'timer', self.sprite[s].timer, 33)
+			put (f, 'que', self.sprite[s].que, 0)
+			put (f, 'hard', self.sprite[s].hard, True)
+			put (f, 'left', self.sprite[s].left, 0)
+			put (f, 'top', self.sprite[s].top, 0)
+			put (f, 'right', self.sprite[s].right, 0)
+			put (f, 'bottom', self.sprite[s].bottom, 0)
+			if self.sprite[s].warp != None:
+				put (f, 'warp', ' '.join ([str (x) for x in self.sprite[s].warp]))
+			put (f, 'touch_seq', self.sprite[s].touch_seq, '')
+			put (f, 'base_die', self.sprite[s].base_die, '')
+			put (f, 'gold', self.sprite[s].gold, 0)
+			put (f, 'hitpoints', self.sprite[s].hitpoints, 0)
+			put (f, 'strength', self.sprite[s].strength, 0)
+			put (f, 'defense', self.sprite[s].defense, 0)
+			put (f, 'exp', self.sprite[s].exp, 0)
+			put (f, 'sound', self.sprite[s].sound, '')
+			put (f, 'vision', self.sprite[s].vision, 0)
+			put (f, 'nohit', self.sprite[s].nohit, False)
+			put (f, 'touch_damage', self.sprite[s].touch_damage, 0)
 
 class World:
 	def __init__ (self, parent):
@@ -855,6 +932,10 @@ class World:
 			n, x, y = [int (k) for k in r.groups ()]
 			if x >= 32 or y >= 24 or n != y * 32 + x + 1:
 				sys.stderr.write ("Warning: not using %s as room (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
+	def save (self):
+		os.mkdir (os.path.join (self.parent.root, 'world'))
+		for r in self.room:
+			self.room[r].save (r)
 	def build (self, root):
 		# Write dink.dat
 		ddat = open (os.path.join (root, 'dink' + os.extsep + 'dat'), "wb")
@@ -969,6 +1050,10 @@ class Tile:
 			return self.map[bmp][ty][tx]
 		bmp = int (bmp)
 		return 0	# TODO
+	def save (self):
+		d = os.path.join (self.parent.root, 'tile')
+		os.mkdir (d)
+		# TODO
 	def build (self, root):
 		# Write tiles/*
 		# Write hard.dat
@@ -1435,6 +1520,11 @@ class Seq:
 				ini.write ('set_frame_special %d %d\n' % (seq.code, f + 1))
 		if seq.repeat:
 			ini.write ('set_frame_frame %d %d -1\n' % (seq.code, len (seq.desc) + 1))
+	def save (self):
+		d = os.path.join (self.parent.root, 'seq')
+		os.mkdir (d)
+		f = open (os.path.join (d, 'info' + os.extsep + 'txt'), 'w')
+		# TODO
 	def build (self, root):
 		# Write graphics/*
 		# Write dink.ini
@@ -1454,38 +1544,56 @@ class Sound:
 		self.parent = parent
 		ext = os.extsep + 'wav'
 		self.sound = {}
+		self.music = {}
 		other = []
 		codes = []
-		for s in os.listdir (os.path.join (parent.root, "sound")):
+		d = os.path.join (parent.root, "sound")
+		for s in os.listdir (d):
+			data = open (os.path.join (d, s)).read ()
 			if not s.endswith (ext):
 				continue
 			r = re.match ('(\d+)-', s)
 			if not r:
-				other += (s[:-len (ext)],)
+				other += ((s[:-len (ext)], data),)
 			else:
 				code = int (r.group (1))
-				self.sound[s[len (r.group (0)):]] = code
+				self.sound[s[len (r.group (0)):]] = (code, data)
 				assert code not in codes
 				codes += (code,)
 		i = 1
 		for s in other:
 			while i in codes:
 				i += 1
-			self.sound[s] = i
+			self.sound[s[0]] = (i, s[1])
 			i += 1
 		ext = os.extsep + 'mid'
-		self.music = [s[:-len (ext)] for s in os.listdir (os.path.join (parent.root, "music")) if s.endswith (ext)]
+		d = os.path.join (parent.root, "music")
+		code = 1
+		for s in os.listdir (d):
+			if not s.endswith (ext):
+				continue
+			self.music[s[:-len (ext)]] = (code, data)
+			code += 1
 	def find_sound (self, name):
 		"""Find wav file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
 			return 0
-		return self.sound[name]
+		return self.sound[name][0]
 	def find_music (self, name):
 		"""Find midi file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
 			return 0
 		assert name in self.music
-		return self.music.index (name) + 1
+		return self.music[name][0]
+	def save (self):
+		d = os.path.join (self.parent.root, "sound")
+		os.mkdir (d)
+		for i in self.sound:
+			open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + 'wav'), 'w').write (self.sound[i][1])
+		d = os.path.join (self.parent.root, "music")
+		os.mkdir (d)
+		for i in self.music:
+			open (os.path.join (d, '%d' % self.music[i][0] + os.extsep + 'mid'), 'w').write (self.music[i][1])
 	def build (self, root):
 		# Write sound/*
 		dst = os.path.join (root, 'sound')
@@ -1493,11 +1601,13 @@ class Sound:
 			os.mkdir (dst)
 		src = os.path.join (self.parent.root, 'sound')
 		for s in self.sound:
-			f = s + os.extsep + 'wav'
-			open (os.join (dst, f), 'w').write (open (os.join (src, f)).read ())
-		for s in range (len (self.music)):
-			f = self.music[s] + os.extsep + 'mid'
-			open (os.join (dst, str (s + 1) + os.extsep + 'mid'), 'w').write (open (os.join (src, f)).read ())
+			if self.sound[s][1] == '':
+				continue
+			open (os.join (dst, s + os.extsep + 'wav'), 'w').write (self.sound[s][1])
+		for s in self.music:
+			if self.music[s][1] == '':
+				continue
+			open (os.join (dst, str (self.music[s][0]) + os.extsep + 'mid'), 'w').write (self.music[s][1])
 
 class Script:
 	def __init__ (self, parent):
@@ -1539,6 +1649,29 @@ class Script:
 			assert len (b) == 5
 			self.title_sprite += ((b[0], int (b[1]), int (b[2]), int (b[3]), 'button', b[4]),)
 		assert info == {}
+	def save (self):
+		d = os.path.join (self.parent.root, "script")
+		os.mkdir (d)
+		for s in self.data:
+			open (os.path.join (d, s + os.extsep + 'c'), 'w').write (self.data[s])
+		f = open (os.path.join (self.parent.root, "title" + os.extsep + "txt"), 'w')
+		put (f, 'music', self.title_music, '')
+		put (f, 'color', self.title_color, 0)
+		put (f, 'background', self.title_bg, '')
+		put (f, 'pointer', '%s %d' % (self.title_pointer_seq, self.title_pointer_frame), 'special 8')
+		buttons = [x for x in self.title_sprite if x[4] == 'button']
+		sprites = [x for x in self.title_sprite if x[4] != 'button']
+		put (f, 'buttons', len (buttons))
+		for i in range (len (buttons)):
+			buttons[i] = buttons[i][:4] + buttons[i][5:]
+			put (f, 'button-%d' % (i + 1), ' '.join ([str (x) for x in buttons[i]]))
+		put (f, 'sprites', len (sprites))
+		for i in range (len (sprites)):
+			if sprites[i][5] == '':
+				sprites[i][5:] = []
+				if sprites[i][4] == 'repeat':
+					sprites[i][4:] = []
+			put (f, 'sprite-%d' % (i + 1), ' '.join (sprites[i]))
 	def build (self, root):
 		# Write Story/*
 		d = os.path.join (root, 'story')
@@ -1589,7 +1722,7 @@ int &crap;
 
 class Dink:
 	def __init__ (self, root):
-		self.root = root
+		self.root = os.path.normpath (root)
 		self.tile = Tile (self)
 		self.world = World (self)
 		self.seq = Seq (self)
@@ -1600,9 +1733,38 @@ class Dink:
 		p = os.path.join (im, 'preview' + os.extsep + 'png')
 		if os.path.exists (p):
 			self.preview = convert_image (Image.open (p))
+		else:
+			self.preview = None
 		p = os.path.join (im, 'splash' + os.extsep + 'png')
 		if os.path.exists (p):
 			self.splash = convert_image (Image.open (p))
+		else:
+			self.splash = None
+	def save (self, root = None):
+		if root != None:
+			self.root = os.path.normpath (root)
+		p = self.root
+		if os.path.exists (p):
+			i = 0
+			while os.path.exists (p):
+				p = self.root + os.extsep + str (i)
+				i += 1
+			os.rename (self.root, p)
+		os.mkdir (self.root)
+		self.tile.save ()
+		self.world.save ()
+		self.seq.save ()
+		self.sound.save ()
+		self.script.save ()
+		open (os.path.join (self.root, 'info' + os.extsep + 'txt'), 'w').write (self.info)
+		im = os.path.join (self.root, 'image')
+		os.mkdir (im)
+		if self.preview != None:
+			p = os.path.join (im, 'preview' + os.extsep + 'png')
+			self.preview.save (p)
+		if self.splash != None:
+			p = os.path.join (im, 'splash' + os.extsep + 'png')
+			self.splash.save (p)
 	def build (self, root):
 		if not os.path.exists (root):
 			os.mkdir (root)
@@ -1620,8 +1782,8 @@ class Dink:
 		# Write story/*
 		self.script.build (root)
 		# Write the rest
-		if 'preview' in dir (self):
+		if self.preview != None:
 			self.preview.save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
-		if 'splash' in dir (self):
+		if self.splash != None:
 			self.splash.save (os.path.join (os.path.join (root, 'tiles'), 'splash' + os.extsep + 'bmp'))
 		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)

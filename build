@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import sys
-import layout
+import dink
 import os
 
 created = False
@@ -168,14 +168,14 @@ if created:
 	room = os.path.join (os.path.join (root, 'world'), '001-00-00')
 	check (room)
 	check (os.path.join (room, 'info' + os.extsep + 'txt'), '''\
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
-grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2 grass,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
+4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
 #hard = alternate-hardness-map
 #music = midi-name
 #script = run-when-entered
@@ -228,7 +228,7 @@ def rmr (path):
 			os.remove (fullpath)
 	os.rmdir (path)
 
-data = layout.Dink (root)
+data = dink.Dink (root)
 home = os.path.expanduser ('~')
 dmods = os.path.join (home, 'dmods')
 if not os.path.exists (dmods):
@@ -237,4 +237,4 @@ dmod = os.path.join (dmods, base)
 if os.path.exists (dmod):
 	rmr (dmod)
 
-data.write (dmod)
+data.build (dmod)
