@@ -4,6 +4,8 @@ import gtk
 import gui
 import re
 import os
+import sys
+import layout
 
 class View (gtk.DrawingArea):
 	def __init__ (self):
@@ -51,6 +53,9 @@ class View (gtk.DrawingArea):
 		c = gtk.gdk.colormap_get_system ().alloc_color ('red')
 		self.currentgc.set_foreground (c)
 		self.currentgc.set_line_attributes (3, gtk.gdk.LINE_SOLID, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		self.invalidgc = gtk.gdk.GC (self.get_window ())
+		c = gtk.gdk.colormap_get_system ().alloc_color ('magenta')
+		self.invalidgc.set_foreground (c)
 		for i in range (41):
 			pb = gtk.gdk.pixbuf_new_from_file (os.path.join (tiledir, bmps[i]))
 			self.bmp[i] = gtk.gdk.Pixmap (self.get_window (), pb.get_width (), pb.get_height ())
@@ -61,13 +66,14 @@ class View (gtk.DrawingArea):
 		self.screen = s
 		self.update ()
 	def put_tile (self, x, y, sx = 0, sy = 0):
-		b = data[(self.screen[1] + sy) * 32 + self.screen[0] + sx][y * 12 + x]
+		n = (self.screen[1] + sy) * 32 + self.screen[0] + sx + 1
 		tx = sx * (50 * 12 + 10) + x * 50 + 6 * 50 + 10
 		ty = sy * (50 * 8 + 10) + y * 50 + 4 * 50 + 10
-		if b[0] < 0:
-			self.get_window ().clear_area (self.gc, tx, ty, 50, 50)
-		else:
+		if n in data.world.room:
+			b = data.world.room[n].tiles[y][x]
 			self.get_window ().draw_drawable (self.gc, self.bmp[b[0]], b[1] * 50, b[2] * 50, tx, ty, 50, 50)
+		else:
+			self.get_window ().draw_rectangle (self.invalidgc, True, tx, ty, 50, 50)
 	def update (self):
 		if not self.get_window ():
 			return
@@ -178,23 +184,27 @@ class View (gtk.DrawingArea):
 				self.set_screen (e.keyval - ord ('0'))
 		elif e.keyval == 65307 and type (self.screen) == int:
 			self.set_screen (self.old_screen)
+		elif e.state & gtk.gdk.CONTROL_MASK:
+			if e.keyval == ord ('c'):	# copy TODO
+				print 'ctrl-c is not implemented yet'
+			elif e.keyval == ord ('v'):	# paste TODO
+				print 'ctrl-v is not implemented yet'
+			elif e.keyval == ord ('s'):	# save TODO
+				print 'ctrl-s is not implemented yet'
+			elif e.keyval == ord ('S'):	# save as TODO
+				print 'ctrl-shift-s is not implemented yet'
+			elif e.keyval == ord ('q'):	# quit
+				gui.quit ()
+			elif e.keyval == ord ('a'):	# select all
+				if type (self.screen) != int:
+					if self.slot in self.selection:
+						self.remove_cursor (self.slot)
+					self.selection[self.slot] = [0, 0, 11, 7, self.screen]
+					self.put_cursor (self.slot, self.currentgc)
+			elif e.keyval == ord ('A'):	# unselect all
+				if self.slot in self.selection:
+					self.remove_cursor (self.slot)
 		elif e.keyval >= ord ('a') and e.keyval <= ord ('z'):
-			if e.state & gtk.gdk.CONTROL_MASK:
-				if e.keyval == ord ('c'):	# copy TODO
-					print 'ctrl-c is not implemented yet'
-				elif e.keyval == ord ('v'):	# paste TODO
-					print 'ctrl-v is not implemented yet'
-				elif e.keyval == ord ('s'):	# save TODO
-					print 'ctrl-s is not implemented yet'
-				elif e.keyval == ord ('S'):	# save as TODO
-					print 'ctrl-shift-s is not implemented yet'
-				elif e.keyval == ord ('q'):	# quit
-					gui.quit ()
-				elif e.keyval == ord ('a'):	# select all TODO
-					print 'ctrl-a is not implemented yet'
-				elif e.keyval == ord ('A'):	# unselect all TODO
-					print 'ctrl-shift-a is not implemented yet'
-				return
 			slot = e.keyval - ord ('a')
 			if slot != self.slot:
 				self.lastslot = self.slot
@@ -233,6 +243,9 @@ class View (gtk.DrawingArea):
 				return
 			s = self.normalize (self.selection[self.slot])
 			x, y = self.pos_from_event (e)
+			n = self.screen[1] * 32 + self.screen[0] + 1
+			if n not in data.world.room:
+				return
 			for ty in range (s[3] - s[1] + 1):
 				if y + ty >= 8:
 					break
@@ -251,10 +264,13 @@ class View (gtk.DrawingArea):
 							k += 2
 						else:
 							sy = s[1]
-						data[self.screen[1] * 32 + self.screen[0]][(y + ty) * 12 + x + tx] = [4 * s[4] + k, sx + tx, sy + ty]
+						data.world.room[n].tiles[y + ty][x + tx] = [4 * s[4] + k, sx + tx, sy + ty]
+						self.put_tile (x + tx, y + ty)
 					else:
-						data[self.screen[1] * 32 + self.screen[0]][(y + ty) * 12 + x + tx] = data[s[4][1] * 32 + s[4][0]][(s[1] + ty) * 12 + s[0] + tx]
-			self.update ()
+						sn = s[4][1] * 32 + s[4][0] + 1
+						if sn in data.world.room:
+							data.world.room[n].tiles[y + ty][x + tx] = data.world.room[sn].tiles[s[1] + ty][s[0] + tx]
+							self.put_tile (x + tx, y + ty)
 		elif e.button == 3:	# paste previous selection into current selection.
 			if type (self.screen) == int:
 				return
@@ -262,11 +278,15 @@ class View (gtk.DrawingArea):
 	def button_off (self, widget, e):
 		if e.button == 1:
 			self.selecting = False
+			if type (self.screen) == int:
+				self.set_screen (self.old_screen)
 	def move (self, widget, e):
 		if not self.selecting:
 			return
 		x, y = self.pos_from_event (e)
 		c = self.selection[self.slot]
+		if c[2:4] == [x, y]:
+			return
 		self.remove_cursor (self.slot)
 		c[2:4] = [x, y]
 		self.selection[self.slot] = c
@@ -296,7 +316,6 @@ class View (gtk.DrawingArea):
 			y = 0
 		return x, y
 
-# TODO: load data
-data = [[[0,0,0] for y in range (8) for x in range (12)] for s in range (32 * 24)]
-
+root = sys.argv[1]
+data = layout.Dink (root)
 gui.gui (external = {'view': View ()}) ()
