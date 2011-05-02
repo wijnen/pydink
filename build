@@ -32,6 +32,7 @@ check (os.path.join (root, 'image'))
 check (os.path.join (root, 'info' + os.extsep + 'txt'), '%s\n\nThis file should claim copyright and describe the dmod.' % base)
 title = os.path.join (root, 'title' + os.extsep + 'txt')
 check (title, '''\
+start = 400 300 200
 #music = titlemusic
 sprites = 0
 #sprite-1 = logo 1		0 0
@@ -91,21 +92,7 @@ for rn in os.listdir (r):
 		sf = os.path.join (rfs, s)
 		sprite_scripts += [x.split ('=', 1)[1].strip () for x in open (sf).readlines () if x.strip ().startswith ('script')]
 button_click = '''\
-	player_map = 1;
-	sp_x (1, 334);
-	sp_y (1, 161);
-	sp_base_walk (1, "walk");
-	sp_base_attack (1, "hit");
-	set_dink_speed (3);
-	set_mode (2);
-	reset_timer ();
-	sp_dir (1, 4);
-	sp_brain (1, "human");
-	sp_que (1, 0);
-	sp_noclip (1, 0);
-	load_screen ();
-	draw_screen ();
-	draw_status ();
+	spawn ("start-game");
 	kill_this_task ();
 '''
 for s in button_scripts:
@@ -165,7 +152,7 @@ void main ()
 }
 ''')
 if created:
-	room = os.path.join (os.path.join (root, 'world'), '001-00-00')
+	room = os.path.join (os.path.join (root, 'world'), '400-15-12')
 	check (room)
 	check (os.path.join (room, 'info' + os.extsep + 'txt'), '''\
 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2

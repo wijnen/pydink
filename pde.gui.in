@@ -1,8 +1,9 @@
 gtk
 	Window
 		VBox
-			External id=view
-			Button clicked=create_screen
-				'Create screen
-			CheckButton value=random toggled=grab
-				'Random
+			External expand=:True id=view
+			HBox
+				CheckButton value=show_hard toggled=update
+					'Show tile hardness
+				CheckButton value=show_sprites toggled=update
+					'Show sprites

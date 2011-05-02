@@ -1,0 +1,518 @@
+#!/usr/bin/env python
+# vim: set fileencoding=utf-8 :
+
+dinkdir = '/usr/share/games/dink'
+savedir = '~/.dinkcache'
+
+import sys
+import os
+import re
+import Image
+import tempfile
+import shutil
+import StringIO
+import pickle
+
+savedir = os.path.expanduser (savedir)
+if not os.path.isdir (savedir):
+	os.makedirs (savedir)
+
+collection_names = [(x.split ()[0], int (x.split ()[1])) for x in '''\
+idle 10
+duck 20
+pig 40
+walk 70
+hit 100
+duckbloody 110
+duckhead 120
+pillbug 130
+pillbugdie 140
+dragon 200
+dragondie 210
+redmaiden 220
+oldman 230
+brownmaiden 240
+bluemaiden 250
+fairy 260
+redknight 270
+blueknight 280
+silverknight 290
+goldknight 300
+push 310
+shoot 320
+girl 330
+merchant 340
+mom 350
+brownmom 360
+bluemerchant 370
+greenmerchant 380
+purplemerchant 390
+soldier 400
+peasant 410
+comet 500
+fireball 510
+seeding 520
+bonca 530
+boncaattack 540
+boncadie 550
+purplegnome 560
+bluegnome 570
+greengnome 580
+grayboncaattack 590
+graybonca 600
+purplebonca 610
+purpleboncaattack 620
+slayerattack 630
+slayer 640
+bluepuddle 650
+bluepuddledie 660
+greenpuddle 670
+greenpuddledie 680
+redpuddle 690
+redpuddledie 700
+redknightattack 710
+silverknightattack 720
+blueknightattack 730
+goldknightattack 740
+hammergoblinattack 750
+hammergoblin 760
+horngoblinattack 770
+horngoblin 780
+goblinattack 790
+goblin 800
+giantattack 810
+giant 820
+spikeidle 830
+spike 840'''.split ('\n')]
+
+sequence_names = [(x.split ()[0], int (x.split ()[1])) for x in '''\
+special 10
+treefire 20
+arrow 25
+textbox 30
+innwalls 31
+tree 32
+outinn 33
+doorleft 50
+doorright 51
+heart 52
+goldheart 53
+smallheart 54
+bluebottle 55
+redbottle 56
+purplebottle 57
+bridge 58
+cabin 59
+church 60
+doorout1 61
+doorout2 62
+home 63
+inacc 64
+grass 65
+garden 66
+castle 67
+doorcastle 68
+gatecastle 69
+explode 70
+crazybottle 75
+wallstone 80
+snakeb 81
+snakec 82
+snakem 83
+teleport 84
+axe 85
+fire 86
+table 87
+crack 89
+grave 90
+forest 91
+beach 92
+fence 93
+spray 94
+rock 95
+building 96
+rocks 97
+castle-l 150
+castle-la 151
+castle-r 152
+castle-ra 153
+damage 154
+fire2 155
+fire3 156
+fire4 157
+hole 158
+monument 159
+atomc 161
+circle 162
+star2 163
+magic1 164
+shiny 165
+spark 166
+shock 167
+whirl 168
+star2-slow 169
+star1 170
+blast 171
+barrel 173
+redbarrel 174
+chest1 175
+chest2 176
+chest3 177
+coin 178
+bush 179
+status 180
+nums 181
+numr 182
+numb 183
+nump 184
+numy 185
+landmark 186
+spurt 187
+spurtl 188
+spurtr 189
+health-w 190
+health-g 191
+button-ordering 192
+button-quit 193
+button-start 194
+button-continue 195
+title 196
+startme1 197
+startme3 198
+startme7 199
+startme9 200
+redmaidendie 225
+brownmaidendie 245
+bluemaidendie 255
+redknightdie 275
+blueknightdie 285
+silverknightdie 295
+goldknightdie 305
+girldie 335
+merchantdie 345
+momdie 355
+brownmomdie 365
+bluemerchantdie 375
+greenmerchantdie 385
+purplemerchantdie 395
+soldierdie 405
+peasantdie 415
+bomb 420
+food 421
+paper 422
+menu 423
+island 424
+torch 425
+boatman3 426
+fire1 427
+stairs 428
+catapult 429
+seed4 430
+seed6 431
+shadow 432
+splash 433
+fish1 434
+fish2 435
+die 436
+item-m 437
+item-w 438
+fishx 439
+flop1 440
+flop2 441
+level 442
+box1 443
+box3 444
+box 445
+tomb 446
+tool 447
+cup 448
+save 449
+health-br 450
+health-r 451
+crawl 452
+arrow-l 456
+arrow-r 457
+sign 458
+shelf 459
+lab 460
+chair 461
+poster 462
+grain 463
+horngoblinattackswing 780
+slayerdie 645
+hammergoblindie 765
+horngoblindie 785
+goblindie 805
+giantdie 825'''.split ('\n')]
+
+def read_lsb (f):
+	ret = 0
+	for i in range (4):
+		ret += ord (f.read (1)) << (i << 3)
+	return ret
+# Create lowercase tree of all files in dinkdir.
+def buildtree (d):
+	ret = {}
+	for l in os.listdir (d):
+		p = os.path.join (d, l)
+		if os.path.isdir (p):
+			ret[l.lower ()] = (l, buildtree (p))
+		else:
+			ret[l.lower ()] = (l,)
+	return ret
+dinktree = buildtree (dinkdir)
+# Load a file from dinkdir.
+def loaddinkfile (f):
+	f = f.replace ('\\', os.sep).split (os.sep)
+	p = dinkdir
+	walk = dinktree
+	for i in f[:-1]:
+		branch = walk[i]
+		p = os.path.join (p, branch[0])
+		walk = branch[1]
+	if f[-1] in walk:
+		path = os.path.join (p, walk[f[-1]][0])
+		ret = open (os.path.join (p, walk[f[-1]][0]), 'rb')
+		ret.seek (0, 2)
+		l = ret.tell ()
+		ret.seek (0)
+		return ret, (path, 0, l)
+	if 'dir.ff' not in walk:
+		return None, None
+	path = os.path.join (p, walk['dir.ff'][0])
+	dirfile = open (path, 'rb')
+	n = read_lsb (dirfile) - 1
+	for i in range (n):
+		offset = read_lsb (dirfile)
+		name = dirfile.read (13).rstrip ('\0').lower ()
+		if name == f[-1]:
+			break
+		offset = None
+	if offset == None:
+		return None, None
+	end = read_lsb (dirfile)
+	print f
+	dirfile.seek (offset)
+	data = dirfile.read (end - offset)
+	return StringIO.StringIO (data), (path, offset, end - offset)
+
+# read hardness into usable format.
+f, junk = loaddinkfile ('dink\\hard.dat')
+f.seek (0x1fd600)
+defaults = [[read_lsb (f) for x in range (8 * 12 + 32)] for s in range (41)]
+data = [None] * 800
+tilefiles = [None] * 41
+for n in range (41):
+	for t in defaults[n][:8 * 12]:
+		if t >= 800:
+			sys.stderr.write ('Warning: invalid default hardness tile from default hard.dat: %d from tile file %d\n' % (t, n))
+			continue
+		if data[t] == None:
+			f.seek (2608 * t)
+			dat = f.read (2608)
+			data[t] = Image.new ('RGBA', (50, 50), None)
+			pixels = data[t].load ()
+			for y in range (50):
+				for x in range (50):
+					p = dat[y * 51 + x]
+					if p == '\0':
+						pixels[y, x] = (0, 0, 0, 0)
+					elif p == '\1' or p == '\3':
+						pixels[y, x] = (255, 255, 255, 255)
+					elif p == '\2':
+						pixels[y, x] = (0, 0, 255, 255)
+					else:
+						sys.stderr.write ('Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (n, x, y, ord (p)))
+						pixels[y, x] = (0, 0, 0, 0)
+	tilef, tilefiles[n] = loaddinkfile ('dink\\tiles\\ts%02d.bmp' % (n + 1))
+	tilef = Image.open (tilef)
+	image = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[0] / 50 * 50))
+	for y in range (8):
+		for x in range (12):
+			if tilef.size[0] < (x + 1) * 50 or tilef.size[1] < (y + 1) * 50:
+				continue
+			if defaults[n][y * 12 + x] >= 800:
+				sys.stderr.write ('Warning: invalid hardness in default hard.dat %d:%d,%d (%d,%d) = %d\n' % (n, x, y, tilef.size[0], tilef.size[1], defaults[n][y * 12 + x]))
+				continue
+			image.paste (data[defaults[n][y * 12 + x]], (50 * x, 50 * y))
+	image.save (os.path.join (savedir, 'hard-' + str (n) + os.extsep + 'png'))
+
+# read dink.ini; make a list of sequences and sequence collections using the name list at the start.
+# Result is a list of collections and a list of sequences.
+# A collection has 10 members, which can be None or a sequence. (0 and 5 are always None.)
+# Sequence and Frame members are described below.
+class Frame:
+	pass
+class Sequence:
+	def __init__ (self):
+		self.frames = []
+	def use (self, f):
+		while len (self.frames) <= f:
+			self.frames += (Frame (),)
+
+sequence_codes = {}
+
+dinkini, junk = loaddinkfile ('dink\\dink.ini')
+for l in [y.lower ().split () for y in dinkini.readlines ()]:
+	if l == [] or l[0].startswith ('//') or l[0].startswith (';') or l[0] == 'starting_dink_x' or l[0] == 'starting_dink_y' or l[0] == 'starting_dink_map':
+		pass
+	elif l[0] == 'load_sequence' or l[0] == 'load_sequence_now':
+		s = int (l[2])
+		if s in sequence_codes:
+			if 'filepath' in dir (sequence_codes[s]):
+				assert 'preload' not in dir (sequence_codes[s])
+				preload = sequence_codes[s].filepath
+				sequence_codes[s] = Sequence ()
+				sequence_codes[s].preload = preload
+		else:
+			sequence_codes[s] = Sequence ()
+		sequence_codes[s].filepath = l[1]
+		sequence_codes[s].now = l[0] == 'load_sequence_now'
+		if len (l) == 3:
+			pass
+		elif len (l) == 4:
+			# Ignore bug in original source.
+			if l[3] == 'notanin':
+				l[3] = 'notanim'
+			if l[3] == 'black' or l[3] == 'notanim' or l[3] == 'leftalign':
+				sequence_codes[s].type = l[3]
+			else:
+				sequence_codes[s].delay = int (l[3])
+		elif len (l) == 5:
+			sequence_codes[s].delay = int (l[3])
+			assert l[4] == 'black' or l[4] == 'notanim' or l[4] == 'leftalign'
+			sequence_codes[s].type = l[4]
+		elif len (l) == 9:
+			sequence_codes[s].position = [int (x) for x in l[3:5]]
+			sequence_codes[s].hardbox = [int (x) for x in l[5:9]]
+		elif len (l) == 10:
+			sequence_codes[s].delay = int (l[3])
+			sequence_codes[s].position = [int (x) for x in l[4:6]]
+			sequence_codes[s].hardbox = [int (x) for x in l[6:10]]
+		else:
+			raise AssertionError ('invalid line for load_sequence')
+	elif l[0] == 'set_sprite_info':
+		if l == ['set_sprite_info', '31', '26', '49', '99', '-49', '-10', '51']:
+			# Bug in original dink.ini.
+			l = ['set_sprite_info', '31', '18', '26', '49', '99', '-49', '-10', '51']
+		assert len (l) == 9
+		s = int (l[1])
+		f = int (l[2])
+		if s not in sequence_codes:
+			sequence_codes[s] = Sequence ()
+		sequence_codes[s].use (f)
+		sequence_codes[s].position = [int (x) for x in l[3:5]]
+		sequence_codes[s].hardbox = [int (x) for x in l[5:9]]
+	elif l[0] == 'set_frame_delay':
+		assert len (l) == 4
+		s = int (l[1])
+		f = int (l[2])
+		if s not in sequence_codes:
+			sequence_codes[s] = Sequence ()
+		sequence_codes[s].use (f)
+		sequence_codes[s].frames[f].delay =  int (l[3])
+	elif l[0] == 'set_frame_frame':
+		s = int (l[1])
+		f = int (l[2])
+		if s not in sequence_codes:
+			sequence_codes[s] = Sequence ()
+		if len (l) == 5:
+			sequence_codes[s].use (f)
+			sequence_codes[s].frames[f].target =  (int (l[3]), int (l[4]))
+		else:
+			assert len (l) == 4 and int (l[3]) == -1
+			sequence_codes[s].repeat = True
+	elif l[0] == 'set_frame_special':
+		assert len (l) == 4
+		s = int (l[1])
+		f = int (l[2])
+		if s not in sequence_codes:
+			sequence_codes[s] = Sequence ()
+		sequence_codes[s].special = int (l[3])
+	else:
+		print l
+		raise AssertionError ('invalid line in dink.ini')
+
+# A sequence has members:
+#	frames, list with members:
+#		position	Hotspot position.
+#		hardbox		Hardbox: left, top, right, bottom.
+#		boudingbox	Bounding box: left, top, right, bottom.
+#		delay		Delay value for this frame.
+#		source		For copied frames, source; None otherwise.
+#		cache		Tuple of filename, offset, length of location of file
+#	delay		default delay.
+#	hardbox		default hardbox
+#	position	default position
+#	filepath	name for use in dink.ini
+#	repeat		bool, whether the sequence is set for repeating
+#	special		int, special frame
+#	now		bool, whether to load now
+#	code		int
+#	preload		string, name of sequence to preload into this code
+#	type		normal, notanim, black, or leftalign
+
+# Fill all open members of all sequences.
+for s in sequence_codes:
+	sequence_codes[s].code = s
+	assert 'filepath' in dir (sequence_codes[s])
+	if 'type' not in dir (sequence_codes[s]):
+		sequence_codes[s].type = 'normal'
+	if 'preload' not in dir (sequence_codes[s]):
+		sequence_codes[s].preload = ''
+	if 'now' not in dir (sequence_codes[s]):
+		sequence_codes[s].now = False
+	if 'special' not in dir (sequence_codes[s]):
+		sequence_codes[s].special = None
+	if 'repeat' not in dir (sequence_codes[s]):
+		sequence_codes[s].repeat = False
+	if 'position' not in dir (sequence_codes[s]):
+		sequence_codes[s].position = (0, 0)
+	if 'hardbox' not in dir (sequence_codes[s]):
+		sequence_codes[s].hardbox = (0, 0, 0, 0)
+	if 'delay' not in dir (sequence_codes[s]):
+		sequence_codes[s].delay = 1
+	# Read frame information from images.
+	f = 0
+	while True:
+		fr, c = loaddinkfile ('dink\\%s%02d.bmp' % (sequence_codes[s].filepath, f + 1))
+		if fr == None:
+			break
+		sequence_codes[s].use (f)
+		if sequence_codes[s].frames[f] != None:
+			f += 1
+			continue
+		im = Image.open (fr)
+		sequence_codes[s].frames[f].cache = c
+		if 'position' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].position = sequence_codes[s].position
+		if 'hardbox' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].hardbox = sequence_codes[s].hardbox
+		sequence_codes[s].frames[f].boundingbox = (-sequence_codes[s].frames[f].position[0], -sequence_codes[s].frames[f].position[1], im.size[0] - sequence_codes[s].frames[f].position[0], im.size[1] - sequence_codes[s].frames[f].position[1])
+		if 'delay' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].delay = sequence_codes[s].delay
+		if 'source' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].source = None
+		f += 1
+
+# Create the collections.
+collections = {}
+for c in collection_names:
+	collections[c[0]] = {}
+	for d in (4,7,8,9,6,3,2,1):
+		if c[1] + d not in sequence_codes:
+			continue
+		collections[c[0]][d] = sequence_codes[c[1] + d]
+		del sequence_codes[c[1] + d]
+	assert collections[c[0]] != {}
+	collections[c[0]]['code'] = c[1]
+
+# Create the sequences.
+sequences = {}
+for s in sequence_names:
+	sequences[s[0]] = sequence_codes[s[1]]
+	del sequence_codes[s[1]]
+
+assert sequence_codes == {}
+
+pickle.dump ((tilefiles, collections, sequences), open (os.path.join (savedir, 'data'), 'w'))

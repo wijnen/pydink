@@ -3,3 +3,5 @@ test: pde pde.gui
 
 %: %.in
 	../xmlgen/xmlgen <$< >$@
+
+.PHONY: test

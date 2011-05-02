@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 :
 
+dinkdir = '/usr/share/games/dink'
+dinkprog = '/usr/games/dink'
+
 #world
 #	nnn-xx-yy
 #		info.txt		script, tiles, hardness
@@ -17,34 +20,33 @@
 #script
 #	name.c				script to be preprocessed (sound and music names, possibly spacing)
 
+import sys
 import os
 import re
 import Image
+import tempfile
+import shutil
+import StringIO
 
 # brain 0: no brain -- sprite will not do anything automatically
 # brain 1: Human [that is, sprite 1 / Dink] brain.
 # brain 2: ["Dumb Sprite Bouncer", per DinkEdit.  See below.]
 # brain 3: Duck brain.
 # brain 4: Pig brain.
-# brain 5: When seq is done, kills but leaves last frame drawn to the
-# background
+# brain 5: When seq is done, kills but leaves last frame drawn to the background
 # brain 6: Repeat brain - does the active SEQ over and over.
 # brain 7: Same as brain 5 but does not draw last frame to the background.
 # [brain 8: text sprite brain]
 # brain 9: Person/monster ([Only] diagonals)
 # brain 10: Person/monster ([No] diagonals)
 # brain 11: Missile brain - repeats SEQ [compare brain 17].
-# brain 12: Will shrink/grow to match size in sp_brain_parm(), then die
-# [WITHOUT giving any experience...]
-# brain 13: Mouse brain (for intro, the pointer)
-# (do a set_keep_mouse() to use inside game as well)
+# brain 12: Will shrink/grow to match size in sp_brain_parm(), then die [WITHOUT giving any experience...]
+# brain 13: Mouse brain (for intro, the pointer) (do a set_keep_mouse() to use inside game as well)
 # brain 14: Button brain.  (intro buttons, can be used in game as well)
 # brain 15: Shadow brain.  Shadows for fireballs, etc.
 # brain 16: Smart People brain.  They can walk around, stop and look.
 # brain 17: Missile brain, [like 11] but kills itself when SEQ is done.
 
-dink_ini_path = '/usr/share/games/dink/dink/Dink.ini'
-dink_ini = open (dink_ini_path).readlines ()
 brains = ['none', 'human', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'bisshop', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'spark']
 
 the_globals = {
@@ -299,6 +301,48 @@ horngoblindie 785
 goblindie 805
 giantdie 825
 '''.split ('\n')
+
+def read_lsb (f):
+	ret = 0
+	for i in range (4):
+		ret += ord (f.read (1)) << (i << 3)
+	return ret
+# Create lowercase tree of all files in dinkdir.
+def buildtree (d):
+	ret = {}
+	for l in os.listdir (d):
+		p = os.path.join (d, l)
+		if os.path.isdir (p):
+			ret[l.lower ()] = (l, buildtree (p))
+		else:
+			ret[l.lower ()] = (l,)
+	return ret
+dinktree = buildtree (dinkdir)
+# Load a file from dinkdir.
+def loaddinkfile (f):
+	f = f.replace ('\\', os.sep).split (os.sep)
+	p = dinkdir
+	walk = dinktree
+	for i in f[:-1]:
+		branch = walk[i]
+		p = os.path.join (p, branch[0])
+		walk = branch[1]
+	if f[-1] in walk:
+		return open (os.path.join (p, walk[f[-1]][0]), 'rb')
+	dirfile = open (os.path.join (p, walk['dir.ff'][0]), 'rb')
+	n = read_lsb (dirfile) - 1
+	for i in range (n):
+		offset = read_lsb (dirfile)
+		name = dirfile.read (13).rstrip ('\0').lower ()
+		if name == f[-1]:
+			break
+		offset = None
+	end = read_lsb (dirfile)
+	dirfile.seek (offset)
+	data = dirfile.read (end - offset)
+	return StringIO.StringIO (data)
+
+dink_ini = loaddinkfile ('dink\\dink.ini').readlines ()
 
 def convert_image (im):
 	k = Image.eval (im.convert ('RGBA'), lambda (v): [v, 254][v == 255])
@@ -791,6 +835,10 @@ class Room:
 		self.sprite = {}
 		if root == None:
 			self.tiles = [[[0, 0, 0] for x in range (12)] for y in range (8)]
+			self.hard = ''
+			self.script = ''
+			self.music = ''
+			self.indoor = False
 			return
 		f = open (os.path.join (root, 'info' + os.extsep + 'txt'))
 		self.tiles = []
@@ -823,7 +871,6 @@ class Room:
 			info, self.sprite[s].frame = get (info, 'frame', 1)
 			info, self.sprite[s].type = get (info, 'type', 1)	# 0 for background, 1 for person or sprite, 3 for invisible
 			info, self.sprite[s].size = get (info, 'size', 100)
-			info, self.sprite[s].active = get (info, 'active', True)
 			info, self.sprite[s].brain = get (info, 'brain', 'none')
 			info, self.sprite[s].script = get (info, 'script', '')
 			info, self.sprite[s].speed = get (info, 'speed', 1)
@@ -886,7 +933,6 @@ class Room:
 			put (f, 'frame', self.sprite[s].frame, 1)
 			put (f, 'type', self.sprite[s].type, 1)
 			put (f, 'size', self.sprite[s].size, 100)
-			put (f, 'active', self.sprite[s].active, True)
 			put (f, 'brain', self.sprite[s].brain, 'none')
 			put (f, 'script', self.sprite[s].script, '')
 			put (f, 'speed', self.sprite[s].speed, 1)
@@ -987,7 +1033,7 @@ class World:
 				mdat.write (make_lsb (spr.frame, 4))
 				mdat.write (make_lsb (spr.type, 4))
 				mdat.write (make_lsb (spr.size, 4))
-				mdat.write (make_lsb (int (spr.active), 4))
+				mdat.write (make_lsb (1, 4))	# active
 				mdat.write (make_lsb (0, 4))	# rotation
 				mdat.write (make_lsb (0, 4))	# special
 				mdat.write (make_lsb (brains.index (spr.brain), 4))
@@ -1000,7 +1046,7 @@ class World:
 				mdat.write (make_lsb (0, 4))	# hit
 				mdat.write (make_lsb (spr.timer, 4))
 				mdat.write (make_lsb (spr.que, 4))
-				mdat.write (make_lsb (spr.hard, 4))
+				mdat.write (make_lsb (not spr.hard, 4))
 				mdat.write (make_lsb (spr.left, 4))
 				mdat.write (make_lsb (spr.top, 4))
 				mdat.write (make_lsb (spr.right, 4))
@@ -1033,30 +1079,109 @@ class Tile:
 	def __init__ (self, parent):
 		self.parent = parent
 		self.hard = {}
-		self.tile = {}
+		self.tile = [None] * 41
 		d = os.path.join (parent.root, "tile")
+		ext = os.extsep + 'png'
 		for t in os.listdir (d):
-			ext = os.extsep + 'png'
 			h = '-hard' + ext
 			if not t.endswith (h):
 				continue
 			base = t[:-len (h)]
-			self.hard[base] = convert_image (Image.open (os.path.join (d, t)))
-			t = os.path.join (d, base + '-tile' + os.extsep + 'png')
-			if os.path.exists (t):
-				self.tile[base] = convert_image (Image.open (t))
+			image = convert_image (Image.open (os.path.join (d, t)))
+			if re.match ('^[1-9]\d*$', base):
+				n = int (base) - 1
+				assert n <= 41
+				t = os.path.join (d, base + ext)
+				if os.path.exists (t):
+					self.tile[n] = (convert_image (Image.open (t)), image, 3)
+				else:
+					self.tile[n] = (convert_image (Image.open (os.path.join (tiledir, bmps[n]))), image, 2)
+			else:
+				self.hard[base] = convert_image (Image.open (os.path.join (d, t)))
+		f = loaddinkfile ('dink\\hard.dat')
+		f.seek (0x1fd600)
+		defaults = [[read_lsb (f) for x in range (8 * 12 + 32)] for s in range (41)]
+		data = [None] * 800
+		for n in range (41):
+			if self.tile[n] == None:
+				# Read default hardness from hard.dat.
+				for t in defaults[n][:8 * 12]:
+					if t >= 800:
+						sys.stderr.write ('Warning: invalid default hardness tile from default hard.dat: %d from tile file %d\n' % (t, n))
+						continue
+					if data[t] == None:
+						f.seek (2608 * t)
+						dat = f.read (2608)
+						data[t] = Image.new ('RGBA', (50, 50), None)
+						pixels = data[t].load ()
+						for y in range (50):
+							for x in range (50):
+								p = dat[y * 51 + x]
+								if p == '\0':
+									pixels[y, x] = (0, 0, 0, 0)
+								elif p == '\1' or p == '\3':
+									pixels[y, x] = (255, 255, 255, 255)
+								elif p == '\2':
+									pixels[y, x] = (0, 0, 255, 255)
+								else:
+									sys.stderr.write ('Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (n, x, y, ord (p)))
+									pixels[y, x] = (0, 0, 0, 0)
+				t = os.path.join (d, str (n) + ext)
+				if os.path.exists (t):
+					tilefile = (convert_image (Image.open (t)), 1)
+				else:
+					tilefile = (convert_image (Image.open (loaddinkfile ('dink\\tiles\\ts%02d.bmp' % (n + 1)))), 0)
+				image = Image.new ('RGBA', (12 * 50, 8 * 50))
+				for y in range (8):
+					for x in range (12):
+						if tilefile[0].size[0] < (x + 1) * 50 or tilefile[0].size[1] < (y + 1) * 50:
+							continue
+						if defaults[n][y * 12 + x] >= 800:
+							sys.stderr.write ('Warning: invalid hardness in default hard.dat %d:%d,%d (%d,%d) = %d\n' % (n, x, y, tilefile[0].size[0], tilefile[0].size[1], defaults[n][y * 12 + x]))
+							continue
+						image.paste (data[defaults[n][y * 12 + x]], (50 * x, 50 * y))
+				self.tile[n] = (tilefile[0], image, tilefile[1])
 	def find_hard (self, hard, x, y, bmp, tx, ty):
 		if hard != '':
 			assert hard in self.hard
-			return self.map[hard][y][x]
-		if bmp in self.hard:
-			return self.map[bmp][ty][tx]
-		bmp = int (bmp)
-		return 0	# TODO
+			ret = self.hardmap[hard][y][x]
+			if ret == self.tilemap[bmp][y][x]:
+				return 0
+		return 0
 	def save (self):
 		d = os.path.join (self.parent.root, 'tile')
 		os.mkdir (d)
 		# TODO
+	def write_hard (self, image, h):
+		ret = [None] * 8
+		for y in range (8):
+			ret[y] = [None] * 12
+			for x in range (12):
+				if image.size[0] < (x + 1) * 50 or image.size[1] < (y + 1) * 50:
+					continue
+				tile = image.crop ((x * 50, y * 50, (x + 1) * 50, (y + 1) * 50))
+				s = tile.tostring ()
+				try:
+					m = self.hmap.index (s)
+				except ValueError:
+					# Not in map yet; add new tile to file and map.
+					m = len (self.hmap)
+					for ty in range (50):
+						for tx in range (50):
+							p = tile.getpixel ((tx, ty))
+							if p == (0, 0, 0, 0):
+								h.write ('\0')
+							elif p == (255, 255, 255, 255):
+								h.write ('\1')
+							elif p == (0, 0, 255, 255):
+								h.write ('\2')
+							else:
+								raise ValueError ('invalid pixel in hard tile')
+						h.write ('\0')	# junk
+					h.write ('\0' * 58)	# junk
+					self.hmap += (s,)
+				ret[y][x] = m
+		return ret
 	def build (self, root):
 		# Write tiles/*
 		# Write hard.dat
@@ -1064,43 +1189,19 @@ class Tile:
 		if not os.path.exists (d):
 			os.mkdir (d)
 		h = open (os.path.join (root, 'hard.dat'), "wb")
-		hmap = []
-		self.map = {}
+		self.hmap = []
+		self.hardmap = {}
+		self.tilemap = [None] * 41
 		for t in self.hard:
-			if t in self.tile:
-				self.tile[t].save (os.path.join (d, t + os.extsep + 'bmp'))
-			self.map[t] = [None] * 8
-			for y in range (8):
-				self.map[t][y] = [None] * 12
-				for x in range (12):
-					if self.hard[t].size[0] < (x + 1) * 50 or self.hard[t].size[1] < (y + 1) * 50:
-						continue
-					tile = self.hard[t].crop ((x * 50, y * 50, (x + 1) * 50, (y + 1) * 50))
-					s = tile.tostring ()
-					try:
-						m = hmap.index (s)
-					except ValueError:
-						# Not in map yet; add new tile to file and map.
-						m = len (hmap)
-						for ty in range (50):
-							for tx in range (50):
-								p = tile.getpixel ((tx, ty))
-								if p == (0, 0, 0):
-									h.write ('\0')
-								elif p == (255, 255, 255):
-									h.write ('\1')
-								elif p == (0, 0, 255):
-									h.write ('\2')
-								else:
-									raise ValueError ('invalid pixel in hard tile')
-							h.write ('\0')	# junk
-						h.write ('\0' * 58)	# junk
-						hmap += (s,)
-					self.map[t][y][x] = m
-		assert len (hmap) <= 800
-		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (hmap)))
-		for t in self.tile:
-			m = self.map[t]
+			self.hardmap[t] = self.write_hard (self.hard[t], h)
+		for n in range (41):
+			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
+				self.tile[n][0].save (os.path.join (d, str (t) + os.extsep + 'bmp'))
+			self.tilemap[n] = self.write_hard (self.tile[n][1], h)
+		assert len (self.hmap) <= 800
+		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
+		for t in range (41):
+			m = self.tilemap[t]
 			for y in range (8):
 				for x in range (12):
 					if m[y][x] != None:
@@ -1208,7 +1309,7 @@ class Seq:
 		info, self.seq[base].num = get (info, 'frames', self.seq[base].num)
 		info, self.seq[base].repeat = get (info, 'repeat', self.seq[base].repeat)
 		info, self.seq[base].special = get (info, 'special', self.seq[base].special)
-		info, self.seq[base].now = get (info, 'load-now', False)
+		info, self.seq[base].now = get (info, 'load-now', self.seq[base].now)
 		if self.current_collection == None:
 			info, self.seq[base].code = get (info, 'code', self.seq[base].code)
 			assert self.seq[base].code not in self.codes
@@ -1270,6 +1371,16 @@ class Seq:
 			self.collection[self.current_collection].seq[self.direction] = self.seq[base]
 			del self.seq[base]
 		return info
+	def read_images (self, file):
+		i = 1
+		ret = []
+		while True:
+			name = 'dink\\%s%02d.bmp' % (file, i)
+			f = loaddinkfile (name)
+			if f == None:
+				break
+			ret += (name,)
+		return ret
 	def __init__ (self, parent):
 		"""Load all sequence and collection declarations from dink.ini, seq-names.txt (both internal) and seq/info.txt"""
 		# General setup
@@ -1344,6 +1455,8 @@ class Seq:
 			else:
 				print l
 				raise AssertionError ('invalid line in dink.ini')
+		for x in self.seqs:
+			self.seqs.images = self.read_images (self.seqs[s].file)
 		# Link names to sequences from dink.ini.
 		n = 0
 		# Read collections.
@@ -1629,6 +1742,8 @@ class Script:
 		info, self.title_music = get (info, 'music', '')
 		info, self.title_color = get (info, 'color', 0)
 		info, self.title_bg = get (info, 'background', '')
+		info, s = get (info, 'start')
+		self.start_map, self.start_x, self.start_y = [int (x) for x in s.split ()]
 		info, p = get (info, 'pointer', 'special 8')
 		p = p.split ()
 		self.title_pointer_seq, self.title_pointer_frame = p[0], int (p[1])
@@ -1661,6 +1776,7 @@ class Script:
 		put (f, 'music', self.title_music, '')
 		put (f, 'color', self.title_color, 0)
 		put (f, 'background', self.title_bg, '')
+		put (f, 'start', '%d %d %d' % (self.start_map, self.start_x, self.start_y))
 		put (f, 'pointer', '%s %d' % (self.title_pointer_seq, self.title_pointer_frame), 'special 8')
 		buttons = [x for x in self.title_sprite if x[4] == 'button']
 		sprites = [x for x in self.title_sprite if x[4] != 'button']
@@ -1688,40 +1804,64 @@ class Script:
 		s.write ('void main ()\n{\n')
 		for n, snd in zip (range (len (self.parent.sound.sound)), self.parent.sound.sound):
 			s.write ('\tload_sound ("%s.wav", %d);\n' % (snd, n))
-		s.write ('set_dink_speed (3);\nsp_frame_delay (1,0);\n')
+		s.write ('\tset_dink_speed (3);\n\tsp_frame_delay (1,0);\n')
 		if self.title_bg != '':
-			s.write ('copy_bmp_to_screen ("%s");\n' % self.title_bg)
+			s.write ('\tcopy_bmp_to_screen ("%s");\n' % self.title_bg)
 		else:
-			s.write ('fill_screen (%d);\n' % self.title_color)
+			s.write ('\tfill_screen (%d);\n' % self.title_color)
+		if self.title_run != '':
+			s.write ('\tspawn ("%s");\n' % self.title_run)
 		s.write ('''\
-sp_seq (1, 0);
-sp_brain (1, 13);
-sp_pseq (1, %d);
-sp_pframe (1, %d);
-sp_que (1, 20000);
-sp_noclip (1, 1);
-int &crap;
+	sp_seq (1, 0);
+	sp_brain (1, 13);
+	sp_pseq (1, %d);
+	sp_pframe (1, %d);
+	sp_que (1, 20000);
+	sp_noclip (1, 1);
+	int &crap;
 ''' % (self.parent.seq.find_seq (self.title_pointer_seq), self.title_pointer_frame))
 		for t in self.title_sprite:
-			s.write ('&crap = create_sprite (%d, %d, %d, %d, %d);\n' % (t[2], t[3], brains.index (t[4]), self.parent.seq.find_seq (t[0]), t[1]))
+			s.write ('\t&crap = create_sprite (%d, %d, %d, %d, %d);\n' % (t[2], t[3], brains.index (t[4]), self.parent.seq.find_seq (t[0]), t[1]))
 			if t[5] != '':
-				s.write ('sp_script(&crap, "%s");\n' % t[5])
-				s.write ('sp_touch_damage (&crap, -1);\n')
-			s.write ('sp_noclip (&crap, 1);\n')
+				s.write ('\tsp_script(&crap, "%s");\n' % t[5])
+				s.write ('\tsp_touch_damage (&crap, -1);\n')
+			s.write ('\tsp_noclip (&crap, 1);\n')
 		if self.title_music != '':
-			s.write ('playmidi ("%s.mid");\n' % self.title_music)
-		if self.title_run != '':
-			s.write ('spawn ("%s");\n' % self.title_run)
-		s.write ('kill_this_task ();\n}\n')
+			s.write ('\tplaymidi ("%s.mid");\n' % self.title_music)
+		s.write ('\tkill_this_task ();\n}\n')
 		# Write main.c
 		s = open (os.path.join (d, 'main' + os.extsep + 'c'), 'w')
-		s.write ('void main ()\n{')
+		s.write ('void main ()\n{\n')
 		global the_globals
 		for v in the_globals:
 			s.write ('\tmake_global_int ("&%s", %d);\n' % (v, the_globals[v]))
 		for t in range (max_tmp):
 			s.write ('\tmake_global_int ("&tmp%s", %d);\n' % (t, 0))
 		s.write ('\tkill_this_task ();\n}\n')
+		# Write start-game.c
+		s = open (os.path.join (d, 'start-game' + os.extsep + 'c'), 'w')
+		s.write ('''\
+void main ()
+{
+	wait (1);
+	&player_map = %d;
+	sp_x (1, %d);
+	sp_y (1, %d);
+	sp_base_walk (1, %d);
+	sp_base_attack (1, %d);
+	set_dink_speed (3);
+	set_mode (2);
+	reset_timer ();
+	sp_dir (1, 4);
+	sp_brain (1, %d);
+	sp_que (1, 0);
+	sp_noclip (1, 0);
+	load_screen ();
+	draw_screen ();
+	draw_status ();
+	kill_this_task ();
+}
+''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.find_collection ('walk'), self.parent.seq.find_collection ('hit'), brains.index ('human')))
 
 class Dink:
 	def __init__ (self, root):
@@ -1790,3 +1930,18 @@ class Dink:
 		if self.splash != None:
 			self.splash.save (os.path.join (os.path.join (root, 'tiles'), 'splash' + os.extsep + 'bmp'))
 		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)
+	def play (self, map = None, x = None, y = None):
+		if y != None:
+			tmp = self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_run
+			self.script.start_map = map
+			self.script.start_x = x
+			self.script.start_y = y
+			self.script.title_run = 'start-game'
+		builddir = tempfile.mkdtemp ()
+		try:
+			self.build (builddir)
+			os.spawnl (os.P_WAIT, dinkprog, dinkprog, '-g', builddir, '-r', dinkdir, '-d', '-w')
+		finally:
+			shutil.rmtree (builddir)
+		if y != None:
+			self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_run = tmp

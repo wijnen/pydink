@@ -1,5 +1,12 @@
 python dink editor
 
+- rechterknop slepen: move view
+- linkerknop: select/copy
+- middenknop: paste
+- knop voor paste-type: plak hier, of vul selectie met vorige selectie.
+- escape: toggle world-view (klik gaat ook naar screen-view)
+
+
 - interface with gui.gui
 - always show background(?), optionally show visible sprites, all sprites and/or hardness
 - show information on pointer move: background tile, sprite properties
