@@ -2,7 +2,7 @@
 # vim: set fileencoding=utf-8 :
 
 dinkdir = '/usr/share/games/dink'
-savedir = '~/.dinkcache'
+savedir = '~/.cache/dink'
 
 import sys
 import os
@@ -144,14 +144,14 @@ hole 158
 monument 159
 atomc 161
 circle 162
-star2 163
+bluestar-fast 163
 magic1 164
 shiny 165
 spark 166
 shock 167
 whirl 168
-star2-slow 169
-star1 170
+bluestar 169
+redstar 170
 blast 171
 barrel 173
 redbarrel 174
@@ -211,14 +211,14 @@ seed4 430
 seed6 431
 shadow 432
 splash 433
-fish1 434
-fish2 435
+bluefish 434
+yellowfish 435
 die 436
 item-m 437
 item-w 438
 fishx 439
-flop1 440
-flop2 441
+blueflop 440
+yellowflop 441
 level 442
 box1 443
 box3 444
@@ -291,7 +291,6 @@ def loaddinkfile (f):
 	if offset == None:
 		return None, None
 	end = read_lsb (dirfile)
-	print f
 	dirfile.seek (offset)
 	data = dirfile.read (end - offset)
 	return StringIO.StringIO (data), (path, offset, end - offset)
@@ -335,20 +334,20 @@ for n in range (41):
 				sys.stderr.write ('Warning: invalid hardness in default hard.dat %d:%d,%d (%d,%d) = %d\n' % (n, x, y, tilef.size[0], tilef.size[1], defaults[n][y * 12 + x]))
 				continue
 			image.paste (data[defaults[n][y * 12 + x]], (50 * x, 50 * y))
-	image.save (os.path.join (savedir, 'hard-' + str (n) + os.extsep + 'png'))
+	image.save (os.path.join (savedir, 'hard-%02d' % (n + 1) + os.extsep + 'png'))
 
 # read dink.ini; make a list of sequences and sequence collections using the name list at the start.
 # Result is a list of collections and a list of sequences.
 # A collection has 10 members, which can be None or a sequence. (0 and 5 are always None.)
 # Sequence and Frame members are described below.
-class Frame:
-	pass
-class Sequence:
-	def __init__ (self):
-		self.frames = []
-	def use (self, f):
-		while len (self.frames) <= f:
-			self.frames += (Frame (),)
+from dinktypes import Sequence
+from dinktypes import Frame
+
+def use (seq, f):
+	if len (seq.frames) == 0:
+		seq.frames += (None,)
+	while len (seq.frames) <= f:
+		seq.frames += (Frame (),)
 
 sequence_codes = {}
 
@@ -357,15 +356,21 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 	if l == [] or l[0].startswith ('//') or l[0].startswith (';') or l[0] == 'starting_dink_x' or l[0] == 'starting_dink_y' or l[0] == 'starting_dink_map':
 		pass
 	elif l[0] == 'load_sequence' or l[0] == 'load_sequence_now':
+		if l == ['load_sequence_now', 'graphics\dink\push\ds-p6-', '316', '75', '67', '71', '-21', '-12', '21']:
+			# Bug in original dink.ini.
+			print 'Setting sprite info for 316 with extra number, because the source is missing it.'
+			l = ['load_sequence_now', 'graphics\dink\push\ds-p6-', '316', '75', '67', '71', '-21', '-12', '21', '6']
 		s = int (l[2])
 		if s in sequence_codes:
 			if 'filepath' in dir (sequence_codes[s]):
 				assert 'preload' not in dir (sequence_codes[s])
 				preload = sequence_codes[s].filepath
 				sequence_codes[s] = Sequence ()
+				sequence_codes[s].frames = []
 				sequence_codes[s].preload = preload
 		else:
 			sequence_codes[s] = Sequence ()
+			sequence_codes[s].frames = []
 		sequence_codes[s].filepath = l[1]
 		sequence_codes[s].now = l[0] == 'load_sequence_now'
 		if len (l) == 3:
@@ -373,6 +378,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		elif len (l) == 4:
 			# Ignore bug in original source.
 			if l[3] == 'notanin':
+				print 'changing "notanin" into "notanim".'
 				l[3] = 'notanim'
 			if l[3] == 'black' or l[3] == 'notanim' or l[3] == 'leftalign':
 				sequence_codes[s].type = l[3]
@@ -383,6 +389,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 			assert l[4] == 'black' or l[4] == 'notanim' or l[4] == 'leftalign'
 			sequence_codes[s].type = l[4]
 		elif len (l) == 9:
+			print 'warning: no delay in', l
 			sequence_codes[s].position = [int (x) for x in l[3:5]]
 			sequence_codes[s].hardbox = [int (x) for x in l[5:9]]
 		elif len (l) == 10:
@@ -394,31 +401,45 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 	elif l[0] == 'set_sprite_info':
 		if l == ['set_sprite_info', '31', '26', '49', '99', '-49', '-10', '51']:
 			# Bug in original dink.ini.
+			print 'Setting sprite info for 31 18, because the source is missing the frame.'
 			l = ['set_sprite_info', '31', '18', '26', '49', '99', '-49', '-10', '51']
 		assert len (l) == 9
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
 			sequence_codes[s] = Sequence ()
-		sequence_codes[s].use (f)
-		sequence_codes[s].position = [int (x) for x in l[3:5]]
-		sequence_codes[s].hardbox = [int (x) for x in l[5:9]]
+			sequence_codes[s].frames = []
+		use (sequence_codes[s], f)
+		sequence_codes[s].frames[f].position = [int (x) for x in l[3:5]]
+		sequence_codes[s].frames[f].hardbox = [int (x) for x in l[5:9]]
 	elif l[0] == 'set_frame_delay':
 		assert len (l) == 4
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
 			sequence_codes[s] = Sequence ()
-		sequence_codes[s].use (f)
-		sequence_codes[s].frames[f].delay =  int (l[3])
+			sequence_codes[s].frames = []
+		#use (sequence_codes[s], f)
+		if len (sequence_codes[s].frames) <= f:
+			print 'warning: not using frame delay, because %d %d was not defined yet.' % (s, f)
+		else:
+			sequence_codes[s].frames[f].delay =  int (l[3])
 	elif l[0] == 'set_frame_frame':
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
 			sequence_codes[s] = Sequence ()
+			sequence_codes[s].frames = []
 		if len (l) == 5:
-			sequence_codes[s].use (f)
-			sequence_codes[s].frames[f].target =  (int (l[3]), int (l[4]))
+			use (sequence_codes[s], f)
+			sequence_codes[s].frames[f].source = (int (l[3]), int (l[4]))
+			# Fix yet another bug in original dink.ini
+			if sequence_codes[s].frames[f].source == (82, 3):
+				print 'Using 83 3 instead of 82 3 because of bug in original source'
+				sequence_codes[s].frames[f].source = (83, 3)
+			if sequence_codes[s].frames[f].source == (82, 2):
+				print 'Using 83 2 instead of 82 2 because of bug in original source'
+				sequence_codes[s].frames[f].source = (83, 2)
 		else:
 			assert len (l) == 4 and int (l[3]) == -1
 			sequence_codes[s].repeat = True
@@ -428,19 +449,23 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		f = int (l[2])
 		if s not in sequence_codes:
 			sequence_codes[s] = Sequence ()
-		sequence_codes[s].special = int (l[3])
+			sequence_codes[s].frames = []
+		use (sequence_codes[s], f)
+		sequence_codes[s].special = f
 	else:
 		print l
 		raise AssertionError ('invalid line in dink.ini')
 
 # A sequence has members:
 #	frames, list with members:
-#		position	Hotspot position.
-#		hardbox		Hardbox: left, top, right, bottom.
+#		position	Hotspot position. If len (position) == 3, this is a default generated position.
+#		hardbox		Hardbox: left, top, right, bottom. If len (hardbox) == 5, this is a default generated position.
 #		boudingbox	Bounding box: left, top, right, bottom.
 #		delay		Delay value for this frame.
 #		source		For copied frames, source; None otherwise.
 #		cache		Tuple of filename, offset, length of location of file
+#	name		name of the seq (copy of the dictionary key or tuple of collection name, dir)
+#	boudingbox	bounding box: left, top, right, bottom.
 #	delay		default delay.
 #	hardbox		default hardbox
 #	position	default position
@@ -451,6 +476,29 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 #	code		int
 #	preload		string, name of sequence to preload into this code
 #	type		normal, notanim, black, or leftalign
+	
+def fill_frame (s, f, im):
+	if 'position' not in dir (sequence_codes[s].frames[f]):
+		if sequence_codes[s].position != None:
+			sequence_codes[s].frames[f].position = sequence_codes[s].position
+		elif im != None:
+			# Why is this how the default position is computed? Beats me, blame Seth...
+			sequence_codes[s].frames[f].position = (im.size[0] - im.size[0] / 2 + im.size[0] / 6, im.size[1] - im.size[1] / 4 - im.size[1] / 30, False)
+		else:
+			src = sequence_codes[s].frames[f].source
+			sequence_codes[s].frames[f].position = sequence_codes[src[0]].frames[src[1]].position
+	if 'hardbox' not in dir (sequence_codes[s].frames[f]):
+		if sequence_codes[s].hardbox != None:
+			sequence_codes[s].frames[f].hardbox = sequence_codes[s].hardbox
+		elif im != None:
+			# Why is this how the default hardbox is computed? Beats me, blame Seth...
+			sequence_codes[s].frames[f].hardbox = (-im.size[0] / 4, -im.size[1] / 10, im.size[0] / 4, im.size[1] / 10, False)
+		else:
+			sequence_codes[s].frames[f].hardbox = sequence_codes[src[0]].frames[src[1]].hardbox
+	if 'delay' not in dir (sequence_codes[s].frames[f]):
+		sequence_codes[s].frames[f].delay = sequence_codes[s].delay
+	if 'source' not in dir (sequence_codes[s].frames[f]):
+		sequence_codes[s].frames[f].source = None
 
 # Fill all open members of all sequences.
 for s in sequence_codes:
@@ -467,42 +515,53 @@ for s in sequence_codes:
 	if 'repeat' not in dir (sequence_codes[s]):
 		sequence_codes[s].repeat = False
 	if 'position' not in dir (sequence_codes[s]):
-		sequence_codes[s].position = (0, 0)
+		sequence_codes[s].position = None
 	if 'hardbox' not in dir (sequence_codes[s]):
-		sequence_codes[s].hardbox = (0, 0, 0, 0)
+		sequence_codes[s].hardbox = None
 	if 'delay' not in dir (sequence_codes[s]):
 		sequence_codes[s].delay = 1
 	# Read frame information from images.
-	f = 0
+	f = 1
+	boundingbox = [None] * 4
 	while True:
-		fr, c = loaddinkfile ('dink\\%s%02d.bmp' % (sequence_codes[s].filepath, f + 1))
+		fr, c = loaddinkfile ('dink\\%s%02d.bmp' % (sequence_codes[s].filepath, f))
 		if fr == None:
 			break
-		sequence_codes[s].use (f)
-		if sequence_codes[s].frames[f] != None:
-			f += 1
-			continue
+		use (sequence_codes[s], f)
 		im = Image.open (fr)
+		fill_frame (s, f, im)
 		sequence_codes[s].frames[f].cache = c
-		if 'position' not in dir (sequence_codes[s].frames[f]):
-			sequence_codes[s].frames[f].position = sequence_codes[s].position
-		if 'hardbox' not in dir (sequence_codes[s].frames[f]):
-			sequence_codes[s].frames[f].hardbox = sequence_codes[s].hardbox
 		sequence_codes[s].frames[f].boundingbox = (-sequence_codes[s].frames[f].position[0], -sequence_codes[s].frames[f].position[1], im.size[0] - sequence_codes[s].frames[f].position[0], im.size[1] - sequence_codes[s].frames[f].position[1])
-		if 'delay' not in dir (sequence_codes[s].frames[f]):
-			sequence_codes[s].frames[f].delay = sequence_codes[s].delay
-		if 'source' not in dir (sequence_codes[s].frames[f]):
-			sequence_codes[s].frames[f].source = None
+		if boundingbox[0] == None or sequence_codes[s].frames[f].boundingbox[0] < boundingbox[0]:
+			boundingbox[0] = sequence_codes[s].frames[f].boundingbox[0]
+		if boundingbox[1] == None or sequence_codes[s].frames[f].boundingbox[1] < boundingbox[1]:
+			boundingbox[1] = sequence_codes[s].frames[f].boundingbox[1]
+		if boundingbox[2] == None or sequence_codes[s].frames[f].boundingbox[2] > boundingbox[2]:
+			boundingbox[2] = sequence_codes[s].frames[f].boundingbox[2]
+		if boundingbox[3] == None or sequence_codes[s].frames[f].boundingbox[3] > boundingbox[3]:
+			boundingbox[3] = sequence_codes[s].frames[f].boundingbox[3]
 		f += 1
+	sequence_codes[s].boundingbox = boundingbox
+	for f in range (1, len (sequence_codes[s].frames)):
+		fill_frame (s, f, None)
+	for f in range (1, len (sequence_codes[s].frames)):
+		if 'cache' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].cache = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].cache
+		if 'boundingbox' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].boundingbox = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].boundingbox
+
+codes = set ()
 
 # Create the collections.
 collections = {}
 for c in collection_names:
 	collections[c[0]] = {}
 	for d in (4,7,8,9,6,3,2,1):
+		codes.add (c[1] + d)
 		if c[1] + d not in sequence_codes:
 			continue
 		collections[c[0]][d] = sequence_codes[c[1] + d]
+		collections[c[0]][d].name = (c[0], d)
 		del sequence_codes[c[1] + d]
 	assert collections[c[0]] != {}
 	collections[c[0]]['code'] = c[1]
@@ -510,9 +569,11 @@ for c in collection_names:
 # Create the sequences.
 sequences = {}
 for s in sequence_names:
+	codes.add (s[1])
 	sequences[s[0]] = sequence_codes[s[1]]
+	sequences[s[0]].name = s[0]
 	del sequence_codes[s[1]]
 
 assert sequence_codes == {}
 
-pickle.dump ((tilefiles, collections, sequences), open (os.path.join (savedir, 'data'), 'w'))
+pickle.dump ((tilefiles, collections, sequences, codes), open (os.path.join (savedir, 'data'), 'w'))

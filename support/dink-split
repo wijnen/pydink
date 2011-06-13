@@ -1,0 +1,306 @@
+#!/usr/bin/env python
+import sys
+import os
+import PIL.Image
+
+def read_int (f):
+	"""Reads a 4-byte lsb-first int from f and return it."""
+	ret = 0
+	for i in range (4):
+		ret |= ord (f.read (1)) << (8 * i)
+	if ret > 1 << 31:
+		ret -= 1 << 32
+	return ret
+
+def clean (s):
+	"""Clean a string by removing all '\0's from the end."""
+	return s[:s.find ('\0')]
+
+def write_value (f, name, value, default = 0):
+	"""Write a key=value pair to a textfile. Don't write if it's equal to the given default"""
+	if value != default:
+		f.write (name + '=' + str (value) + '\n')
+
+class sprite:
+	"""A Dink sprite object"""
+	def read_raw (self, f):
+		"""Read a sprite from map.dat"""
+		self.x = read_int (f)
+		self.y = read_int (f)
+		self.seq = read_int (f)
+		self.frame = read_int (f)
+		self.Type = read_int (f)
+		self.size = read_int (f)
+		self.active = read_int (f) & 0xff
+		self.rotation = read_int (f)
+		self.special = read_int (f)
+		self.brain = read_int (f)
+		self.script = clean (f.read (14))
+		f.seek (38, 1)
+		self.speed = read_int (f)
+		self.base_walk = read_int (f)
+		self.base_idle = read_int (f)
+		self.base_attack = read_int (f)
+		self.base_hit = read_int (f)
+		self.timer = read_int (f)
+		self.que = read_int (f)
+		self.hard = read_int (f)
+		self.left = read_int (f)
+		self.top = read_int (f)
+		self.right = read_int (f)
+		self.bottom = read_int (f)
+		self.prop = read_int (f)
+		self.warp_map = read_int (f)
+		self.warp_x = read_int (f)
+		self.warp_y = read_int (f)
+		self.parm_seq = read_int (f)
+		self.base_die = read_int (f)
+		self.gold = read_int (f)
+		self.hitpoints = read_int (f)
+		self.strength = read_int (f)
+		self.defense = read_int (f)
+		self.exp = read_int (f)
+		self.sound = read_int (f)
+		self.vision = read_int (f)
+		self.nohit = read_int (f)
+		self.touch_damage = read_int (f)
+		self.buff = [0] * 5
+		for k in range (5):
+			self.buff[k] = read_int (f)
+	def write_text (self, f):
+		"""Write a sprite to a text file"""
+		write_value (f, 'x', self.x)
+		write_value (f, 'y', self.y)
+		write_value (f, 'seq', self.seq)
+		write_value (f, 'frame', self.frame, 1)
+		write_value (f, 'type', self.Type, 1)
+		write_value (f, 'size', self.size, 100)
+		write_value (f, 'active', self.active, 1)
+		write_value (f, 'rotation', self.rotation)
+		write_value (f, 'special', self.special)
+		write_value (f, 'brain', self.brain)
+		write_value (f, 'script', self.script, '')
+		write_value (f, 'speed', self.speed)
+		write_value (f, 'base_walk', self.base_walk)
+		write_value (f, 'base_idle', self.base_idle)
+		write_value (f, 'base_attack', self.base_attack)
+		write_value (f, 'base_hit', self.base_hit)
+		write_value (f, 'timer', self.timer)
+		write_value (f, 'que', self.que)
+		write_value (f, 'hard', self.hard)
+		write_value (f, 'left', self.left)
+		write_value (f, 'top', self.top)
+		write_value (f, 'right', self.right)
+		write_value (f, 'bottom', self.bottom)
+		write_value (f, 'prop', self.prop)
+		write_value (f, 'warp_map', self.warp_map)
+		write_value (f, 'warp_x', self.warp_x)
+		write_value (f, 'warp_y', self.warp_y)
+		write_value (f, 'parm_seq', self.parm_seq)
+		write_value (f, 'base_die', self.base_die)
+		write_value (f, 'gold', self.gold)
+		write_value (f, 'hitpoints', self.hitpoints)
+		write_value (f, 'strength', self.strength)
+		write_value (f, 'defense', self.defense)
+		write_value (f, 'exp', self.exp)
+		write_value (f, 'sound', self.sound)
+		write_value (f, 'vision', self.vision)
+		write_value (f, 'nohit', self.nohit)
+		write_value (f, 'touch_damage', self.touch_damage)
+		write_value (f, 'buff', self.buff, [0] * 5)
+
+class tile:
+	"""A Dink map tile"""
+	def read_raw (self, f):
+		"""Read a tile from map.dat"""
+		n = read_int (f)
+		self.bmp = n / 128 + 1
+		n %= 128
+		self.x = n % 12
+		self.y = n / 12
+		f.seek (4, 1)
+		self.althard = read_int (f)
+		f.seek (68, 1)
+	def write_text (self, f):
+		"""Write the tile to a text file"""
+		f.write ('%03d:%x,%x/%d' % (self.bmp, self.x, self.y, self.althard))
+
+class screen:
+	"""A Dink screen"""
+	def read_raw (self, f):
+		"""Read a screen, including tiles and sprites, from map.dat"""
+		f.seek (20, 1)
+		self.tiles = [[None] * 12] * 8
+		for y in range (8):
+			for x in range (12):
+				self.tiles[y][x] = tile ()
+				self.tiles[y][x].read_raw (f)
+		# end marker: ignore.
+		tile ().read_raw (f)
+		# junk to ignore.
+		f.seek (160 + 80, 1)
+	
+		self.sprite = [None] * 100
+		for s in range (100):
+			self.sprite[s] = sprite ()
+			self.sprite[s].read_raw (f)
+		# end marker: ignore.
+		sprite ().read_raw (f)
+		self.script = clean (f.read (21))
+		f.seek (1019, 1)
+		return True
+	def write_text (self, path):
+		"""Write the screen to text files in a directory"""
+		d = os.path.join (path, '%02d-%02d' % (self.y, self.x))
+		os.mkdir (d)
+		f = open (os.path.join (d, 'tiles'), 'w')
+		for y in range (8):
+			sep = ''
+			for x in range (12):
+				f.write (sep)
+				sep = '\t'
+				self.tiles[y][x].write_text (f)
+			f.write ('\n')
+		f.close ()
+		f = open (os.path.join (d, 'info'), 'w')
+		write_value (f, 'num', self.num, None)
+		write_value (f, 'x', self.x, None)
+		write_value (f, 'y', self.y, None)
+		write_value (f, 'script', self.script, '')
+		write_value (f, 'midi', self.midi)
+		write_value (f, 'indoor', self.indoor)
+		f.close ()
+		sd = os.path.join (d, 'sprite')
+		os.mkdir (sd)
+		for s in range (100):
+			if self.sprite[s].size == 0:
+				continue
+			f = open (os.path.join (sd, '%02d' % s), 'w')
+			self.sprite[s].write_text (f)
+			f.close ()
+
+class hard_tile:
+	"""Hardness info about a tile"""
+	def read_raw (self, f):
+		"""Read hardness from hard.dat"""
+		self.data = [None] * 50
+		for y in range (50):
+			self.data[y] = [None] * 50
+			for x in range (50):
+				self.data[y][x] = ord (f.read (1))
+				if self.data[y][x] > 2:
+					sys.stderr.write ("invalid hardness\n")
+					self.data[y][x] = 3
+			f.read (1)
+		f.read (51)
+		self.used = ord (f.read (1))
+		f.seek (6, 1)
+	def _code (self, c):
+		"""Encode hardness for text output"""
+		if c == 0:
+			return '.'
+		elif c == 1:
+			return '#'
+		elif c == 2:
+			return '+'
+		else:
+			return '!'
+	def write_text (self, f):
+		"""Write hardness to a text file"""
+		write_value (f, 'used', self.used, 0)
+		for y in range (50):
+			for x in range (50):
+				f.write (self._code (self.data[y][x]))
+			f.write ('\n')
+	def write_img (self, path):
+		"""Write hardness to an image file"""
+		img = PIL.Image.new ('P', (50, 50))
+		if self.used:
+			img.putpalette ([0, 0, 0] + [255, 255, 255] + [255, 0, 0] + [0, 255, 255] * (256 - 3))
+		else:
+			img.putpalette ([64, 64, 64] + [192, 192, 192] + [192, 64, 64] + [64, 192, 192] * (256 - 3))
+		for y in range (50):
+			for x in range (50):
+				img.putpixel ((x, y), self.data[y][x])
+		img.save (path + '.png')
+
+class hard:
+	"""Hardness map"""
+	def read_raw (self, f):
+		"""Read all hardness info"""
+		self.tile = [None] * 800
+		for i in range (800):
+			self.tile[i] = hard_tile ()
+			self.tile[i].read_raw (f)
+		size = 40 * 8 * 12
+		self.mapping = [None] * size
+		for i in range (size):
+			self.mapping[i] = read_int (f)
+	def write_text (self, path):
+		"""Write hardness text and image files for the entire map"""
+		p = os.path.join (path, "hard")
+		os.mkdir (p)
+		os.mkdir (os.path.join (p, "tiles"))
+		os.mkdir (os.path.join (p, "tiles", "png"))
+		for i in range (800):
+			f = open (os.path.join (p, "tiles", "%03d" % i), 'w')
+			self.tile[i].write_text (f)
+			f.close ()
+			self.tile[i].write_img (os.path.join (p, "tiles", "png", "%03d" % i))
+		f = open (os.path.join (p, "map"), 'w')
+		bsep = ''
+		for s in range (40):
+			f.write (bsep)
+			bsep = '\n'
+			for y in range (8):
+				sep = ''
+				for x in range (12):
+					f.write (sep + '%3d' % self.mapping[x + (y + s * 8) * 12])
+					sep = ' '
+				f.write ('\n')
+		f.close ()
+
+class Map:
+	"""Entire Dink map"""
+	def read_raw (self, path):
+		"""Read all data"""
+		#f = open (os.path.join (path, 'hard.dat'), 'rb')
+		#self.hard = hard ()
+		#self.hard.read_raw (f)
+		#f.close ()
+		f = open (os.path.join (path, 'dink.dat'), 'rb')
+		f.seek (20)
+		screens = []
+		for s in range (768):
+			screens += [[0, 0, 0]]
+		for a in range (3):
+			for s in range (768):
+				screens[s][a] = read_int (f)
+			read_int (f)
+		f.close ()
+		f = open (os.path.join (path, 'map.dat'), 'rb')
+		self.screen = []
+		for s in range (len (screens)):
+			if screens[s][0] == 0:
+				continue
+			scr = screen ()
+			f.seek (31280 * (screens[s][0] - 1))
+			scr.read_raw (f)
+			scr.num = screens[s][0]
+			scr.x = s % 32
+			scr.y = s / 32
+			scr.midi = screens[s][1]
+			scr.indoor = screens[s][2]
+			self.screen += (scr,)
+	def write_text (self, path):
+		"""Write everything to text (and images)"""
+		if os.path.lexists (path):
+			raise IOError ('output path exists: ' + path)
+		os.mkdir (path)
+		#self.hard.write_text (path)
+		for i in self.screen:
+			i.write_text (path)
+
+m = Map ()
+m.read_raw ('.')
+m.write_text ('split-out')

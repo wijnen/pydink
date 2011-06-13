@@ -65,7 +65,7 @@ check (os.path.join (root, os.path.join ('seq', 'info' + os.extsep + 'txt')), ''
 ''')
 sprite_scripts = []
 button_scripts = []
-other_scripts = ['escape', 'dnomagic', 'dnotalk', 'button6', 'button7']
+other_scripts = []
 for l in open (title).readlines ():
 	w = l.split ('=', 1)
 	if len (w) != 2:
