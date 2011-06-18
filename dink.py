@@ -85,7 +85,7 @@ def filepart (name, offset, length):
 
 brains = ['none', 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'bisshop', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare']
 
-the_globals = {
+default_globals = {
 		"exp": 0,
 		"strength": 3,
 		"defense": 0,
@@ -109,6 +109,9 @@ the_globals = {
 		"magic_cost": 0,
 		"missle_source": 0
 	}
+the_globals = {}
+for i in default_globals:
+	the_globals[i] = default_globals[i]
 
 def convert_image (im):
 	k = Image.eval (im.convert ('RGBA'), lambda (v): [v, 254][v == 255])
@@ -260,6 +263,18 @@ def build (expr, as_bool):
 	else:
 		op = expr[0]
 	return tmp, b0 + b1 + '%s = %s;\n%s %s %s;\n' % (tmp, e0, tmp, op, e1)
+
+next_mangled = 0
+mangled_names = {}
+
+def mangle (name):
+	global next_mangled
+	if name in default_globals:
+		return name
+	if name not in mangled_names:
+		mangled_names[name] = next_mangled
+		next_mangled += 1
+	return 'm%d%s' % (mangled_names[name], name)
 
 def mangle_function (name, args, dink):
 	'''\
@@ -415,10 +430,15 @@ def parse_expr (script, allow_cmd = False, restart = True, as_bool = None):
 						ret += ([f, a, b + bf],)
 						need_operator = True
 						continue
-					ret += ('&' + t,)
+					ret += ('&' + mangle (t),)
 				else:
 					ret += (t,)
 				need_operator = True
+
+def maybe_add_global (the_locals, name):
+	if name not in the_locals:
+		global the_globals
+		the_globals[name] = 0
 
 def preprocess (script, dink):
 	the_locals = []
@@ -537,9 +557,9 @@ def preprocess (script, dink):
 			t, script, isname = token (script)
 			if t == '=':
 				e, before, script = parse_expr (script, as_bool = False)
-				ret += before + i + 'int &' + name + ' = ' + e + ';\n'
+				ret += before + i + 'int &' + mangle (name) + ' = ' + e + ';\n'
 			else:
-				ret += i + 'int &' + name + ';\n'
+				ret += i + 'int &' + mangle (name) + ';\n'
 			t, script, isname = token (script)
 			assert t == ';'
 		else:
@@ -547,17 +567,16 @@ def preprocess (script, dink):
 			name = t
 			t, script, isname = token (script)
 			if t in ['=', '+=', '-=']:
-				if name not in the_locals:
-					global the_globals
-					the_globals[name] = 0
+				maybe_add_global (the_locals, name)
 				op = t
 				e, before, script = parse_expr (script, as_bool = False)
-				ret += before + i + '&' + name + ' ' + op + ' ' + e + ';\n'
+				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\n'
 			elif t in ['*=', '/=']:
 				# Really, the target language is too broken for words...
+				maybe_add_global (the_locals, name)
 				op = t[0]
 				e, before, script = parse_expr (script, as_bool = False)
-				ret += before + i + '&' + name + ' ' + op + ' ' + e + ';\n'
+				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\n'
 			else:
 				assert t == '('
 				global current_tmp, max_tmp
@@ -605,6 +624,7 @@ class Room:
 			self.script = ''
 			self.music = ''
 			self.indoor = False
+			self.codes = []
 			return
 		f = open (os.path.join (root, 'info' + os.extsep + 'txt'))
 		self.tiles = []
@@ -815,6 +835,58 @@ class World:
 		os.mkdir (os.path.join (self.parent.root, 'world'))
 		for r in self.room:
 			self.room[r].save (r)
+	def write_sprite (self, spr, mdat, x, y):
+		mdat.write (make_lsb (x, 4))
+		mdat.write (make_lsb (y, 4))
+		sq = self.parent.seq.find_seq (spr.seq)
+		if sq == None:
+			mdat.write (make_lsb (0, 4))
+		else:
+			mdat.write (make_lsb (sq.code, 4))
+		mdat.write (make_lsb (spr.frame, 4))
+		mdat.write (make_lsb (spr.type, 4))
+		mdat.write (make_lsb (spr.size, 4))
+		mdat.write (make_lsb (1, 4))	# active
+		mdat.write (make_lsb (0, 4))	# rotation
+		mdat.write (make_lsb (0, 4))	# special
+		mdat.write (make_lsb (brains.index (spr.brain), 4))
+		mdat.write (make_string (spr.script, 14))
+		mdat.write ('\0' * 38)
+		mdat.write (make_lsb (spr.speed, 4))
+		def coll (which):
+			if which == '':
+				return 0
+			return self.parent.seq.collection_code (which)
+		mdat.write (make_lsb (coll (spr.base_walk), 4))
+		mdat.write (make_lsb (coll (spr.base_idle), 4))
+		mdat.write (make_lsb (coll (spr.base_attack), 4))
+		mdat.write (make_lsb (0, 4))	# hit
+		mdat.write (make_lsb (spr.timer, 4))
+		mdat.write (make_lsb (spr.que, 4))
+		mdat.write (make_lsb (not spr.hard, 4))
+		mdat.write (make_lsb (spr.left, 4))
+		mdat.write (make_lsb (spr.top, 4))
+		mdat.write (make_lsb (spr.right, 4))
+		mdat.write (make_lsb (spr.bottom, 4))
+		if spr.warp != None:
+			mdat.write (make_lsb (1, 4))
+			mdat.write (make_lsb (spr.warp[0], 4))
+			mdat.write (make_lsb (spr.warp[1], 4))
+			mdat.write (make_lsb (spr.warp[2], 4))
+		else:
+			mdat.write ('\0' * 16)
+		mdat.write (make_lsb (coll (spr.touch_seq), 4))
+		mdat.write (make_lsb (coll (spr.base_die), 4))
+		mdat.write (make_lsb (spr.gold, 4))
+		mdat.write (make_lsb (spr.hitpoints, 4))
+		mdat.write (make_lsb (spr.strength, 4))
+		mdat.write (make_lsb (spr.defense, 4))
+		mdat.write (make_lsb (spr.exp, 4))
+		mdat.write (make_lsb (self.parent.sound.find_sound (spr.sound), 4))
+		mdat.write (make_lsb (spr.vision, 4))
+		mdat.write (make_lsb (int (spr.nohit), 4))
+		mdat.write (make_lsb (spr.touch_damage, 4))
+		mdat.write ('\0' * 20)
 	def build (self, root):
 		# Write dink.dat
 		ddat = open (os.path.join (root, 'dink' + os.extsep + 'dat'), "wb")
@@ -824,7 +896,7 @@ class World:
 			if not i in self.room:
 				ddat.write (make_lsb (0, 4))
 				continue
-			rooms += (self.room[i],)
+			rooms += (i,)
 			# Note that the write is after the append, because the index must start at 1.
 			ddat.write (make_lsb (len (rooms), 4))
 		ddat.write ('\0' * 4)
@@ -846,71 +918,35 @@ class World:
 			# tiles and hardness
 			for y in range (8):
 				for x in range (12):
-					bmp, tx, ty = s.tiles[y][x]
+					bmp, tx, ty = self.room[s].tiles[y][x]
 					mdat.write (make_lsb (bmp * 128 + ty * 12 + tx, 4))
 					mdat.write ('\0' * 4)
-					mdat.write (make_lsb (self.parent.tile.find_hard (s.hard, x, y, bmp, tx, ty), 4))
+					mdat.write (make_lsb (self.parent.tile.find_hard (self.room[s].hard, x, y, bmp, tx, ty), 4))
 					mdat.write ('\0' * 68)
 			mdat.write ('\0' * 320)
 			# sprites
 			# sprite 0 is never used...
 			mdat.write ('\0' * 220)
-			for sp in s.sprite:
-				spr = s.sprite[sp]
-				mdat.write (make_lsb (spr.x, 4))
-				mdat.write (make_lsb (spr.y, 4))
-				sq = self.parent.seq.find_seq (spr.seq)
-				if sq == None:
-					mdat.write (make_lsb (0, 4))
-				else:
-					mdat.write (make_lsb (sq.code, 4))
-				mdat.write (make_lsb (spr.frame, 4))
-				mdat.write (make_lsb (spr.type, 4))
-				mdat.write (make_lsb (spr.size, 4))
-				mdat.write (make_lsb (1, 4))	# active
-				mdat.write (make_lsb (0, 4))	# rotation
-				mdat.write (make_lsb (0, 4))	# special
-				mdat.write (make_lsb (brains.index (spr.brain), 4))
-				mdat.write (make_string (spr.script, 14))
-				mdat.write ('\0' * 38)
-				mdat.write (make_lsb (spr.speed, 4))
-				def coll (which):
-					if which == '':
-						return 0
-					return self.parent.seq.collection_code (which)
-				mdat.write (make_lsb (coll (spr.base_walk), 4))
-				mdat.write (make_lsb (coll (spr.base_idle), 4))
-				mdat.write (make_lsb (coll (spr.base_attack), 4))
-				mdat.write (make_lsb (0, 4))	# hit
-				mdat.write (make_lsb (spr.timer, 4))
-				mdat.write (make_lsb (spr.que, 4))
-				mdat.write (make_lsb (not spr.hard, 4))
-				mdat.write (make_lsb (spr.left, 4))
-				mdat.write (make_lsb (spr.top, 4))
-				mdat.write (make_lsb (spr.right, 4))
-				mdat.write (make_lsb (spr.bottom, 4))
-				if spr.warp != None:
-					mdat.write (make_lsb (1, 4))
-					mdat.write (make_lsb (spr.warp[0], 4))
-					mdat.write (make_lsb (spr.warp[1], 4))
-					mdat.write (make_lsb (spr.warp[2], 4))
-				else:
-					mdat.write ('\0' * 16)
-				mdat.write (make_lsb (coll (spr.touch_seq), 4))
-				mdat.write (make_lsb (coll (spr.base_die), 4))
-				mdat.write (make_lsb (spr.gold, 4))
-				mdat.write (make_lsb (spr.hitpoints, 4))
-				mdat.write (make_lsb (spr.strength, 4))
-				mdat.write (make_lsb (spr.defense, 4))
-				mdat.write (make_lsb (spr.exp, 4))
-				mdat.write (make_lsb (self.parent.sound.find_sound (spr.sound), 4))
-				mdat.write (make_lsb (spr.vision, 4))
-				mdat.write (make_lsb (int (spr.nohit), 4))
-				mdat.write (make_lsb (spr.touch_damage, 4))
-				mdat.write ('\0' * 20)
-			mdat.write ('\0' * 220 * (100 - len (s.sprite)))
+			for sp in self.room[s].sprite:
+				spr = self.room[s].sprite[sp]
+				self.write_sprite (spr, mdat, spr.x, spr.y)
+			n = len (self.room[s].sprite)
+			extra = [(x, y) for (x, y) in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)) if 0 <= (s - 1) % 32 + x < 32 and 0 <= (s - 1) / 32 + y < 24]
+			for ex, ey in extra:
+				eroom = ((s - 1) / 32 + ey) * 32 + (s - 1) % 32 + ex + 1
+				if eroom not in self.room:
+					continue
+				for sp in self.room[eroom].sprite:
+					spr = self.room[eroom].sprite[sp]
+					sq = self.parent.seq.find_seq (spr.seq)
+					tx = spr.x + ex * 12 * 50 - 20
+					ty = spr.y + ey * 8 * 50
+					if tx + sq.boundingbox[2] >= 0 and tx + sq.boundingbox[0] < 12 * 50 and ty + sq.boundingbox[3] >= 0 and ty + sq.boundingbox[1] < 8 * 50:
+						self.write_sprite (spr, mdat, spr.x + ex * 12 * 50, spr.y + ey * 8 * 50)
+						n += 1
+			mdat.write ('\0' * 220 * (100 - n))
 			# base script
-			mdat.write (make_string (s.script, 21))
+			mdat.write (make_string (self.room[s].script, 21))
 			mdat.write ('\0' * 1019)
 
 class Tile:
@@ -1020,11 +1056,11 @@ class Tile:
 #       frames, list with members:
 #               position        Hotspot position.
 #               hardbox		Hardbox: left, top, right, bottom.
-#               boudingbox      Bounding box: left, top, right, bottom.
+#               boundingbox      Bounding box: left, top, right, bottom.
 #               delay           Delay value for this frame.
 #               source          For copied frames, source; None otherwise.
 #               cache           Tuple of filename, offset, length of location of file
-#       boudingbox      Bounding box: left, top, right, bottom.
+#       boundingbox      Bounding box: left, top, right, bottom.
 #       delay           default delay.
 #       hardbox         default hardbox
 #       position        default position

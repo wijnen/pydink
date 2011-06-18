@@ -1,5 +1,17 @@
 gtk
 	Set name=run-script value="x-terminal-emulator -e vi '$SCRIPT'"
+	Set name=sync value=""
+	Set name=default-gc value="black"
+	Set name=grid-gc value="gray"
+	Set name=border-gc value="white"
+	Set name=invalid-gc value="magenta"
+	Set name=select-gc value="red"
+	Set name=noselect-gc value="#800"
+	Set name=hotspot-gc value="yellow"
+	Set name=hard-gc value="white"
+	Set name=paste-gc value="cyan"
+	Set name=empty-gc value="#eee"
+	Set name=white-gc value="white"
 	Window title=":Python Dink Editor - Map"
 		VBox
 			External expand=:True id=viewmap
@@ -8,12 +20,18 @@ gtk
 					'Show hardness
 				CheckButton value=show_sprites toggled=update set=:True
 					'Show sprites
+				CheckButton value=editing_sprites toggled=update set=:True
+					'Edit sprites
 	Window title=":Python Dink Editor - Sequences"
 		Table columns=2
-			External id=viewcollection
-			External id=viewdir
-			External id=viewframe right=:2
-			External id=viewseq right=:2
+			Frame label=:Collections
+				External id=viewcollection
+			Frame label=:Directions x-options=:fill
+				External id=viewdir
+			Frame label=:Frames right=:2
+				External id=viewframe
+			Frame label=:Sequences right=:2
+				External id=viewseq
 	Window title=":Python Dink Editor - Tiles"
 		External id=viewtiles
 	Window title=":Python Dink Editor - World"
