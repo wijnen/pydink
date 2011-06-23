@@ -384,6 +384,16 @@ class ViewMap (View):
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
 		self.selectoffset = (0, 0)	# Offset of current selection point in pixels from hotspot.
 		self.set_size_request (50 * 12, 50 * 8)
+		self.firstconfigure = True
+	def configure (self, widget, e):
+		View.configure (self, widget, e)
+		if self.firstconfigure:
+			self.firstconfigure = False
+			# Initial offset is centered on dink starting screen.
+			screen = data.script.start_map
+			sc = ((screen - 1) / 32, (screen - 1) % 32)
+			s = (12, 8)
+			self.offset = [sc[x] * s[x] * 50 + (s[x] / 2) * 50 - self.screensize[x] / 2 for x in range (2)]
 	def find_tile (self, worldpos):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.room:
