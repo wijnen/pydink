@@ -1,7 +1,7 @@
-test: pde pde.gui
-	./pde test
+current: pde pde.gui
+	./pde $@
 
 %: %.in
 	../xmlgen/xmlgen <$< >$@
 
-.PHONY: test
+.PHONY: current

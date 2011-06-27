@@ -12,7 +12,7 @@ gtk
 	Set name=paste-gc value="cyan"
 	Set name=empty-gc value="#eee"
 	Set name=white-gc value="white"
-	Window title=":Python Dink Editor - Map"
+	Window title=":Map - Python Dink Editor"
 		VBox
 			External expand=:True id=viewmap
 			HBox expand=:False
@@ -22,7 +22,7 @@ gtk
 					'Show sprites
 				CheckButton value=editing_sprites toggled=update set=:True
 					'Edit sprites
-	Window title=":Python Dink Editor - Sequences"
+	Window title=":Sequences - Python Dink Editor"
 		Table columns=2
 			Frame label=:Collections
 				External id=viewcollection
@@ -32,31 +32,12 @@ gtk
 				External id=viewframe
 			Frame label=:Sequences right=:2
 				External id=viewseq
-	Window title=":Python Dink Editor - Tiles"
+	Window title=":Tiles - Python Dink Editor"
 		External id=viewtiles
-	Window title=":Python Dink Editor - World"
-		External id=viewworld
-	Window title=":Python Dink Editor - Settings"
-		Table
-			Frame label=:Screen y-options=:
-				Table columns=2
-					'Screen
-					SpinButton range=:1,768 value-changed=new_screen value=get_screen set=set_screen
-					HSeparator right=:2
-					'Hardness
-					FileChooserButton
-					'Script
-					HBox
-						Entry changed=update value=get_screen_script set=set_screen_script
-						Button clicked=edit_screen_script
-							'Edit
-					'Music
-					Entry changed=update value=get_screen_music set=set_screen_music
-					CheckButton right=:2 value=get_indoor set=set_indoor toggled=update
-						'Indoor
-					'Sprite
-					ComboBoxText changed=new_sprite set=set_sprite value=get_sprite content=set_spritelist
-			Frame label=:Sprite left=:1 top=:0
+	Window title=":Settings - Python Dink Editor"
+		Table columns=2
+			External id=viewworld
+			Frame label=:Sprite bottom=:2
 				Table columns=2
 					HSeparator right=:2
 					Frame label=:Main
@@ -167,3 +148,21 @@ gtk
 							SpinButton range=:-640,640 value-changed=update set=set_right value=get_right
 							'Bottom
 							SpinButton range=:-400,400 value-changed=update set=set_bottom value=get_bottom
+			Frame label=:Screen y-options=: top=:1
+				Table columns=2
+					'Screen
+					SpinButton range=:1,768 value-changed=new_screen value=get_screen set=set_screen
+					HSeparator right=:2
+					'Hardness
+					FileChooserButton
+					'Script
+					HBox
+						Entry changed=update value=get_screen_script set=set_screen_script
+						Button clicked=edit_screen_script
+							'Edit
+					'Music
+					Entry changed=update value=get_screen_music set=set_screen_music
+					CheckButton right=:2 value=get_indoor set=set_indoor toggled=update
+						'Indoor
+					'Sprite
+					ComboBoxText changed=new_sprite set=set_sprite value=get_sprite content=set_spritelist

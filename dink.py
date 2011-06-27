@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 :
 
-cachedir = '~/.cache/dink'
-dinkdir = '/usr/share/games/dink'
-dinkprog = '/usr/games/dink'
-
 #world
 #	nnn-xx-yy
 #		info.txt		script, tiles, hardness
@@ -29,8 +25,11 @@ import tempfile
 import shutil
 import StringIO
 import pickle
-from dinktypes import Sequence
-from dinktypes import Frame
+from config import Sequence
+from config import Frame
+from config import cachedir
+from config import dinkdir
+from config import dinkprog
 
 cachedir = os.path.expanduser (cachedir)
 tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cachedir, 'data')))
@@ -84,6 +83,13 @@ def filepart (name, offset, length):
 # brain 17: Missile brain, [like 11] but kills itself when SEQ is done.
 
 brains = ['none', 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'bisshop', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare']
+
+def make_brain (name):
+	if name in brains:
+		return brains.index (name)
+	ret = int (name)
+	assert ret >= len (brains)
+	return ret
 
 default_globals = {
 		"exp": 0,
@@ -212,7 +218,7 @@ def token (script, allow_comment = False):
 
 def push (ret, operators):
 	args = operators[-1][1]
-	r = ret[:-args]
+	r = ret[-args:]
 	ret = ret[:-args]
 	ret += ([operators[-1][0], r],)
 	operators = operators[:-1]
@@ -221,12 +227,12 @@ def push (ret, operators):
 max_tmp = 0
 current_tmp = 0
 def build (expr, as_bool):
-	"""Build an expression or subexpression. Return before, expr"""
+	"""Build an expression or subexpression. Return expr, before"""
 	global current_tmp
 	if type (expr) == str:
 		assert not as_bool
 		if as_bool:
-			return expr + ' != 0'
+			return expr + ' != 0', ''
 		else:
 			return expr, ''
 	if len (expr) == 3:
@@ -303,11 +309,11 @@ def mangle_function (name, args, dink):
 	elif name == 'create_sprite':
 		assert len (args) == 5
 		assert args[2][0] == '"'
-		return name, [args[0], args[1], str (brains.index[args[2]]), str (dink.seq.find_seq (args[3][1:-1]).code), args[4]], ''
+		return name, [args[0], args[1], str (make_brain ([args[2]])), str (dink.seq.find_seq (args[3][1:-1]).code), args[4]], ''
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
 		assert len (args) == 2
 		assert args[0][0] == '"'
-		return name, [str (brains.index[args[0][1:-1]]), args[1]], ''
+		return name, [str (make_brain ([args[0][1:-1]])), args[1]], ''
 	elif name == 'playmidi':
 		assert len (args) == 1
 		assert args[0][0] == '"'
@@ -327,7 +333,7 @@ def mangle_function (name, args, dink):
 	elif name == 'sp_brain':
 		assert len (args) == 1 or len (args) == 2
 		if len (args) == 2:
-			v = brains.index (args[1][1:-1])
+			v = make_brain (args[1][1:-1])
 		else:
 			v = -1
 		return name, [args[0], str (v)], ''
@@ -348,7 +354,28 @@ def read_args (script):
 			if script[0] == '"':
 				p = script.find ('"', 1)
 				assert p >= 0
-				args += (script[:p + 1],)
+				# mangle variable references.
+				s = script[:p + 1]
+				pos = 0
+				sp = ''
+				while True:
+					pos = s.find ('&')
+					if pos < 0:
+						sp += s
+						break
+					sp += s[:pos]
+					s = s[:pos + 1]
+					e = s.find (';')
+					assert e >= 0
+					var = s[:e]
+					s = s[e + 1:]
+					if var == '':
+						# empty variable is escape for & itself.
+						sp += '&'
+					else:
+						# variable found: mangle.
+						sp += mangle (var)
+				args += (sp,)
 				script = script[p + 1:]
 			else:
 				a, bp, script = parse_expr (script, restart = False, as_bool = False)
@@ -393,27 +420,30 @@ def parse_expr (script, allow_cmd = False, restart = True, as_bool = None):
 				assert operators == [] and len (ret) == 1 and ret[0] == '&'
 				while operators != [] and operators[-1][2] < 6:
 					ret, operators = push (ret, operators)
-				operators += ([t, 2, 6])
+				operators += ([t, 2, 6],)
 			elif t in ['==', '!=', '>=', '<=', '>', '<']:
 				while operators != [] and operators[-1][2] < 5:
 					ret, operators = push (ret, operators)
-				operators += ([t, 2, 5])
+				operators += ([t, 2, 5],)
 			elif t == '||':
 				while operators != [] and operators[-1][2] < 4:
 					ret, operators = push (ret, operators)
-				operators += ([t, 2, 4])
+				operators += ([t, 2, 4],)
 			elif t == '&&':
 				while operators != [] and operators[-1][2] < 3:
 					ret, operators = push (ret, operators)
-				operators += ([t, 2, 3])
+				operators += ([t, 2, 3],)
 			elif t in ['+', '-']:
 				while operators != [] and operators[-1][2] < 2:
 					ret, operators = push (ret, operators)
-				operators += ([t, 2, 2])
+				operators += ([t, 2, 2],)
 			elif t in ['*', '/']:
 				while operators != [] and operators[-1][2] < 1:
 					ret, operators = push (ret, operators)
-				operators += ([t, 2, 1])
+				operators += ([t, 2, 1],)
+			else:
+				raise AssertionError ('no valid operator found in expression')
+			need_operator = False
 		else:
 			if t == '(':
 				operators += (['(', 0, 100],)
@@ -440,7 +470,7 @@ def maybe_add_global (the_locals, name):
 		global the_globals
 		the_globals[name] = 0
 
-def preprocess (script, dink):
+def preprocess (script, dink, filename):
 	the_locals = []
 	ret = ''
 	indent = []
@@ -491,6 +521,8 @@ def preprocess (script, dink):
 			ret += i[:-1] + '}\n'
 			realatend = indent[-1]
 			indent = indent[:-1]
+			if len (indent) == 0:
+				ret += '\n'
 			continue
 		if t == 'while':
 			t, script, isname = token (script)
@@ -560,13 +592,20 @@ def preprocess (script, dink):
 				ret += before + i + 'int &' + mangle (name) + ' = ' + e + ';\n'
 			else:
 				ret += i + 'int &' + mangle (name) + ';\n'
+				script = t + ' ' + script
+		elif t == 'goto':
 			t, script, isname = token (script)
-			assert t == ';'
+			assert isname
+			print filename + ": Warning: script is using goto; DON'T DO THAT!"
+			ret += i + 'goto ' + t + ';\n'
 		else:
 			assert isname
 			name = t
 			t, script, isname = token (script)
-			if t in ['=', '+=', '-=']:
+			if t == ':':
+				print filename + ": Warning: defining a label is only useful for goto; DON'T DO THAT!"
+				ret += i + name + ':\n'
+			elif t in ['=', '+=', '-=']:
 				maybe_add_global (the_locals, name)
 				op = t
 				e, before, script = parse_expr (script, as_bool = False)
@@ -849,7 +888,7 @@ class World:
 		mdat.write (make_lsb (1, 4))	# active
 		mdat.write (make_lsb (0, 4))	# rotation
 		mdat.write (make_lsb (0, 4))	# special
-		mdat.write (make_lsb (brains.index (spr.brain), 4))
+		mdat.write (make_lsb (make_brain (spr.brain), 4))
 		mdat.write (make_string (spr.script, 14))
 		mdat.write ('\0' * 38)
 		mdat.write (make_lsb (spr.speed, 4))
@@ -1415,7 +1454,7 @@ class Script:
 			os.mkdir (d)
 		for name in self.data:
 			f = open (os.path.join (d, name + os.extsep + 'c'), 'w')
-			f.write (preprocess (self.data[name], self.parent))
+			f.write (preprocess (self.data[name], self.parent, name))
 		# Write start.c
 		s = open (os.path.join (d, 'start' + os.extsep + 'c'), 'w')
 		s.write ('void main ()\n{\n')
@@ -1438,7 +1477,7 @@ class Script:
 	int &crap;
 ''' % (self.parent.seq.find_seq (self.title_pointer_seq).code, self.title_pointer_frame))
 		for t in self.title_sprite:
-			s.write ('\t&crap = create_sprite (%d, %d, %d, %d, %d);\n' % (t[2], t[3], brains.index (t[4]), self.parent.seq.find_seq (t[0]).code, t[1]))
+			s.write ('\t&crap = create_sprite (%d, %d, %d, %d, %d);\n' % (t[2], t[3], make_brain (t[4]), self.parent.seq.find_seq (t[0]).code, t[1]))
 			if t[5] != '':
 				s.write ('\tsp_script(&crap, "%s");\n' % t[5])
 				s.write ('\tsp_touch_damage (&crap, -1);\n')
@@ -1478,7 +1517,7 @@ void main ()
 	draw_status ();
 	kill_this_task ();
 }
-''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), brains.index ('dink')))
+''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink')))
 
 class Dink:
 	def __init__ (self, root):

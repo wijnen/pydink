@@ -11,6 +11,7 @@ import math
 import random
 import Image
 import tempfile
+from config import lowmem
 
 def keylist (x, keyfun):
 	l = x.keys ()
@@ -62,7 +63,7 @@ def add_warptarget (room, name):
 
 def remove_warptarget (room, name):
 	sp = data.world.room[room].sprite[name]
-	if sp.warp == None or (room, name) not in warptargets[sp.warp[0]]:
+	if sp.warp == None or sp.warp[0] not in warptargets or (room, name) not in warptargets[sp.warp[0]]:
 		return
 	warptargets[sp.warp[0]].remove ((room, name))
 
@@ -70,7 +71,7 @@ class View (gtk.DrawingArea):
 	components = []
 	started = None
 	def keypress (self, widget, e):
-		if e.keyval == gtk.keysyms.k:	# save (keep)
+		if e.keyval == gtk.keysyms.s:	# save
 			data.save ()
 		elif e.keyval == gtk.keysyms.q:	# quit (and save)
 			data.save ()
@@ -231,12 +232,18 @@ class View (gtk.DrawingArea):
 	def configure (self, widget, e):
 		x, y, width, height = widget.get_allocation()
 		self.screensize = (width, height)
-		self.buffer = gtk.gdk.Pixmap (self.get_window (), width, height)
+		if lowmem:
+			self.buffer = self.get_window ()
+		else:
+			self.buffer = gtk.gdk.Pixmap (self.get_window (), width, height)
 		if View.started == True:
 			self.move (None, None)
 			View.update (self)
 	def expose (self, widget, e):
-		self.get_window ().draw_drawable (View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
+		if lowmem:
+			self.update ()
+		else:
+			self.get_window ().draw_drawable (View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
 	def draw_tile (self, screenpos, worldpos, screen_lines):
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
@@ -380,6 +387,7 @@ class ViewMap (View):
 		self.pointer_tile = (0, 0)	# Tile that the pointer is currently pointing it, in world coordinates. That is: pointer_pos / 50.
 		self.show_hard = False		# Whether hardness should be shown (this setting is combined with a gui setting to get the actual value).
 		self.show_sprites = False	# Whether sprites should be shown (this setting is combined with a gui setting to get the actual value).
+		self.edit_tiles = False		# Whether tiles or sprites are edited (this setting is combined with a gui setting to get the actual value).
 		self.waitselect = None		# Selection to use if button is released without moving.
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
 		self.selectoffset = (0, 0)	# Offset of current selection point in pixels from hotspot.
@@ -399,9 +407,14 @@ class ViewMap (View):
 		if n in data.world.room:
 			return data.world.room[n].tiles[worldpos[1] % 8][worldpos[0] % 12]
 		return [-1, -1, -1]
-	def draw_tile (self, screenpos, worldpos):
-		View.draw_tile (self, screenpos, worldpos, not the_gui.editing_sprites)
+	def editing_sprites (self):
 		if the_gui.editing_sprites:
+			return not self.edit_tiles
+		else:
+			return self.edit_tiles
+	def draw_tile (self, screenpos, worldpos):
+		View.draw_tile (self, screenpos, worldpos, not self.editing_sprites ())
+		if self.editing_sprites ():
 			return
 		if not self.selecting:
 			if (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
@@ -542,8 +555,19 @@ class ViewMap (View):
 					self.buffer.draw_line (self.selectgc, x - 20, y, x + 20, y)
 					self.buffer.draw_line (self.selectgc, x, y - 20, x, y + 20)
 					self.buffer.draw_arc (self.selectgc, False, x - 15, y - 15, 30, 30, 0, 64 * 360)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+	def make_global (self, screen, pos):
+		s = (12, 8)
+		spos = ((screen - 1) % 32, (screen - 1) / 32)
+		return [pos[x] + s[x] * spos[x] * 50 for x in range (2)]
+	def goto (self, pos):
+		s = (12, 8)
+		self.offset = [pos[x] - self.screensize[x] / 2 for x in range (2)]
+		self.update ()
+		viewworld.update ()
 	def keypress (self, widget, e):
+		global fselect
 		self.selecting = False
 		if View.keypress (self, widget, e):	# Handle global keys.
 			pass
@@ -551,6 +575,8 @@ class ViewMap (View):
 			self.show_hard = True
 		elif e.keyval == gtk.keysyms.Alt_L:
 			self.show_sprites = True
+		elif e.keyval == gtk.keysyms.Shift_L:
+			self.edit_tiles = True
 		elif e.keyval == gtk.keysyms.p:	# play
 			os.system (the_gui['sync'])
 			for s in data.script.data:
@@ -570,13 +596,31 @@ class ViewMap (View):
 						for x in range (12):
 							data.world.room[n].tiles[y][x] = data.world.room[self.roomsource].tiles[y][x]
 				self.update ()
+		elif e.keyval == gtk.keysyms.Delete:	# delete screen
+			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
+			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
+			if n in data.world.room:
+				del data.world.room[n]
+				if self.roomsource == n:
+					self.roomsource = None
+				View.update (self)
 		elif e.keyval == gtk.keysyms.Home:	# center screen
 			s = (12, 8)
-			self.offset = [((self.pointer_pos[x] + self.offset[x]) / s[x] / 50) * s[x] * 50 + (s[x] / 2) * 50 - self.screensize[x] / 2 for x in range (2)]
-			self.update ()
-			viewworld.update ()
+			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / 50 * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
+		elif e.keyval == gtk.keysyms.g:		# go to sprite
+			if fselect == None or fselect[3] == None:
+				return
+			sprite = data.world.room[fselect[2]].sprite[fselect[3]]
+			self.goto (self.make_global (fselect[2], (sprite.x, sprite.y)))
+		elif e.keyval == gtk.keysyms.j:		# jump to warp target
+			if fselect == None or fselect[3] == None:
+				return
+			sprite = data.world.room[fselect[2]].sprite[fselect[3]]
+			if sprite.warp == None:
+				return
+			self.goto (self.make_global (sprite.warp[0], (sprite.warp[1], sprite.warp[2])))
 		else:
-			if not the_gui.editing_sprites:
+			if not self.editing_sprites ():
 				if View.keypress_tiles (self, e):
 					pass
 				elif e.keyval == gtk.keysyms.f:	# fill
@@ -623,18 +667,9 @@ class ViewMap (View):
 							continue
 						tile = tiles[random.randrange (len (copybuffer))][3:6]
 						data.world.room[n].tiles[i[1] % 8][i[0] % 12] = tile
-				elif e.keyval == gtk.keysyms.Delete:	# delete screen
-					p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-					n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
-					if n in data.world.room:
-						del data.world.room[n]
-						if self.roomsource == n:
-							self.roomsource = None
-						View.update (self)
 			else:
 				# editing sprites
-				if e.keyval == gtk.keysyms.Delete:
-					global fselect
+				if e.keyval == gtk.keysyms.k:
 					if fselect == None or fselect[3] == None:
 						return
 					if fselect[4]:
@@ -672,6 +707,9 @@ class ViewMap (View):
 		elif e.keyval == gtk.keysyms.Alt_L:
 			self.show_sprites = False
 			self.update ()
+		elif e.keyval == gtk.keysyms.Shift_L:
+			self.edit_tiles = False
+			self.update ()
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
@@ -681,7 +719,7 @@ class ViewMap (View):
 		if e.button == 3:	# pan view.
 			self.panning = True
 			return
-		if not the_gui.editing_sprites:
+		if not self.editing_sprites ():
 			if e.button == 1:
 				x, y = self.pos_from_event ((e.x, e.y))
 				View.tileselect (self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 0)
@@ -863,7 +901,7 @@ class ViewMap (View):
 		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
 		if self.panning:
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
-		if not the_gui.editing_sprites:
+		if not self.editing_sprites ():
 			# tile editing.
 			if self.selecting:
 				View.select_tiles (self, tile, 0)
@@ -950,11 +988,11 @@ class ViewSeq (View):
 		View.__init__ (self)
 		self.set_size_request (24 * 50, 7 * 50)
 	def update (self):
+		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		s = seqlist ()
 		ns = (len (s) + 23) / 24
 		# sequences
-		self.buffer.draw_rectangle (self.whitegc, True, -self.offset[0], -self.offset[1], 24 * 50, ns * 50)
 		for y in range (ns):
 			for x in range (24):
 				dpos = [(x, y)[t] * 50 - self.offset[t] for t in range (2)]
@@ -962,10 +1000,12 @@ class ViewSeq (View):
 					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], 50, 50)
 					continue
 				pb = self.pixbufs[s[y * 24 + x]][1]
+				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], 50, 50)
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (pb), 0, 0, dpos[0], dpos[1])
 				if sselect == s[y * 24 + x]:
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		self.selecting = False
 		if View.keypress (self, widget, e):	# Handle global keys.
@@ -1008,12 +1048,12 @@ class ViewCollection (View):
 		View.__init__ (self)
 		self.set_size_request (20 * 50, 4 * 50)
 	def update (self):
+		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		c = collectionlist ()
 		nc = (len (c) + 19) / 20
 		s = seqlist ()
 		ns = (len (s) + 23) / 24
-		self.buffer.draw_rectangle (self.whitegc, True, -self.offset[0], -self.offset[1], 20 * 50, nc * 50)
 		for y in range (nc):
 			for x in range (20):
 				dpos = [(x, y)[t] * 50 - self.offset[t] for t in range (2)]
@@ -1024,10 +1064,12 @@ class ViewCollection (View):
 					if d in data.seq.collection[c[y * 20 + x]]:
 						break
 				pb = self.cpixbufs[c[y * 20 + x]][d][1]
+				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], 50, 50)
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (pb), 0, 0, dpos[0], dpos[1])
 				if cselect == c[y * 20 + x]:
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		c = collectionlist ()
 		nc = (len (c) + 19) / 20
@@ -1073,6 +1115,7 @@ class ViewFrame (View):
 		View.__init__ (self)
 		self.set_size_request (24 * 50, 2 * 50)
 	def update (self):
+		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		origin = [x / 50 for x in self.offset]
 		offset = [x % 50 for x in self.offset]
@@ -1094,7 +1137,8 @@ class ViewFrame (View):
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (selection[f]), 0, 0, dpos[0], dpos[1])
 				if fselect != None and fselect[0:2] == (sselect, f):
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		if sselect != None:
 			if type (sselect) == str:
@@ -1147,6 +1191,7 @@ class ViewDir (View):
 		View.__init__ (self)
 		self.set_size_request (3 * 50, 3 * 50)
 	def update (self):
+		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		if cselect != None:
 			dirs = (None, (-1, 1), (0, 1), (1, 1), (-1, 0), None, (1, 0), (-1, -1), (0, -1), (1, -1))
@@ -1160,7 +1205,8 @@ class ViewDir (View):
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (pb), 0, 0, dpos[0], dpos[1])
 				if sselect == (cselect, d):
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		if cselect != None and x >= 0 and x < 50 * 3 and y >= 0 and y < 50 * 3:
 			undir = (7, 8, 9, 4, None, 6, 1, 2, 3)
@@ -1213,7 +1259,8 @@ class ViewTiles (View):
 		View.draw_tile (self, screenpos, worldpos, False)
 	def update (self):
 		View.draw_tiles (self, 1)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		self.selecting = False
 		if View.keypress (self, widget, e):	# Handle global keys.
@@ -1278,7 +1325,8 @@ class ViewWorld (View):
 		current = [viewmap.offset[t] * tsize[t] / scrsize[t] / 50 + off[t] for t in range (2)]
 		self.buffer.draw_rectangle (self.selectgc, False, current[0], current[1], targetsize[0] - 1, targetsize[1] - 1)
 		self.buffer.draw_rectangle (self.pastegc, False, self.pointer_pos[0] - targetsize[0] / 2, self.pointer_pos[1] - targetsize[1] / 2, targetsize[0] - 1, targetsize[1] - 1)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if not lowmem: 
+			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keyrelease (self, widget, e):
 		pass
 	def select (self):
