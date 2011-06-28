@@ -1,5 +1,5 @@
 # Set this to true if you have 512 MB or less real RAM memory.
-lowmem = True
+lowmem = False
 # Directory where cache is located.
 cachedir = '~/.cache/dink'
 # Directory where dink is installed.

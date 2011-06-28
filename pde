@@ -399,7 +399,7 @@ class ViewMap (View):
 			self.firstconfigure = False
 			# Initial offset is centered on dink starting screen.
 			screen = data.script.start_map
-			sc = ((screen - 1) / 32, (screen - 1) % 32)
+			sc = ((screen - 1) % 32, (screen - 1) / 32)
 			s = (12, 8)
 			self.offset = [sc[x] * s[x] * 50 + (s[x] / 2) * 50 - self.screensize[x] / 2 for x in range (2)]
 	def find_tile (self, worldpos):
@@ -1473,9 +1473,13 @@ def update_gui (dummy):
 	if len (seq) == 1:
 		if data.seq.find_seq (seq[0]) != None:
 			sprite.seq = seq[0]
+		else:
+			print 'seq not found:', seq
 	else:
 		if data.seq.find_seq (seq) != None:
-			sprite.seq = seq
+			sprite.seq = (seq[0], int (seq[1]))
+		else:
+			print 'collection not found:', seq
 	frame = int (the_gui.get_frame)
 	if frame < len (data.seq.find_seq (sprite.seq).frames):
 		sprite.frame = frame

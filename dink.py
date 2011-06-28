@@ -91,6 +91,9 @@ def make_brain (name):
 	assert ret >= len (brains)
 	return ret
 
+predefined = [
+		"current_sprite"
+	]
 default_globals = {
 		"exp": 0,
 		"strength": 3,
@@ -275,7 +278,7 @@ mangled_names = {}
 
 def mangle (name):
 	global next_mangled
-	if name in default_globals:
+	if name in default_globals or name in predefined:
 		return name
 	if name not in mangled_names:
 		mangled_names[name] = next_mangled
@@ -294,6 +297,7 @@ def mangle_function (name, args, dink):
 	playmidi
 	playsound
 	preload_seq
+	sp
 	sp_base_attack
 	sp_base_death
 	sp_base_idle
@@ -309,11 +313,11 @@ def mangle_function (name, args, dink):
 	elif name == 'create_sprite':
 		assert len (args) == 5
 		assert args[2][0] == '"'
-		return name, [args[0], args[1], str (make_brain ([args[2]])), str (dink.seq.find_seq (args[3][1:-1]).code), args[4]], ''
+		return name, [args[0], args[1], str (make_brain (args[2])), str (dink.seq.find_seq (args[3][1:-1]).code), args[4]], ''
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
 		assert len (args) == 2
 		assert args[0][0] == '"'
-		return name, [str (make_brain ([args[0][1:-1]])), args[1]], ''
+		return name, [str (make_brain (args[0][1:-1])), args[1]], ''
 	elif name == 'playmidi':
 		assert len (args) == 1
 		assert args[0][0] == '"'
@@ -326,6 +330,17 @@ def mangle_function (name, args, dink):
 		assert len (args) == 1
 		assert args[0][0] == '"'
 		return name, [str (dink.seq.find_seq (args[0][1:-1]).code)], ''
+	elif name == 'sp':
+		assert len (args) == 1
+		assert args[0][0] == '"'
+		name = args[0][1:-1]
+		sprite = None
+		# Sprite names used with sp () must be unique in the entire game, because the script doesn't know from which room it's called.
+		for r in dink.world.room:
+			if name in dink.world.room[r].sprite:
+				assert sprite == None
+				sprite = dink.world.room[r].sprite[name]
+		return 'sp', [str (sprite.editcode)], ''
 	elif name == 'sp_base_attack' or name == 'sp_base_death' or name == 'sp_base_idle' or name == 'sp_base_walk':
 		assert len (args) == 2
 		assert args[1][0] == '"'
@@ -344,7 +359,7 @@ def mangle_function (name, args, dink):
 	else:
 		return name, args, ''
 
-def read_args (script):
+def read_args (dink, script):
 	args = []
 	b = ''
 	if script[0] == ')':
@@ -378,7 +393,7 @@ def read_args (script):
 				args += (sp,)
 				script = script[p + 1:]
 			else:
-				a, bp, script = parse_expr (script, restart = False, as_bool = False)
+				a, bp, script = parse_expr (dink, script, restart = False, as_bool = False)
 				args += (a,)
 				b += bp
 			t, script, isname = token (script, True)
@@ -387,7 +402,7 @@ def read_args (script):
 	assert t == ')'
 	return b, args, script
 
-def parse_expr (script, allow_cmd = False, restart = True, as_bool = None):
+def parse_expr (parent, script, allow_cmd = False, restart = True, as_bool = None):
 	assert as_bool != None
 	global current_tmp, max_tmp
 	if restart:
@@ -452,10 +467,11 @@ def parse_expr (script, allow_cmd = False, restart = True, as_bool = None):
 			else:
 				assert t and (isname or (t[0] >= '0' and t[0] <= '9'))
 				if isname:
+					name = t
 					if script.startswith ('('):
 						# Read away the opening parenthesis.
 						t, script, isname = token (script)
-						b, args, script = read_args (script)
+						b, args, script = read_args (parent, script)
 						f, a, bf = mangle_function (name, args, parent)
 						ret += ([f, a, b + bf],)
 						need_operator = True
@@ -527,7 +543,7 @@ def preprocess (script, dink, filename):
 		if t == 'while':
 			t, script, isname = token (script)
 			assert t == '('
-			e, before, script = parse_expr (script, as_bool = True)
+			e, before, script = parse_expr (dink, script, as_bool = True)
 			t, script, isname = token (script)
 			assert t == ')'
 			start = 'while%d' % numlabels
@@ -550,16 +566,16 @@ def preprocess (script, dink, filename):
 			t, script, isname = token (script)
 			assert t == '('
 			if script[0] != ';':
-				e1, b1, script = parse_expr (script, allow_cmd = True, as_bool = False)
+				e1, b1, script = parse_expr (dink, script, allow_cmd = True, as_bool = False)
 			else:
 				e1, b1 = '', ''
 			t, script, isname = token (script)
 			assert t == ';'
-			e2, b2, script = parse_expr (script, as_bool = True)
+			e2, b2, script = parse_expr (dink, script, as_bool = True)
 			t, script, isname = token (script)
 			assert t == ';'
 			if script[0] != ')':
-				e3, b3, script = parse_expr (script, allow_cmd = True, as_bool = False)
+				e3, b3, script = parse_expr (dink, script, allow_cmd = True, as_bool = False)
 			else:
 				e3, b3 = '', ''
 			t, script, isname = token (script)
@@ -574,7 +590,7 @@ def preprocess (script, dink, filename):
 		elif t == 'if':
 			t, script, isname = token (script)
 			assert t == '('
-			e, before, script = parse_expr (script, as_bool = True)
+			e, before, script = parse_expr (dink, script, as_bool = True)
 			t, script, isname = token (script)
 			assert t == ')'
 			ret += before + i + 'if (' + e + ')\n'
@@ -588,7 +604,7 @@ def preprocess (script, dink, filename):
 				the_locals += (name,)
 			t, script, isname = token (script)
 			if t == '=':
-				e, before, script = parse_expr (script, as_bool = False)
+				e, before, script = parse_expr (dink, script, as_bool = False)
 				ret += before + i + 'int &' + mangle (name) + ' = ' + e + ';\n'
 			else:
 				ret += i + 'int &' + mangle (name) + ';\n'
@@ -608,13 +624,13 @@ def preprocess (script, dink, filename):
 			elif t in ['=', '+=', '-=']:
 				maybe_add_global (the_locals, name)
 				op = t
-				e, before, script = parse_expr (script, as_bool = False)
+				e, before, script = parse_expr (dink, script, as_bool = False)
 				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\n'
 			elif t in ['*=', '/=']:
 				# Really, the target language is too broken for words...
 				maybe_add_global (the_locals, name)
 				op = t[0]
-				e, before, script = parse_expr (script, as_bool = False)
+				e, before, script = parse_expr (dink, script, as_bool = False)
 				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\n'
 			else:
 				assert t == '('
@@ -629,7 +645,7 @@ def preprocess (script, dink, filename):
 					while True:
 						t, script, isname = token (script)
 						if t[0] != '"':
-							e, before, script = parse_expr (t + script, restart = False, as_bool = True)
+							e, before, script = parse_expr (dink, t + script, restart = False, as_bool = True)
 							t, script, isname = token (script)
 							assert t[0] == '"'
 							b += before
@@ -641,7 +657,7 @@ def preprocess (script, dink, filename):
 						assert t == ','
 					ret += b + c + i + 'choice_end ();\n'
 				else:
-					b, args, script = read_args (script)
+					b, args, script = read_args (dink, script)
 					f, a, bf = mangle_function (name, args, dink)
 					ret += b + bf + i + f + '(' + ', '.join (a) + ');\n'
 		realatend = atend
@@ -966,8 +982,12 @@ class World:
 			# sprites
 			# sprite 0 is never used...
 			mdat.write ('\0' * 220)
+			editcode = 1
 			for sp in self.room[s].sprite:
+				print 'code %d: %s' % (editcode, sp)
 				spr = self.room[s].sprite[sp]
+				spr.editcode = editcode
+				editcode += 1
 				self.write_sprite (spr, mdat, spr.x, spr.y)
 			n = len (self.room[s].sprite)
 			extra = [(x, y) for (x, y) in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)) if 0 <= (s - 1) % 32 + x < 32 and 0 <= (s - 1) / 32 + y < 24]
@@ -1241,9 +1261,9 @@ class Seq:
 				return None
 			return self.seq[name]
 		else:
-			if name[0] not in self.collection or name[1] not in self.collection[name[0]]:
+			if name[0] not in self.collection or int (name[1]) not in self.collection[name[0]]:
 				return None
-			return self.collection[name[0]][name[1]]
+			return self.collection[name[0]][int (name[1])]
 	def find_collection (self, name):
 		if name not in self.collection:
 			return None
@@ -1578,7 +1598,7 @@ class Dink:
 		self.seq.build (root)
 		# Write sound/*
 		self.sound.build (root)
-		# Write story/*
+		# Write story/* This must be last, because preprocess needs all kinds of things to be initialized.
 		self.script.build (root)
 		# Write the rest
 		if self.preview != None:
