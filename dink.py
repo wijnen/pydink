@@ -984,7 +984,6 @@ class World:
 			mdat.write ('\0' * 220)
 			editcode = 1
 			for sp in self.room[s].sprite:
-				print 'code %d: %s' % (editcode, sp)
 				spr = self.room[s].sprite[sp]
 				spr.editcode = editcode
 				editcode += 1

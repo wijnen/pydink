@@ -248,7 +248,7 @@ class View (gtk.DrawingArea):
 	def configure (self, widget, e):
 		x, y, width, height = widget.get_allocation()
 		self.screensize = (width, height)
-		if config.lowmem:
+		if config.lowmem and config.nobackingstore:
 			self.buffer = self.get_window ()
 		else:
 			self.buffer = gtk.gdk.Pixmap (self.get_window (), width, height)
@@ -256,7 +256,7 @@ class View (gtk.DrawingArea):
 			self.move (None, None)
 			View.update (self)
 	def expose (self, widget, e):
-		if config.lowmem:
+		if config.lowmem and config.nobackingstore:
 			self.update ()
 		else:
 			self.get_window ().draw_drawable (View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
@@ -571,7 +571,7 @@ class ViewMap (View):
 					self.buffer.draw_line (self.selectgc, x - 20, y, x + 20, y)
 					self.buffer.draw_line (self.selectgc, x, y - 20, x, y + 20)
 					self.buffer.draw_arc (self.selectgc, False, x - 15, y - 15, 30, 30, 0, 64 * 360)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def make_global (self, screen, pos):
 		s = (12, 8)
@@ -1020,7 +1020,7 @@ class ViewSeq (View):
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb)), 0, 0, dpos[0], dpos[1])
 				if sselect == s[y * 24 + x]:
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		self.selecting = False
@@ -1084,7 +1084,7 @@ class ViewCollection (View):
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb)), 0, 0, dpos[0], dpos[1])
 				if cselect == c[y * 20 + x]:
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		c = collectionlist ()
@@ -1153,7 +1153,7 @@ class ViewFrame (View):
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (selection[f])), 0, 0, dpos[0], dpos[1])
 				if fselect != None and fselect[0:2] == (sselect, f):
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		if sselect != None:
@@ -1221,7 +1221,7 @@ class ViewDir (View):
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb)), 0, 0, dpos[0], dpos[1])
 				if sselect == (cselect, d):
 					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		if cselect != None and x >= 0 and x < 50 * 3 and y >= 0 and y < 50 * 3:
@@ -1275,7 +1275,7 @@ class ViewTiles (View):
 		View.draw_tile (self, screenpos, worldpos, False)
 	def update (self):
 		View.draw_tiles (self, 1)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		self.selecting = False
@@ -1341,7 +1341,7 @@ class ViewWorld (View):
 		current = [viewmap.offset[t] * tsize[t] / scrsize[t] / 50 + off[t] for t in range (2)]
 		self.buffer.draw_rectangle (self.selectgc, False, current[0], current[1], targetsize[0] - 1, targetsize[1] - 1)
 		self.buffer.draw_rectangle (self.pastegc, False, self.pointer_pos[0] - targetsize[0] / 2, self.pointer_pos[1] - targetsize[1] / 2, targetsize[0] - 1, targetsize[1] - 1)
-		if not config.lowmem: 
+		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keyrelease (self, widget, e):
 		pass
