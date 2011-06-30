@@ -296,7 +296,7 @@ class View (gtk.DrawingArea):
 		else:
 			size[0] = (size[0] * newsize) / size[1]
 			size[1] = newsize
-		return pb.scale_simple (size[0], size[1], gtk.gdk.INTERP_BILINEAR)
+		return pb.scale_simple (size[0], size[1], gtk.gdk.INTERP_NEAREST)
 	def draw_tiles (self, which):
 		origin = [x / 50 for x in self.offset]
 		offset = [x % 50 for x in self.offset]
@@ -524,7 +524,7 @@ class ViewMap (View):
 					pb = self.get_pixbuf (self.cpixbufs[s[2].name[0]][s[2].name[1]][s[1].frame])
 				if box != None:
 					pb = pb.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
-				pb = pb.scale_simple (right - left, bottom - top, gtk.gdk.INTERP_BILINEAR)
+				pb = pb.scale_simple (right - left, bottom - top, gtk.gdk.INTERP_NEAREST)
 				self.buffer.draw_pixbuf (None, pb, 0, 0, left, top)
 		origin = [x / 50 for x in self.offset]
 		offset = [x % 50 for x in self.offset]
@@ -692,7 +692,7 @@ class ViewMap (View):
 						# Delete warp point
 						remove_warptarget (fselect[2], fselect[3])
 						data.world.room[fselect[2]].sprite[fselect[3]].warp = None
-						fselect = None
+						fselect[4] = True
 						update_editgui ()
 				if e.keyval == gtk.keysyms.w:
 					global updating
@@ -819,10 +819,20 @@ class ViewMap (View):
 					else:
 						# Current selection is not in the list. Select first and update gui.
 						fselect, pos = lst[0][1:]
+						sselect = fselect[0]
+						if type (sselect) == str:
+							cselect = None
+						else:
+							cselect = sselect[0]
 						update_editgui ()
 				else:
 					# There was no selection. Select first and update gui.
 					fselect, pos = lst[0][1:]
+					sselect = fselect[0]
+					if type (sselect) == str:
+						cselect = None
+					else:
+						cselect = sselect[0]
 					update_editgui ()
 				self.selecting = True
 				self.selectoffset = (x - pos[0], y - pos[1])
@@ -867,43 +877,77 @@ class ViewMap (View):
 							sp.nohit = src.nohit
 							sp.touch_damage = src.touch_damage
 						else:
-							#sp.type = the_gui.get_default_type
-							#sp.size = the_gui.get_default_size
-							#sp.brain = the_gui.get_default_brain
-							#sp.script = the_gui.get_default_script
-							#sp.speed = the_gui.get_default_speed
-							#sp.base_walk = the_gui.get_default_basewalk
-							#sp.base_idle = the_gui.get_default_baseidle
-							#sp.base_attack = the_gui.get_default_baseattack
-							#sp.base_die = the_gui.get_default_basedie
-							#sp.timer = the_gui.get_default_timer
-							#sp.que = the_gui.get_default_que
-							#sp.hard = the_gui.get_default_ishard
-							#sp.left = the_gui.get_default_left
-							#sp.top = the_gui.get_default_top
-							#sp.right = the_gui.get_default_right
-							#sp.bottom = the_gui.get_default_bottom
-							## warp
-							#sp.touch_seq = the_gui.get_default_touch_seq
-							#sp.gold = the_gui.get_default_gold
-							#sp.hitpoints = the_gui.get_default_hitpoints
-							#sp.strength = the_gui.get_default_strength
-							#sp.defense = the_gui.get_default_defense
-							#sp.exp = the_gui.get_default_exp
-							#sp.sound = the_gui.get_default_sound
-							#sp.vision = the_gui.get_default_vision
-							#sp.nohit = the_gui.get_default_nohit
-							#sp.touch_damage = the_gui.get_default_touch_damage
-							pass
+							try:
+								sp.type = ('Background', 'Normal', None, 'Invisible').index (the_gui.get_type)
+								sp.size = int (the_gui.get_size)
+								sp.brain = the_gui.get_brain
+								sp.script = the_gui.get_script
+								sp.speed = int (the_gui.get_speed)
+								sp.base_walk = the_gui.get_basewalk
+								sp.base_idle = the_gui.get_baseidle
+								sp.base_attack = the_gui.get_baseattack
+								sp.base_die = the_gui.get_basedie
+								sp.timer = int (the_gui.get_timer)
+								sp.que = int (the_gui.get_que)
+								sp.hard = the_gui.get_ishard
+								sp.left = int (the_gui.get_left)
+								sp.top = int (the_gui.get_top)
+								sp.right = int (the_gui.get_right)
+								sp.bottom = int (the_gui.get_bottom)
+								# warp
+								sp.touch_seq = the_gui.get_touchseq
+								sp.gold = int (the_gui.get_gold)
+								sp.hitpoints = int (the_gui.get_hitpoints)
+								sp.strength = int (the_gui.get_strength)
+								sp.defense = int (the_gui.get_defense)
+								sp.exp = int (the_gui.get_exp)
+								sp.sound = the_gui.get_sound
+								sp.vision = int (the_gui.get_vision)
+								sp.nohit = the_gui.get_nohit
+								sp.touch_damage = int (the_gui.get_touchdamage)
+							except:
+								sp.type = 1
+								sp.size = 100
+								sp.brain = 'none'
+								sp.script = ''
+								sp.speed = 1
+								sp.base_walk = ''
+								sp.base_idle = ''
+								sp.base_attack = ''
+								sp.base_die = ''
+								sp.timer = 33
+								sp.que = 0
+								sp.hard = False
+								sp.left = 0
+								sp.top = 0
+								sp.right = 0
+								sp.bottom = 0
+								# warp
+								sp.touch_seq = ''
+								sp.gold = 0
+								sp.hitpoints = 0
+								sp.strength = 0
+								sp.defense = 0
+								sp.exp = 0
+								sp.sound = ''
+								sp.vision = 0
+								sp.nohit = True
+								sp.touch_damage = 0
+								print 'Warning: unable to parse settings; using defaults.'
 						fselect = (fselect[0], fselect[1], n, name, True)
 						update_editgui ()
 			View.update (self)
 	def button_off (self, widget, e):
-		global fselect
+		global fselect, sselect, cselect
 		if e.button == 1:
 			self.selecting = False
 			if self.waitselect != None:
 				fselect, pos = self.waitselect
+				sselect = fselect[0]
+				if type (sselect) == str:
+					cselect = None
+				else:
+					cselect = sselect[0]
 				update_editgui ()
 		elif e.button == 3:
 			self.panning = False
@@ -1003,9 +1047,11 @@ class ViewMap (View):
 class ViewSeq (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = 20
-		self.tilesize = 30
-		self.set_size_request (self.width * self.tilesize, 8 * self.tilesize)
+		self.width = config.seqwidth
+		self.tilesize = config.tilesize
+		s = seqlist ()
+		ns = (len (s) + self.width - 1) / self.width
+		self.set_size_request (self.width * self.tilesize, ns * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
@@ -1065,9 +1111,11 @@ class ViewSeq (View):
 class ViewCollection (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = 17
-		self.tilesize = 30
-		self.set_size_request (self.width * self.tilesize, 4 * self.tilesize)
+		self.width = config.seqwidth - 3
+		self.tilesize = config.tilesize
+		c = collectionlist ()
+		nc = (len (c) + self.width - 1) / self.width
+		self.set_size_request (self.width * self.tilesize, nc * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
@@ -1132,14 +1180,23 @@ class ViewCollection (View):
 class ViewFrame (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = 20
-		self.tilesize = 30
-		self.set_size_request (self.width * self.tilesize, 2 * self.tilesize)
+		self.width = config.seqwidth
+		self.tilesize = config.tilesize
+		# Count maximum frames
+		m = 0
+		for s in data.seq.seq:
+			if len (data.seq.seq[s].frames) > m:
+				m = len (data.seq.seq[s].frames)
+		for c in data.seq.collection:
+			for s in data.seq.collection[c]:
+				if type (s) != int:
+					continue
+				if len (data.seq.collection[c][s].frames) > m:
+					m = len (data.seq.collection[c][s].frames)
+		self.set_size_request (self.width * self.tilesize, (m + self.width - 1) / self.width * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
-		origin = [x / self.tilesize for x in self.offset]
-		offset = [x % self.tilesize for x in self.offset]
 		if sselect != None:
 			if type (sselect) == str:
 				# sequence selected
@@ -1149,11 +1206,8 @@ class ViewFrame (View):
 				selection = View.cpixbufs[sselect[0]][sselect[1]]
 			dpos = [0, 0]
 			for f in range (1, len (selection)):
-				dpos[0] = (f - 1) * self.tilesize - self.offset[0]
-				dpos[1] = -self.offset[1]
-				if f > self.width:
-					dpos[0] -= self.tilesize * self.width
-					dpos[1] += self.tilesize
+				dpos[0] = ((f - 1) % self.width) * self.tilesize - self.offset[0]
+				dpos[1] = (f - 1) / self.width * self.tilesize - self.offset[1]
 				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (selection[f]), self.tilesize), 0, 0, dpos[0], dpos[1])
 				if fselect != None and fselect[0:2] == (sselect, f):
@@ -1207,7 +1261,7 @@ class ViewFrame (View):
 class ViewDir (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.tilesize = 30
+		self.tilesize = config.tilesize
 		self.set_size_request (3 * self.tilesize, 3 * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared

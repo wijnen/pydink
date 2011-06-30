@@ -12,6 +12,10 @@ dinkdir = '/usr/share/games/dink'
 # Program to run when pressing 'p'.
 # Note: if this is not freedink, you will need to change the arguments in dink.py.
 dinkprog = '/usr/games/dink'
+# Number of pixels per tile in the sequence selection widgets.
+tilesize = 30
+# Number of tiles per line in the sequence selection widgets.
+seqwidth = 20
 
 class Sequence:
 	pass

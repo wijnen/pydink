@@ -53,7 +53,7 @@ gtk
 							'Frame
 							SpinButton range=:1,100 value-changed=update set=set_frame value=get_frame
 							'Size
-							SpinButton range=:0,1000 value-changed=update set=set_size value=get_size
+							SpinButton range=:0,1000 value-changed=update set=set_size:100 value=get_size
 							'Brain
 							ComboBoxText changed=update set=set_brain value=get_brain
 								'none
@@ -82,16 +82,16 @@ gtk
 					Frame label=:Presentation
 						Table columns=2
 							'Type
-							ComboBoxText changed=update set=set_type value=get_type
+							ComboBoxText changed=update set=set_type:Normal value=get_type
 								'Background
 								'Normal
 								'Invisible
 							'Vision
 							SpinButton range=:0,255 value-changed=update set=set_vision value=get_vision
 							'Speed
-							SpinButton range=:0,255 value-changed=update set=set_speed value=get_speed
+							SpinButton range=:0,255 value-changed=update set=set_speed:1 value=get_speed
 							'Timer
-							SpinButton range=:0,255 value-changed=update set=set_timer value=get_timer
+							SpinButton range=:0,255 value-changed=update set=set_timer:33 value=get_timer
 							'Sound
 							Entry changed=update set=set_sound value=get_sound
 							'Que
