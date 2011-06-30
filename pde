@@ -286,16 +286,16 @@ class View (gtk.DrawingArea):
 			if b[1] * 50 >= w or b[2] * 50 >= h:
 				return
 			self.buffer.draw_pixbuf (View.gc, View.hard[b[0]], b[1] * 50, b[2] * 50, screenpos[0], screenpos[1], 50, 50)
-	def make_pixbuf50 (self, pb):
+	def make_pixbuf50 (self, pb, newsize):
 		size = [pb.get_width (), pb.get_height ()]
-		if size[0] <= 50 and size[1] <= 50:
+		if size[0] <= newsize and size[1] <= newsize:
 			pass
 		elif size[0] > size[1]:
-			size[1] = (size[1] * 50) / size[0]
-			size[0] = 50
+			size[1] = (size[1] * newsize) / size[0]
+			size[0] = newsize
 		else:
-			size[0] = (size[0] * 50) / size[1]
-			size[1] = 50
+			size[0] = (size[0] * newsize) / size[1]
+			size[1] = newsize
 		return pb.scale_simple (size[0], size[1], gtk.gdk.INTERP_BILINEAR)
 	def draw_tiles (self, which):
 		origin = [x / 50 for x in self.offset]
@@ -395,6 +395,37 @@ class View (gtk.DrawingArea):
 			return viewmap.find_tile (pos)
 		else:
 			return viewtiles.find_tile (pos)
+	def get_box (self, size, pos, seq, box):
+		x = pos[0] - 20
+		y = pos[1]
+		bb = seq.boundingbox
+		w = bb[2] - bb[0]
+		h = bb[3] - bb[1]
+		# Blame Seth for the computation below.
+		x_compat = w * (size - 100) / 100 / 2
+		y_compat = h * (size - 100) / 100 / 2
+		l = x - seq.position[0] - x_compat
+		t = y - seq.position[1] - y_compat
+		r = l + w * size / 100
+		b = t + h * size / 100
+		if box[0] != 0 or box[1] != 0 or box[2] != 0:
+			box = list (box)
+			if box[0] > w:
+				box[0] = w
+			if box[1] > h:
+				box[1] = h
+			if box[2] > w:
+				box[2] = w
+			if box[3] > h:
+				box[3] = h
+			l += box[0]
+			t += box[1]
+			r += box[2] - w
+			b += box[3] - h
+			bx = box
+		else:
+			bx = None
+		return (x, y), (l, t, r, b), bx
 
 class ViewMap (View):
 	def __init__ (self):
@@ -409,6 +440,7 @@ class ViewMap (View):
 		self.selectoffset = (0, 0)	# Offset of current selection point in pixels from hotspot.
 		self.set_size_request (50 * 12, 50 * 8)
 		self.firstconfigure = True
+		self.connect ('focus-out-event', self.focus_out)
 	def configure (self, widget, e):
 		View.configure (self, widget, e)
 		if self.firstconfigure:
@@ -484,27 +516,16 @@ class ViewMap (View):
 				if s[0][0] == None:
 					# This is only a warp target.
 					continue
-				x = s[0][0] - 20
-				y = s[0][1]
-				left = x + s[2].frames[s[1].frame].boundingbox[0] * s[1].size / 100
-				top = y + s[2].frames[s[1].frame].boundingbox[1] * s[1].size / 100
-				right = x + s[2].frames[s[1].frame].boundingbox[2] * s[1].size / 100 - 1
-				bottom = y + s[2].frames[s[1].frame].boundingbox[3] * s[1].size / 100 - 1
+				(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 				# Draw the pixbuf.
 				if type (s[2].name) == str:
 					pb = self.get_pixbuf (self.pixbufs[s[2].name][s[1].frame])
 				else:
 					pb = self.get_pixbuf (self.cpixbufs[s[2].name[0]][s[2].name[1]][s[1].frame])
-				if s[1].size != 100:
-					pb = pb.scale_simple (right - left, bottom - top, gtk.gdk.INTERP_BILINEAR)
-				if s[1].left == 0 and s[1].right == 0 and s[1].top == 0 and s[1].bottom == 0:
-					self.buffer.draw_pixbuf (None, pb, 0, 0, left, top)
-				else:
-					l = s[1].left * s[1].size / 100
-					r = s[1].right * s[1].size / 100
-					t = s[1].top * s[1].size / 100
-					b = s[1].bottom * s[1].size / 100
-					self.buffer.draw_pixbuf (None, pb, l, t, left + l, top + t, r - l, b - t)
+				if box != None:
+					pb = pb.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
+				pb = pb.scale_simple (right - left, bottom - top, gtk.gdk.INTERP_BILINEAR)
+				self.buffer.draw_pixbuf (None, pb, 0, 0, left, top)
 		origin = [x / 50 for x in self.offset]
 		offset = [x % 50 for x in self.offset]
 		if (self.show_hard and not the_gui.show_hard) or (not self.show_hard and the_gui.show_hard):
@@ -515,18 +536,7 @@ class ViewMap (View):
 					self.draw_tile_hard ((x * 50 - offset[0], y * 50 - offset[1]), (origin[0] + x, origin[1] + y))
 			for s in lst:
 				if s[0][0] != None:
-					x = s[0][0] - 20
-					y = s[0][1]
-					left = x + s[2].frames[s[1].frame].boundingbox[0] * s[1].size / 100
-					top = y + s[2].frames[s[1].frame].boundingbox[1] * s[1].size / 100
-					right = x + s[2].frames[s[1].frame].boundingbox[2] * s[1].size / 100 - 1
-					bottom = y + s[2].frames[s[1].frame].boundingbox[3] * s[1].size / 100 - 1
-					if s[1].left == 0 and s[1].right == 0 and s[1].top == 0 and s[1].bottom == 0:
-						l = 0
-						t = 0
-					else:
-						l = s[1].left * s[1].size / 100
-						t = s[1].top * s[1].size / 100
+					(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 					# Draw hardness box as a cross.
 					self.buffer.draw_line (self.hardgc, x, y + s[2].frames[s[1].frame].hardbox[1], x, y + s[2].frames[s[1].frame].hardbox[3] - 1)
 					self.buffer.draw_line (self.hardgc, x + s[2].frames[s[1].frame].hardbox[0], y, x + s[2].frames[s[1].frame].hardbox[2] - 1, y)
@@ -535,8 +545,6 @@ class ViewMap (View):
 						self.buffer.draw_rectangle (self.hardgc, False, x + s[2].frames[s[1].frame].hardbox[0], y + s[2].frames[s[1].frame].hardbox[1], s[2].frames[s[1].frame].hardbox[2] - s[2].frames[s[1].frame].hardbox[0] - 1, s[2].frames[s[1].frame].hardbox[3] - s[2].frames[s[1].frame].hardbox[1] - 1)
 					if not s[3]:
 						self.buffer.draw_rectangle (self.noselectgc, False, left, top, right - left, bottom - top)
-						if not (s[1].left == 0 and s[1].right == 0 and s[1].top == 0 and s[1].bottom == 0):
-							self.buffer.draw_rectangle (self.noselectgc, False, left + l, top + t, r - l, b - t)
 				if not s[3]:
 					if s[1].warp != None:
 						n, x, y = s[1].warp
@@ -549,21 +557,8 @@ class ViewMap (View):
 		for s in lst:
 			if s[3]:
 				if s[0][0] != None:
-					x = s[0][0] - 20
-					y = s[0][1]
-					left = x + s[2].frames[s[1].frame].boundingbox[0] * s[1].size / 100
-					top = y + s[2].frames[s[1].frame].boundingbox[1] * s[1].size / 100
-					right = x + s[2].frames[s[1].frame].boundingbox[2] * s[1].size / 100 - 1
-					bottom = y + s[2].frames[s[1].frame].boundingbox[3] * s[1].size / 100 - 1
-					if s[1].left == 0 and s[1].right == 0 and s[1].top == 0 and s[1].bottom == 0:
-						l = 0
-						t = 0
-					else:
-						l = s[1].left * s[1].size / 100
-						t = s[1].top * s[1].size / 100
+					(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 					self.buffer.draw_rectangle (self.selectgc, False, left, top, right - left, bottom - top)
-					if not (s[1].left == 0 and s[1].right == 0 and s[1].top == 0 and s[1].bottom == 0):
-						self.buffer.draw_rectangle (self.selectgc, False, left + l, top + t, r - l, b - t)
 				if s[1].warp != None:
 					n, x, y = s[1].warp
 					y += ((n - 1) / 32) * 8 * 50 - self.offset[1]
@@ -723,9 +718,14 @@ class ViewMap (View):
 		elif e.keyval == gtk.keysyms.Alt_L:
 			self.show_sprites = False
 			self.update ()
-		elif e.keyval == gtk.keysyms.Shift_L:
+		elif e.keyval == gtk.keysyms.ISO_Prev_Group: # This is what it gives instead of Shift_L:
 			self.edit_tiles = False
 			self.update ()
+	def focus_out (self, widget, e):
+		self.show_hard = False
+		self.show_sprites = False
+		self.edit_tiles = False
+		self.update ()
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
@@ -778,7 +778,8 @@ class ViewMap (View):
 							sp = data.world.room[s].sprite[spr]
 							pos = (sx + sp.x - 20, sy + sp.y) # 20, because sprite positions are relative to screen origin; first tile starts at (20,0).
 							seq = data.seq.find_seq (sp.seq)
-							if x >= pos[0] + seq.frames[sp.frame].boundingbox[0] * sp.size / 100 and y >= pos[1] + seq.frames[sp.frame].boundingbox[1] * sp.size / 100 and x < pos[0] + seq.frames[sp.frame].boundingbox[2] * sp.size / 100 and y < pos[1] + seq.frames[sp.frame].boundingbox[3] * sp.size / 100:
+							(rx, ry), (left, top, right, bottom), box = self.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
+							if x - sx >= left and y - sy >= top and x - sx < right and y - sy < bottom:
 								lst += ((pos[1] - sp.que, (seq.name, sp.frame, s, spr, True), pos),)
 					# Add all warp points, too.
 					only_selected = not ((self.show_hard and not the_gui.show_hard) or (not self.show_hard and the_gui.show_hard))
@@ -1002,24 +1003,26 @@ class ViewMap (View):
 class ViewSeq (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.set_size_request (24 * 50, 7 * 50)
+		self.width = 20
+		self.tilesize = 30
+		self.set_size_request (self.width * self.tilesize, 8 * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		s = seqlist ()
-		ns = (len (s) + 23) / 24
+		ns = (len (s) + self.width - 1) / self.width
 		# sequences
 		for y in range (ns):
-			for x in range (24):
-				dpos = [(x, y)[t] * 50 - self.offset[t] for t in range (2)]
-				if y * 24 + x >= len (s):
-					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], 50, 50)
+			for x in range (self.width):
+				dpos = [(x, y)[t] * self.tilesize - self.offset[t] for t in range (2)]
+				if y * self.width + x >= len (s):
+					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 					continue
-				pb = self.pixbufs[s[y * 24 + x]][1]
-				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], 50, 50)
-				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb)), 0, 0, dpos[0], dpos[1])
-				if sselect == s[y * 24 + x]:
-					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
+				pb = self.pixbufs[s[y * self.width + x]][1]
+				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
+				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb), self.tilesize), 0, 0, dpos[0], dpos[1])
+				if sselect == s[y * self.width + x]:
+					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], self.tilesize - 1, self.tilesize - 1)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
@@ -1034,9 +1037,9 @@ class ViewSeq (View):
 			View.keypress_seq (self, e.keyval, sel)
 	def get_selected_sequence (self, x, y):
 		s = seqlist ()
-		ns = (len (s) + 23) / 24
-		if x >= 0 and x < 50 * 24 and y >= 0 and y < 50 * ns:
-			target = (y / 50) * 24 + x / 50
+		ns = (len (s) + self.width - 1) / self.width
+		if x >= 0 and x < self.tilesize * self.width and y >= 0 and y < self.tilesize * ns:
+			target = (y / self.tilesize) * self.width + x / self.tilesize
 			if len (s) > target:
 				return (s[target], 1)
 		return None
@@ -1046,7 +1049,7 @@ class ViewSeq (View):
 		global sselect, fselect
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
 		if e.button == 3:	# pan view.
@@ -1062,35 +1065,35 @@ class ViewSeq (View):
 class ViewCollection (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.set_size_request (20 * 50, 4 * 50)
+		self.width = 17
+		self.tilesize = 30
+		self.set_size_request (self.width * self.tilesize, 4 * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		c = collectionlist ()
-		nc = (len (c) + 19) / 20
-		s = seqlist ()
-		ns = (len (s) + 23) / 24
+		nc = (len (c) + self.width - 1) / self.width
 		for y in range (nc):
-			for x in range (20):
-				dpos = [(x, y)[t] * 50 - self.offset[t] for t in range (2)]
-				if y * 20 + x >= len (c):
-					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], 50, 50)
+			for x in range (self.width):
+				dpos = [(x, y)[t] * self.tilesize - self.offset[t] for t in range (2)]
+				if y * self.width + x >= len (c):
+					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 					continue
 				for d in (1, 2, 3, 4, 6, 7, 8, 9):
-					if d in data.seq.collection[c[y * 20 + x]]:
+					if d in data.seq.collection[c[y * self.width + x]]:
 						break
-				pb = self.cpixbufs[c[y * 20 + x]][d][1]
-				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], 50, 50)
-				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb)), 0, 0, dpos[0], dpos[1])
-				if cselect == c[y * 20 + x]:
-					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
+				pb = self.cpixbufs[c[y * self.width + x]][d][1]
+				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
+				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb), self.tilesize), 0, 0, dpos[0], dpos[1])
+				if cselect == c[y * self.width + x]:
+					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], self.tilesize - 1, self.tilesize - 1)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
 		c = collectionlist ()
-		nc = (len (c) + 19) / 20
-		if x >= 0 and x < 50 * 20 and y >= 0 and y < 50 * nc:
-			target = (y / 50) * 20 + x / 50
+		nc = (len (c) + self.width - 1) / self.width
+		if x >= 0 and x < self.tilesize * self.width and y >= 0 and y < self.tilesize * nc:
+			target = (y / self.tilesize) * self.width + x / self.tilesize
 			if target <= len (c):
 				return ((c[target], [x for x in data.seq.collection[c[target]].keys () if type (x) == int][0]), 1)
 		return None
@@ -1110,7 +1113,7 @@ class ViewCollection (View):
 		global cselect, sselect, fselect
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
 		if e.button == 3:	# pan view.
@@ -1129,12 +1132,14 @@ class ViewCollection (View):
 class ViewFrame (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.set_size_request (24 * 50, 2 * 50)
+		self.width = 20
+		self.tilesize = 30
+		self.set_size_request (self.width * self.tilesize, 2 * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
-		origin = [x / 50 for x in self.offset]
-		offset = [x % 50 for x in self.offset]
+		origin = [x / self.tilesize for x in self.offset]
+		offset = [x % self.tilesize for x in self.offset]
 		if sselect != None:
 			if type (sselect) == str:
 				# sequence selected
@@ -1144,15 +1149,15 @@ class ViewFrame (View):
 				selection = View.cpixbufs[sselect[0]][sselect[1]]
 			dpos = [0, 0]
 			for f in range (1, len (selection)):
-				dpos[0] = (f - 1) * 50 - self.offset[0]
+				dpos[0] = (f - 1) * self.tilesize - self.offset[0]
 				dpos[1] = -self.offset[1]
-				if f > 24:
-					dpos[0] -= 50 * 24
-					dpos[1] += 50
-				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], 50, 50)
-				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (selection[f])), 0, 0, dpos[0], dpos[1])
+				if f > self.width:
+					dpos[0] -= self.tilesize * self.width
+					dpos[1] += self.tilesize
+				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
+				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (selection[f]), self.tilesize), 0, 0, dpos[0], dpos[1])
 				if fselect != None and fselect[0:2] == (sselect, f):
-					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
+					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], self.tilesize - 1, self.tilesize - 1)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
@@ -1163,17 +1168,14 @@ class ViewFrame (View):
 			else:
 				# collection direction selected
 				selection = View.cpixbufs[sselect[0]][sselect[1]]
-			if len (selection) > 24:
-				if x >= 0 and x < 24 * 50 and y >= 0 and y < 50:
-					target = x / 50
-					return (sselect, target + 1)
-				elif x >= 0 and x < (len (selection) - 24) * 50 and y >= 50 and y < 100:
-					target = 24 + x / 50
-					return (sselect, target + 1)
-			else:
-				if x >= 0 and x < len (selection) * 50 and y >= 0 and y < 50:
-					target = x / 50
-					return (sselect, target + 1)
+			n = len (selection)
+			nn = (n + self.width - 1) / self.width
+			if y + self.offset[1] < 0 or x + self.offset[0] < 0 or x + self.offset[0] >= self.tilesize * self.width:
+				return None
+			target = (y + self.offset[1]) / self.tilesize * self.width + (x + self.offset[0]) / self.tilesize
+			if target >= len (selection):
+				return None
+			return (sselect, target + 1)
 		return None
 	def keyrelease (self, widget, e):
 		pass
@@ -1190,7 +1192,7 @@ class ViewFrame (View):
 		global fselect
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
 		if e.button == 3:	# pan view.
@@ -1205,28 +1207,29 @@ class ViewFrame (View):
 class ViewDir (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.set_size_request (3 * 50, 3 * 50)
+		self.tilesize = 30
+		self.set_size_request (3 * self.tilesize, 3 * self.tilesize)
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		if cselect != None:
 			dirs = (None, (-1, 1), (0, 1), (1, 1), (-1, 0), None, (1, 0), (-1, -1), (0, -1), (1, -1))
 			for d in (1,2,3,4,6,7,8,9):
-				dpos = [(1 + dirs[d][t]) * 50 - self.offset[t] for t in range (2)]
+				dpos = [(1 + dirs[d][t]) * self.tilesize - self.offset[t] for t in range (2)]
 				if d not in data.seq.collection[cselect]:
-					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], 50, 50)
+					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 					continue
-				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], 50, 50)
+				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 				pb = self.cpixbufs[cselect][d][1]
-				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb)), 0, 0, dpos[0], dpos[1])
+				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb), self.tilesize), 0, 0, dpos[0], dpos[1])
 				if sselect == (cselect, d):
-					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], 49, 49)
+					self.buffer.draw_rectangle (self.selectgc, False, dpos[0], dpos[1], self.tilesize - 1, self.tilesize - 1)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def get_selected_sequence (self, x, y):
-		if cselect != None and x >= 0 and x < 50 * 3 and y >= 0 and y < 50 * 3:
+		if cselect != None and x >= 0 and x < self.tilesize * 3 and y >= 0 and y < self.tilesize * 3:
 			undir = (7, 8, 9, 4, None, 6, 1, 2, 3)
-			d = undir[(y / 50) * 3 + x / 50]
+			d = undir[(y / self.tilesize) * 3 + x / self.tilesize]
 			if d != None:
 				if View.cpixbufs[cselect][d] != None:
 					return ((cselect, d), 1)
@@ -1246,7 +1249,7 @@ class ViewDir (View):
 		global sselect, fselect
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
 		if e.button == 3:	# pan view.

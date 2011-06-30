@@ -1540,14 +1540,24 @@ void main ()
 
 class Dink:
 	def __init__ (self, root):
-		self.root = os.path.normpath (root)
+		self.baseroot = os.path.abspath (os.path.normpath (root))
+		d = os.path.dirname (self.baseroot)
+		b = os.path.basename (self.baseroot)
+		l = os.listdir (d)
+		src = [x for x in l if x.startswith (b + '.') and re.match ('^\d+$', x[len (b) + 1:])]
+		if src == []:
+			assert b in l
+			self.root = self.baseroot
+		else:
+			src.sort (key = lambda (x): int (x[len (b) + 1:]))
+			self.root = self.baseroot + src[-1][len (b):]
 		self.tile = Tile (self)
 		self.world = World (self)
 		self.seq = Seq (self)
 		self.sound = Sound (self)
 		self.script = Script (self)
-		self.info = open (os.path.join (root, 'info' + os.extsep + 'txt')).read ()
-		im = os.path.join (root, 'image')
+		self.info = open (os.path.join (self.root, 'info' + os.extsep + 'txt')).read ()
+		im = os.path.join (self.root, 'image')
 		p = os.path.join (im, 'preview' + os.extsep + 'png')
 		if os.path.exists (p):
 			self.preview = convert_image (Image.open (p))
@@ -1560,14 +1570,17 @@ class Dink:
 			self.splash = None
 	def save (self, root = None):
 		if root != None:
-			self.root = os.path.normpath (root)
-		p = self.root
-		if os.path.exists (p):
-			i = 0
-			while os.path.exists (p):
-				p = self.root + os.extsep + str (i)
-				i += 1
-			os.rename (self.root, p)
+			self.baseroot = os.path.abspath (os.path.normpath (root))
+		d = os.path.dirname (self.root)
+		b = os.path.basename (self.root)
+		l = os.listdir (d)
+		src = [x for x in l if x.startswith (b + '.') and re.match ('^\d+$', x[len (b) + 1:])]
+		if src == []:
+			assert b in l
+			self.root = self.baseroot
+		else:
+			src.sort (key = lambda (x): int (x[len (b) + 1:]))
+			self.root = self.baseroot + ('.%d' % (int (src[-1][len (b) + 1:]) + 1))
 		os.mkdir (self.root)
 		self.tile.save ()
 		self.world.save ()
