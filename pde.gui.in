@@ -13,25 +13,18 @@ gtk
 	Set name=empty-gc value="#eee"
 	Set name=white-gc value="white"
 	Window title=":Map - Python Dink Editor"
-		VBox
-			External expand=:True id=viewmap
-			HBox expand=:False
-				CheckButton value=show_hard toggled=update
-					'Show hardness
-				CheckButton value=show_sprites toggled=update set=:True
-					'Show sprites
-				CheckButton value=editing_sprites toggled=update set=:True
-					'Edit sprites
-	Window title=":Sequences - Python Dink Editor"
-		Table columns=2
-			Frame label=:Collections
-				External id=viewcollection
-			Frame label=:Directions x-options=:fill
-				External id=viewdir
-			Frame label=:Frames right=:2
-				External id=viewframe
-			Frame label=:Sequences right=:2
-				External id=viewseq
+		Notebook show_tabs=:False
+			VBox setpage=setmap
+				External expand=:True id=viewmap
+				HBox expand=:False
+					CheckButton value=show_hard toggled=update
+						'Show hardness
+					CheckButton value=show_sprites toggled=update set=:True
+						'Show sprites
+					CheckButton value=editing_sprites toggled=update set=:True
+						'Edit sprites
+			External id=viewcollection setpage=setcollection
+			External id=viewseq setpage=setseq
 	Window title=":Tiles - Python Dink Editor"
 		External id=viewtiles
 	Window title=":Settings - Python Dink Editor"
