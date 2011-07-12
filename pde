@@ -68,6 +68,7 @@ def remove_warptarget (room, name):
 class View (gtk.DrawingArea):
 	components = []
 	started = None
+	collectiontype = None
 	def keypress (self, widget, e):
 		if e.keyval == gtk.keysyms.s:	# save
 			data.save ()
@@ -82,11 +83,6 @@ class View (gtk.DrawingArea):
 	def keypress_tiles (self, e):
 		global copybuffer, copystart
 		if e.keyval == gtk.keysyms.c:	# copy
-			copybuffer.clear ()
-			for i in select.data:
-				s = View.find_tile (self, i, i[2])
-				copybuffer.add ((i[0], i[1], i[2], s[0], s[1], s[2]))
-			copystart = select.start
 			return True
 		return False
 	def keypress_seq (self, key, seq):
@@ -234,7 +230,6 @@ class View (gtk.DrawingArea):
 		self.connect_after ('realize', self.start)
 		self.connect ('expose-event', self.expose)
 		self.connect ('key-press-event', self.keypress)
-		self.connect ('key-release-event', self.keyrelease)
 		self.connect ('button-press-event', self.button_on)
 		self.connect ('button-release-event', self.button_off)
 		self.connect ('motion-notify-event', self.move)
@@ -424,21 +419,24 @@ class View (gtk.DrawingArea):
 		else:
 			bx = None
 		return (x, y), (l, t, r, b), bx
+	def draw_seq (self, pos, pixbuf):
+		dpos = [pos[t] * self.tilesize - self.offset[t] for t in range (2)]
+		if pixbuf == None:
+			self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
+		else:
+			self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
+			self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pixbuf), self.tilesize), 0, 0, dpos[0], dpos[1])
 
 class ViewMap (View):
 	def __init__ (self):
 		View.__init__ (self)
 		self.roomsource = None		# Source for a newly created room (for copying).
+		self.moveinfo = None		# Information for what to do with pointer move events.
 		self.pointer_tile = (0, 0)	# Tile that the pointer is currently pointing it, in world coordinates. That is: pointer_pos / 50.
-		self.show_hard = False		# Whether hardness should be shown (this setting is combined with a gui setting to get the actual value).
-		self.show_sprites = False	# Whether sprites should be shown (this setting is combined with a gui setting to get the actual value).
-		self.edit_tiles = False		# Whether tiles or sprites are edited (this setting is combined with a gui setting to get the actual value).
 		self.waitselect = None		# Selection to use if button is released without moving.
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
-		self.selectoffset = (0, 0)	# Offset of current selection point in pixels from hotspot.
 		self.set_size_request (50 * 12, 50 * 8)
 		self.firstconfigure = True
-		self.connect ('focus-out-event', self.focus_out)
 	def configure (self, widget, e):
 		View.configure (self, widget, e)
 		if self.firstconfigure:
@@ -453,23 +451,16 @@ class ViewMap (View):
 		if n in data.world.room:
 			return data.world.room[n].tiles[worldpos[1] % 8][worldpos[0] % 12]
 		return [-1, -1, -1]
-	def editing_sprites (self):
-		if the_gui.editing_sprites:
-			return not self.edit_tiles
-		else:
-			return self.edit_tiles
 	def draw_tile (self, screenpos, worldpos):
-		View.draw_tile (self, screenpos, worldpos, not self.editing_sprites ())
-		if self.editing_sprites ():
-			return
+		View.draw_tile (self, screenpos, worldpos, False)
 		if not self.selecting:
 			if (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
 				self.buffer.draw_rectangle (self.pastegc, False, screenpos[0] + 1, screenpos[1] + 1, 48, 48)
 	def update (self):
 		screens = View.draw_tiles (self, 0)
-		# Draw sprites (only in normal view when switched on).
+		# Draw sprites (only when switched on).
 		lst = []
-		if (the_gui.show_sprites and not self.show_sprites) or (not the_gui.show_sprites and self.show_sprites):
+		if the_gui.show_sprites:
 			# First get a list of sprites to draw, with their que so they can be drawn in the right order.
 			# Check only screens in (or near) the viewport.
 			for s in screens:
@@ -493,14 +484,11 @@ class ViewMap (View):
 			sy = ((s - 1) / 32) * 50 * 8
 			sx = ((s - 1) % 32) * 50 * 12
 			for n, spr in warptargets[s]:
-				# If the sprite is near, don't duplicate it.
-				if n in screens:
-					continue
 				sp = data.world.room[n].sprite[spr]
 				seq = data.seq.find_seq (sp.seq)
 				is_selected = (n, spr, True) in spriteselect
 				lst += (((None, 0), sp, seq, is_selected),)
-		if (the_gui.show_sprites and not self.show_sprites) or (not the_gui.show_sprites and self.show_sprites):
+		if the_gui.show_sprites:
 			# Sort the list by y coordinate, taking depth que into account.
 			lst.sort (key = lambda (x): x[0][1] - x[1].que)
 			# Now draw them all in the right order. First the pixbufs, then the hardbox, crop and selection wires.
@@ -520,7 +508,7 @@ class ViewMap (View):
 				self.buffer.draw_pixbuf (None, pb, 0, 0, left, top)
 		origin = [x / 50 for x in self.offset]
 		offset = [x % 50 for x in self.offset]
-		if (self.show_hard and not the_gui.show_hard) or (not self.show_hard and the_gui.show_hard):
+		if the_gui.get_showhard:
 			for y in range (offset[1] / 50, (self.screensize[1] + offset[1] + 50) / 50):
 				for x in range (offset[0] / 50, (self.screensize[0] + offset[0] + 50) / 50):
 					if (origin[0] + x < 0 or origin[0] + x >= self.tiles[0]) or (origin[1] + y < 0 or origin[1] + y >= self.tiles[1]):
@@ -537,8 +525,8 @@ class ViewMap (View):
 						self.buffer.draw_rectangle (self.hardgc, False, x + s[2].frames[s[1].frame].hardbox[0], y + s[2].frames[s[1].frame].hardbox[1], s[2].frames[s[1].frame].hardbox[2] - s[2].frames[s[1].frame].hardbox[0] - 1, s[2].frames[s[1].frame].hardbox[3] - s[2].frames[s[1].frame].hardbox[1] - 1)
 					if not s[3]:
 						self.buffer.draw_rectangle (self.noselectgc, False, left, top, right - left, bottom - top)
-				if not s[3]:
-					if s[1].warp != None:
+				else:
+					if not s[3]:
 						n, x, y = s[1].warp
 						y += ((n - 1) / 32) * 8 * 50 - self.offset[1]
 						x += ((n - 1) % 32) * 12 * 50 - self.offset[0] - 20
@@ -551,13 +539,15 @@ class ViewMap (View):
 				if s[0][0] != None:
 					(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 					self.buffer.draw_rectangle (self.selectgc, False, left, top, right - left, bottom - top)
-				if s[1].warp != None:
+				else:
 					n, x, y = s[1].warp
 					y += ((n - 1) / 32) * 8 * 50 - self.offset[1]
 					x += ((n - 1) % 32) * 12 * 50 - self.offset[0] - 20
 					self.buffer.draw_line (self.selectgc, x - 20, y, x + 20, y)
 					self.buffer.draw_line (self.selectgc, x, y - 20, x, y + 20)
 					self.buffer.draw_arc (self.selectgc, False, x - 15, y - 15, 30, 30, 0, 64 * 360)
+					self.buffer.draw_arc (self.selectgc, False, x - 10, y - 10, 20, 20, 0, 64 * 360)
+					self.buffer.draw_arc (self.selectgc, False, x - 5, y - 5, 10, 10, 0, 64 * 360)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def make_global (self, screen, pos):
@@ -565,271 +555,53 @@ class ViewMap (View):
 		spos = ((screen - 1) % 32, (screen - 1) / 32)
 		return [pos[x] + s[x] * spos[x] * 50 for x in range (2)]
 	def goto (self, pos):
-		s = (12, 8)
 		self.offset = [pos[x] - self.screensize[x] / 2 for x in range (2)]
 		self.update ()
 		viewworld.update ()
 	def keypress (self, widget, e):
 		self.selecting = False
+		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
+		sx = p[0] / (12 * 50)
+		sy = p[1] / (8 * 50)
+		ox = p[0] - sx * 12 * 50 + 20
+		oy = p[1] - sy * 8 * 50
+		n = sy * 32 + sx + 1
 		if View.keypress (self, widget, e):	# Handle global keys.
 			pass
-		elif e.keyval == gtk.keysyms.Control_L:
-			self.show_hard = True
-		elif e.keyval == gtk.keysyms.Alt_L:
-			self.show_sprites = True
-		elif e.keyval == gtk.keysyms.Shift_L:
-			self.edit_tiles = True
-		elif e.keyval == gtk.keysyms.p:	# play
-			os.system (the_gui['sync'])
-			for s in data.script.data:
-				data.script.data[s] = open (os.path.join (tmpdir, s + '.c')).read ()
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
-			data.play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
-		elif e.keyval == gtk.keysyms.Insert:	# create screen
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
-			if n in data.world.room:
-				self.roomsource = n
-			else:
-				data.world.room[n] = dink.Room (data)
-				if self.roomsource in data.world.room:
-					for y in range (8):
-						for x in range (12):
-							data.world.room[n].tiles[y][x] = data.world.room[self.roomsource].tiles[y][x]
-				self.update ()
-		elif e.keyval == gtk.keysyms.Delete:	# delete screen
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
-			if n in data.world.room:
-				del data.world.room[n]
-				if self.roomsource == n:
-					self.roomsource = None
-				View.update (self)
-		elif e.keyval == gtk.keysyms.Home:	# center screen
-			s = (12, 8)
-			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / 50 * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
-		elif e.keyval == gtk.keysyms.g:		# go to sprite
-			if len (spriteselect) != 1:
+		elif e.keyval == gtk.keysyms.a: # set base attack
+			View.collectiontype = 'attack'
+			viewcollection.direction (None)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.b: # set base walk
+			View.collectiontype = 'walk'
+			the_gui.setcollection = True
+			viewcollection.direction (None)
+		elif e.keyval == gtk.keysyms.c: # copy (paste) selected sprites
+			x, y = [(self.offset[x] + self.pointer_pos[x]) for x in range (2)]
+			if n not in data.world.room:
 				return
-			sprite = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
-			self.goto (self.make_global (spriteselect[0][0], (sprite.x, sprite.y)))
-		elif e.keyval == gtk.keysyms.j:		# jump to warp target
-			if len (spriteselect) != 1:
-				return
-			sprite = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
-			if sprite.warp == None:
-				return
-			self.goto (self.make_global (sprite.warp[0], (sprite.warp[1], sprite.warp[2])))
-		else:
-			if not self.editing_sprites ():
-				if View.keypress_tiles (self, e):
-					pass
-				elif e.keyval == gtk.keysyms.f:	# fill
-					if len (copybuffer) == 0:
-						return
-					tiles = list (copybuffer)
-					min = [None, None]
-					max = [None, None]
-					for i in copybuffer:
-						if i[2] != copystart[2]:
-							continue
-						for x in range (2):
-							if min[x] == None or i[x] < min[x]:
-								min[x] = i[x]
-							if max[x] == None or i[x] > max[x]:
-								max[x] = i[x]
-					for i in select.data:
-						# Don't try to paste into tile screens.
-						if i[2] != 0:
-							continue
-						n = (i[1] / 8) * 32 + (i[0] / 12) + 1
-						if n not in data.world.room:
-							continue
-						tile = None
-						if min[0] != None:
-							size = [max[x] - min[x] + 1 for x in range (2)]
-							p = [(i[x] - select.start[x] + copystart[x]) % size[x] for x in range (2)]
-							for b in copybuffer:
-								if b[2] == copystart[2] and (b[0] - copystart[0]) % size[0] == p[0] and (b[1] - copystart[1]) % size[1] == p[1]:
-									tile = b[3:6]
-						if tile == None:
-							tile = tiles[random.randrange (len (copybuffer))][3:6]
-						data.world.room[n].tiles[i[1] % 8][i[0] % 12] = tile
-				elif e.keyval == gtk.keysyms.r:	# random
-					if len (copybuffer) == 0:
-						return
-					tiles = list (copybuffer)
-					for i in select.data:
-						# Don't try to paste into tile screens.
-						if i[2] != 0:
-							continue
-						n = (i[1] / 8) * 32 + (i[0] / 12) + 1
-						if n not in data.world.room:
-							continue
-						tile = tiles[random.randrange (len (copybuffer))][3:6]
-						data.world.room[n].tiles[i[1] % 8][i[0] % 12] = tile
-			else:
-				# editing sprites
-				if e.keyval == gtk.keysyms.k:
-					for killer in spriteselect:
-						# Remove warp target in any case.
-						remove_warptarget (killer[0], killer[1])
-						if killer[2]:
-							del data.world.room[killer[0]].sprite[killer[1]]
-						else:
-							# Delete warp point
-							data.world.room[killer[0]].sprite[killer[1]].warp = None
-					spriteselect[:] = []
-					update_editgui ()
-				if e.keyval == gtk.keysyms.w:
-					global updating
-					if len (spriteselect) != 1:
-						return
-					updating = True
-					remove_warptarget (spriteselect[0][0], spriteselect[0][1])
-					p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-					p[0] += 20
-					the_gui.set_warpscreen = (p[1] / (8 * 50)) * 32 + p[0] / (12 * 50) + 1
-					the_gui.set_warpx = p[0] % (12 * 50)
-					the_gui.set_warpy = p[1] % (8 * 50)
-					the_gui.set_warp = True
-					the_gui.set_ishard = True
-					add_warptarget (spriteselect[0][0], spriteselect[0][1])
-					updating = False
-					update_gui (None)
-		self.update ()
-	def keyrelease (self, widget, e):
-		if e.keyval == gtk.keysyms.Control_L:
-			self.show_hard = False
-			self.update ()
-		elif e.keyval == gtk.keysyms.Alt_L:
-			self.show_sprites = False
-			self.update ()
-		elif e.keyval == gtk.keysyms.ISO_Prev_Group: # This is what it gives instead of Shift_L:
-			self.edit_tiles = False
-			self.update ()
-	def focus_out (self, widget, e):
-		self.show_hard = False
-		self.show_sprites = False
-		self.edit_tiles = False
-		self.update ()
-	def button_on (self, widget, e):
-		self.grab_focus ()
-		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
-		if e.type != gtk.gdk.BUTTON_PRESS:
-			return
-		if e.button == 3:	# pan view.
-			self.panning = True
-			return
-		# Select clicked screen.
-		x, y = [(self.offset[x] + self.pointer_pos[x]) for x in range (2)]
-		sx = x / (12 * 50)
-		sy = y / (8 * 50)
-		screen = sy * 32 + sx + 1
-		if screen in data.world.room:
-			selectedscreen = screen
-			update_editgui ()
-		if not self.editing_sprites ():
-			if e.button == 1:
-				x, y = self.pos_from_event ((e.x, e.y))
-				View.tileselect (self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 0)
-			elif e.button == 2:	# paste.
-				if select.empty ():
-					return
-				pos = self.pos_from_event ((e.x, e.y))
-				for t in select.compute ():
-					target = [pos[x] + t[x] for x in range (2)]
-					n = (target[1] / 8) * 32 + (target[0] / 12) + 1
-					if n not in data.world.room:
-						continue
-					p = [t[x] + select.start[x] for x in range (2)]
-					data.world.room[n].tiles[target[1] % 8][target[0] % 12] = View.find_tile (self, p, select.start[2])
-				self.update ()
-		else:
-			# sequence editing.
-			if e.button == 1:	# select.
-				# Find all sprites which are pointed at.
-				sx = x / (12 * 50)
-				sy = y / (8 * 50)
-				screens = []
-				for dy in range (-1, 2):
-					if sy + dy < 0 or sy + dy >= 24:
-						continue
-					for dx in range (-1, 2):
-						if sx + dx < 0 or sx + dx >= 32:
-							continue
-						screens += ((sy + dy) * 32 + (sx + dx) + 1,)
-				lst = []
-				for s in screens:
-					# Origin of this screen.
-					sy = ((s - 1) / 32) * 50 * 8
-					sx = ((s - 1) % 32) * 50 * 12
-					# Only look at existing screens.
-					if s in data.world.room:
-						for spr in data.world.room[s].sprite:
-							sp = data.world.room[s].sprite[spr]
-							pos = (sx + sp.x - 20, sy + sp.y) # 20, because sprite positions are relative to screen origin; first tile starts at (20,0).
-							seq = data.seq.find_seq (sp.seq)
-							(rx, ry), (left, top, right, bottom), box = self.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
-							if x - sx >= left and y - sy >= top and x - sx < right and y - sy < bottom:
-								lst += ((pos[1] - sp.que, (s, spr, False), pos),)
-					# Add all warp points, too.
-					show_only_selected = not ((self.show_hard and not the_gui.show_hard) or (not self.show_hard and the_gui.show_hard))
-					if s in warptargets:
-						for n, spr in warptargets[s]:
-							if show_only_selected and (n, spr, False) not in spriteselect:
-								continue
-							sp = data.world.room[n].sprite[spr]
-							pos = (sx + sp.warp[1] - 20, sy + sp.warp[2])
-							if -20 <= x - pos[0] < 20 and -20 <= y - pos[1] < 20:
-								seq = data.seq.find_seq (sp.seq)
-								lst += ((pos[1] - sp.que, (n, spr, True), pos),)
-				# Sort the sprites by depth.
-				lst.sort (key = lambda (x): -x[0])
-				# If the list is empty, clear the selection.
-				if lst == []:
-					spriteselect[:] = []
-					return
-				# If the currently selected sprite is in the list, select the next; otherwise select the first.
-				if len (spriteselect) == 1:
-					for s in range (len (lst)):
-						if spriteselect[0] == lst[s][1]:
-							spriteselect[:] = (lst[s][1],)
-							pos = lst[s][2]
-							if s == len (lst) - 1:
-								self.waitselect = lst[0][1:]
-							else:
-								self.waitselect = lst[s + 1][1:]
-							break
-					else:
-						# Current selection is not in the list. Select first and update gui.
-						spriteselect[:] = (lst[0][1],)
-						pos = lst[0][2]
-						update_editgui ()
-				else:
-					# There was no selection. Select first and update gui.
-					spriteselect[:] = (lst[0][1],)
-					pos = lst[0][2]
-					update_editgui ()
-				self.selecting = True
-				self.selectoffset = (x - pos[0], y - pos[1])
-			elif e.button == 2:	# paste.
-				x, y = [(self.offset[x] + self.pointer_pos[x]) for x in range (2)]
-				sx = x / (12 * 50)
-				sy = y / (8 * 50)
-				ox = x - sx * 12 * 50 + 20
-				oy = y - sy * 8 * 50
-				n = sy * 32 + sx + 1
-				if n not in data.world.room:
-					return
+			if len (spriteselect) != 0:
 				newselect = []
+				avg = (0, 0)
 				for paster in spriteselect:
 					if paster[2]:
 						# Don't paste warp points.
 						continue
 					src = data.world.room[paster[0]].sprite[paster[1]]
+					avg = avg[0] + src.x, avg[1] + src.y
+				avg = avg[0] / len (spriteselect), avg[1] / len (spriteselect)
+				for paster in spriteselect:
+					if paster[2]:
+						# Don't paste warp points.
+						continue
+					src = data.world.room[paster[0]].sprite[paster[1]]
+					tx = x + src.x - avg[0]
+					ty = y + src.y - avg[1]
+					sx = tx / (12 * 50)
+					sy = ty / (8 * 50)
+					ox = tx - sx * 12 * 50 + 20
+					oy = ty - sy * 8 * 50
+					n = sy * 32 + sx + 1
 					name = data.world.room[n].add_sprite ((ox, oy), src.seq, src.frame)
 					sp = data.world.room[n].sprite[name]
 					sp.type = src.type
@@ -848,7 +620,7 @@ class ViewMap (View):
 					sp.top = src.top
 					sp.right = src.right
 					sp.bottom = src.bottom
-					# warp
+					sp.warp = None
 					sp.touch_seq = src.touch_seq
 					sp.gold = src.gold
 					sp.hitpoints = src.hitpoints
@@ -862,44 +634,393 @@ class ViewMap (View):
 					newselect += ((n, name, False),)
 				spriteselect[:] = newselect
 				update_editgui ()
-			View.update (self)
+		elif e.keyval == gtk.keysyms.d: # set base die
+			View.collectiontype = 'die'
+			viewcollection.direction (None)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.e: # edit script(s)
+			for s in spriteselect:
+				spr = data.world.room[s[0]].sprite[s[1]]
+				if not spr.script:
+					continue
+				do_edit (spr.script)
+		elif e.keyval == gtk.keysyms.f: # fill selected tiles with buffer
+			if len (copybuffer) == 0:
+				return
+			tiles = list (copybuffer)
+			min = [None, None]
+			max = [None, None]
+			for i in copybuffer:
+				if i[2] != copystart[2]:
+					continue
+				for x in range (2):
+					if min[x] == None or i[x] < min[x]:
+						min[x] = i[x]
+					if max[x] == None or i[x] > max[x]:
+						max[x] = i[x]
+			for i in select.data:
+				# Don't try to paste into tile screens.
+				if i[2] != 0:
+					continue
+				n = (i[1] / 8) * 32 + (i[0] / 12) + 1
+				if n not in data.world.room:
+					continue
+				tile = None
+				if min[0] != None:
+					size = [max[x] - min[x] + 1 for x in range (2)]
+					p = [(i[x] - select.start[x] + copystart[x]) % size[x] for x in range (2)]
+					for b in copybuffer:
+						if b[2] == copystart[2] and (b[0] - copystart[0]) % size[0] == p[0] and (b[1] - copystart[1]) % size[1] == p[1]:
+							tile = b[3:6]
+				if tile == None:
+					tile = tiles[random.randrange (len (copybuffer))][3:6]
+				data.world.room[n].tiles[i[1] % 8][i[0] % 12] = tile
+		elif e.keyval == gtk.keysyms.g: # TODO: make group.
+			pass
+		elif e.keyval == gtk.keysyms.h: # toggle show hardness
+			the_gui.set_showhard = not the_gui.get_showhard
+			self.update ()
+		elif e.keyval == gtk.keysyms.i: # set base idle
+			View.collectiontype = 'idle'
+			viewcollection.direction (None)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.j: # jump to selected
+			target = (0, 0)
+			if len (spriteselect) > 0:
+				for s in spriteselect:
+					spr = data.world.room[s[0]].sprite[s[1]]
+					if s[2]:
+						n = self.make_global (spr.warp[0], spr.warp[1:])
+					else:
+						n = self.make_global (s[0], (spr.x, spr.y))
+					target = (target[0] + n[0], target[1] + n[1])
+				self.goto ([target[x] / len (spriteselect) for x in range (2)])
+		elif e.keyval == gtk.keysyms.k: # kill sprite
+			for killer in spriteselect:
+				# Remove warp target in any case.
+				remove_warptarget (killer[0], killer[1])
+				if not killer[2]:
+					del data.world.room[killer[0]].sprite[killer[1]]
+				else:
+					# Delete warp point
+					data.world.room[killer[0]].sprite[killer[1]].warp = None
+			spriteselect[:] = []
+			update_editgui ()
+		elif e.keyval == gtk.keysyms.l: # change largeness (start resizing)
+			self.moveinfo = 'resize', None
+		elif e.keyval == gtk.keysyms.m: # move selected sprites
+			self.moveinfo = 'move', None
+		elif e.keyval == gtk.keysyms.n: # find next
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.o: # open group
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.p: # play
+			os.system (the_gui['sync'])
+			for s in data.script.data:
+				data.script.data[s] = open (os.path.join (tmpdir, s + '.c')).read ()
+			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
+			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
+			data.play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
+		elif e.keyval == gtk.keysyms.q: # move que
+			self.moveinfo = 'que', None
+		elif e.keyval == gtk.keysyms.r: # random fill tiles
+			if len (copybuffer) == 0:
+				return
+			tiles = list (copybuffer)
+			for i in select.data:
+				# Don't try to paste into tile screens.
+				if i[2] != 0:
+					continue
+				n = (i[1] / 8) * 32 + (i[0] / 12) + 1
+				if n not in data.world.room:
+					continue
+				tile = tiles[random.randrange (len (copybuffer))][3:6]
+				data.world.room[n].tiles[i[1] % 8][i[0] % 12] = tile
+		elif e.keyval == gtk.keysyms.s: # save
+			data.save ()
+		elif e.keyval == gtk.keysyms.t: # show tilescreen
+			the_gui.settiles = True
+		# u: undo (all)
+		elif e.keyval == gtk.keysyms.v: # set visual (of sprite? of view?)
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.w: # toggle select warp or sprite.
+			if len (spriteselect) == 1:
+				spr = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
+				if spr.warp == None:
+					global updating
+					updating = True
+					n = (p[1] / (50 * 8)) * 32 + (p[0] / (50 * 12)) + 1
+					spr.warp = (n, p[0] % (50 * 12) + 20, p[1] % (50 * 8))
+					the_gui.set_warpscreen = n
+					the_gui.set_warpx = p[0] % (12 * 50)
+					the_gui.set_warpy = p[1] % (8 * 50)
+					the_gui.set_warp = True
+					the_gui.set_ishard = True
+					add_warptarget (spriteselect[0][0], spriteselect[0][1])
+					updating = False
+			newselect = []
+			for s in spriteselect:
+				spr = data.world.room[s[0]].sprite[s[1]]
+				if spr.warp != None:
+					newselect += ((s[0], s[1], not s[2]),)
+			spriteselect[:] = newselect
+		elif e.keyval == gtk.keysyms.x: # exit
+			gui.quit ()
+		elif e.keyval == gtk.keysyms.y: # yank (copy) selected tiles into buffer
+			copybuffer.clear ()
+			for i in select.data:
+				s = View.find_tile (self, i, i[2])
+				copybuffer.add ((i[0], i[1], i[2], s[0], s[1], s[2]))
+			copystart = select.start
+		elif e.keyval == gtk.keysyms.z: # zorro (start cropping)
+			self.moveinfo = 'crop', None
+		elif e.keyval == gtk.keysyms.slash: # search sprite by pattern
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.quoteleft: # enter comand
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.minus: # unselect all
+			spriteselect[:] = []
+			select.clear ()
+		elif e.keyval == gtk.keysyms.equal: # toggle show ques and hotspots
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.backslash: # start screen zoom
+			self.moveinfo = 'screenzoom', p
+		elif e.keyval == gtk.keysyms.BackSpace: # restore screen zoom 100%
+			# TODO
+			pass
+		elif e.keyval == gtk.keysyms.Home: # center screen
+			s = (12, 8)
+			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / 50 * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
+		elif e.keyval == gtk.keysyms.Insert: # insert screen
+			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
+			if n in data.world.room:
+				self.roomsource = n
+			else:
+				data.world.room[n] = dink.Room (data)
+				if self.roomsource in data.world.room:
+					for y in range (8):
+						for x in range (12):
+							data.world.room[n].tiles[y][x] = data.world.room[self.roomsource].tiles[y][x]
+				self.update ()
+		elif e.keyval == gtk.keysyms.Delete: # delete screen
+			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
+			if n in data.world.room:
+				del data.world.room[n]
+				if self.roomsource == n:
+					self.roomsource = None
+				View.update (self)
+		elif e.keyval == gtk.keysyms.Escape: # Abort current action
+			# TODO: reset change.
+			self.moveinfo = None
+		elif e.keyval == gtk.keysyms.Return: # Confirm operation.
+			self.moveinfo = None
+		elif e.keyval == gtk.keysyms.space: # start screen pan
+			self.moveinfo = 'pan', p
+		elif e.keyval == gtk.keysyms.KP_0: # new sprite from sequence
+			self.newinfo = p, (ox, oy), n
+			the_gui.setseq = True
+		elif e.keyval == gtk.keysyms.KP_1: # new sprite with direction 1
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (1)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_2: # new sprite with direction 2
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (2)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_3: # new sprite with direction 3
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (3)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_4: # new sprite with direction 4
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (4)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_5: # new sprite from collection with any direction
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (None)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_6: # new sprite with direction 6
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (6)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_7: # new sprite with direction 7
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (7)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_8: # new sprite with direction 8
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (8)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.KP_9: # new sprite with direction 9
+			self.newinfo = p, (ox, oy), n
+			viewcollection.direction (9)
+			the_gui.setcollection = True
+		elif e.keyval == gtk.keysyms.Left:
+			# TODO: move pointer one pixel.
+			pass
+		elif e.keyval == gtk.keysyms.Right:
+			# TODO: move pointer one pixel.
+			pass
+		elif e.keyval == gtk.keysyms.Up:
+			# TODO: move pointer one pixel.
+			pass
+		elif e.keyval == gtk.keysyms.Down:
+			# TODO: move pointer one pixel.
+			pass
+		self.update ()
+	def button_on (self, widget, e):
+		self.grab_focus ()
+		self.pointer_pos = int (e.x), int (e.y)
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
+		if e.type != gtk.gdk.BUTTON_PRESS:
+			return
+		if self.moveinfo != None and e.button == 1:
+			# TODO: Finish move operation.
+			self.moveinfo = None
+			return
+		# Select clicked screen.
+		x, y = [(self.offset[x] + self.pointer_pos[x]) for x in range (2)]
+		sx = x / (12 * 50)
+		sy = y / (8 * 50)
+		screen = sy * 32 + sx + 1
+		if screen in data.world.room:
+			selectedscreen = screen
+			update_editgui ()
+		keep_selection = e.state & gtk.gdk.CONTROL_MASK
+		if e.button == 1: # select sprites
+			self.moveinfo = None
+			# Find all sprites which are pointed at.
+			sx = x / (12 * 50)
+			sy = y / (8 * 50)
+			screens = []
+			for dy in range (-1, 2):
+				if sy + dy < 0 or sy + dy >= 24:
+					continue
+				for dx in range (-1, 2):
+					if sx + dx < 0 or sx + dx >= 32:
+						continue
+					screens += ((sy + dy) * 32 + (sx + dx) + 1,)
+			lst = []
+			for s in screens:
+				# Origin of this screen.
+				sy = ((s - 1) / 32) * 50 * 8
+				sx = ((s - 1) % 32) * 50 * 12
+				# Only look at existing screens.
+				if s in data.world.room:
+					for spr in data.world.room[s].sprite:
+						sp = data.world.room[s].sprite[spr]
+						pos = (sx + sp.x - 20, sy + sp.y) # 20, because sprite positions are relative to screen origin; first tile starts at (20,0).
+						seq = data.seq.find_seq (sp.seq)
+						(rx, ry), (left, top, right, bottom), box = self.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
+						if x - sx >= left and y - sy >= top and x - sx < right and y - sy < bottom:
+							lst += ((pos[1] - sp.que, (s, spr, False), pos),)
+				# Add all warp points, too.
+				show_only_selected = not the_gui.get_showhard
+				if s in warptargets:
+					for n, spr in warptargets[s]:
+						if show_only_selected and (n, spr, False) not in spriteselect:
+							continue
+						sp = data.world.room[n].sprite[spr]
+						pos = (sx + sp.warp[1] - 20, sy + sp.warp[2])
+						if -20 <= x - pos[0] < 20 and -20 <= y - pos[1] < 20:
+							seq = data.seq.find_seq (sp.seq)
+							lst += ((pos[1] - sp.que, (n, spr, True), pos),)
+			# Sort the sprites by depth.
+			lst.sort (key = lambda (x): -x[0])
+			# If the list is empty, clear the selection.
+			if lst == []:
+				if not keep_selection:
+					spriteselect[:] = []
+				return
+			# If the currently selected sprite is in the list, select the next; otherwise select the first.
+			if not keep_selection:
+				if len (spriteselect) == 1:
+					for s in range (len (lst)):
+						if spriteselect[0] == lst[s][1]:
+							spriteselect[:] = (lst[s][1],)
+							pos = lst[s][2]
+							if s == len (lst) - 1:
+								self.waitselect = lst[0][1:]
+							else:
+								self.waitselect = lst[s + 1][1:]
+							break
+					else:
+						# Current selection is not in the list. Select first and update gui.
+						spriteselect[:] = (lst[0][1],)
+						pos = lst[0][2]
+						update_editgui ()
+				else:
+					# There was not a 1-sprite selection. Select first and update gui.
+					spriteselect[:] = (lst[0][1],)
+					pos = lst[0][2]
+					update_editgui ()
+			else:
+				# Add first not-yet-selected sprite to the selection.
+				for s in lst:
+					if s[1] in spriteselect:
+						continue
+					spriteselect[:] = spriteselect + [s[1]]
+					pos = s[2]
+					break
+			self.selecting = True
+		elif e.button == 2:	# paste tiles
+			if select.empty ():
+				return
+			pos = self.pos_from_event ((e.x, e.y))
+			for t in select.compute ():
+				target = [pos[x] + t[x] for x in range (2)]
+				n = (target[1] / 8) * 32 + (target[0] / 12) + 1
+				if n not in data.world.room:
+					continue
+				p = [t[x] + select.start[x] for x in range (2)]
+				data.world.room[n].tiles[target[1] % 8][target[0] % 12] = View.find_tile (self, p, select.start[2])
+			self.update ()
+		elif e.button == 3:	# select tiles
+			x, y = self.pos_from_event ((e.x, e.y))
+			View.tileselect (self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 0)
+			self.moveinfo = 'tileselect', (x, y)
+		self.update ()
 	def button_off (self, widget, e):
 		if e.button == 1:
-			self.selecting = False
+			self.spriteselecting = False
 			if self.waitselect != None:
 				spriteselect[:] = (self.waitselect[0],)
 				pos = self.waitselect[1]
 				update_editgui ()
 		elif e.button == 3:
-			self.panning = False
-		View.update (self)
+			self.selecting = False
+		self.update ()
 	def move (self, widget, e):
 		self.waitselect = None
 		ex, ey, emask = self.get_window ().get_pointer ()
 		tile = self.pointer_tile
 		pos = int (ex), int (ey)
-		diff = [pos[x] - self.pointer_pos[x] for x in range (2)]
+		diff = [pos[t] - self.pointer_pos[t] for t in range (2)]
 		self.pointer_pos = pos
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
-		if self.panning:
-			self.offset = [self.offset[x] - diff[x] for x in range (2)]
-		if not self.editing_sprites ():
-			# tile editing.
-			if self.selecting:
-				View.select_tiles (self, tile, 0)
-		else:
-			# sequence editing.
-			if not self.selecting:
-				# Ignore events without selection.
-				self.update ()
-				viewworld.update ()
-				return
+		self.pointer_tile = [(self.pointer_pos[t] + self.offset[t]) / 50 for t in range (2)]
+		if self.moveinfo == None:
+			return
+		elif self.moveinfo[0] == 'tileselect':
+			View.select_tiles (self, tile, 0)
+		elif self.moveinfo[0] == 'spriteselect':
+			# TODO
+			pass
+		elif self.moveinfo[0] == 'resize':
+			# TODO
+			pass
+		elif self.moveinfo[0] == 'move':
 			for mover in range (len (spriteselect)):
 				room = spriteselect[mover][0]
 				sp = data.world.room[room].sprite[spriteselect[mover][1]]
 				if not spriteselect[mover][2]:
 					s = [((room - 1) % 32) * (12 * 50), ((room - 1) / 32) * (8 * 50)]
-					p = [pos[t] + self.offset[t] - self.selectoffset[t] - s[t] for t in range (2)]
+					p = [(sp.x - 20, sp.y)[t] + diff[t] for t in range (2)]
 					os = s
 					op = p
 					while p[0] < 0 and s[0] > 0:
@@ -944,7 +1065,7 @@ class ViewMap (View):
 				else:
 					# Move the warp point.
 					s = [((sp.warp[0] - 1) % 32) * (12 * 50), ((sp.warp[0] - 1) / 32) * (8 * 50)]
-					p = [pos[t] + self.offset[t] - self.selectoffset[t] - s[t] for t in range (2)]
+					p = [(sp.warp[1] - 20, sp.warp[2])[t] + diff[t] for t in range (2)]
 					while p[0] < 0 and s[0] > 0:
 						p[0] += 12 * 50
 						s[0] -= 12 * 50
@@ -960,6 +1081,19 @@ class ViewMap (View):
 					remove_warptarget (room, spriteselect[mover][1])
 					sp.warp = ((s[1] / (8 * 50)) * 32 + (s[0] / (12 * 50)) + 1, p[0] + 20, p[1])
 					add_warptarget (room, spriteselect[mover][1])
+		elif self.moveinfo[0] == 'que':
+			# TODO
+			pass
+		elif self.moveinfo[0] == 'crop':
+			# TODO
+			pass
+		elif self.moveinfo[0] == 'screenzoom':
+			# TODO
+			pass
+		elif self.moveinfo[0] == 'pan':
+			self.offset = [self.offset[x] - diff[x] for x in range (2)]
+		else:
+			raise AssertionError ('invalid moveinfo type %s' % self.moveinfo[0])
 		update_editgui ()
 		self.update ()
 		viewworld.update ()
@@ -972,57 +1106,153 @@ class ViewSeq (View):
 		s = seqlist ()
 		ns = (len (s) + self.width - 1) / self.width
 		self.set_size_request (self.width * self.tilesize, ns * self.tilesize)
+		self.selected_seq = None
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		s = seqlist ()
 		ns = (len (s) + self.width - 1) / self.width
-		# sequences
-		for y in range (ns):
-			for x in range (self.width):
-				dpos = [(x, y)[t] * self.tilesize - self.offset[t] for t in range (2)]
-				if y * self.width + x >= len (s):
-					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
-					continue
-				pb = self.pixbufs[s[y * self.width + x]][1]
-				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
-				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb), self.tilesize), 0, 0, dpos[0], dpos[1])
+		if self.selected_seq == None:
+			for y in range (ns):
+				for x in range (self.width):
+					if y * self.width + x >= len (s):
+						self.draw_seq ((x, y), None)
+						continue
+					pb = self.pixbufs[s[y * self.width + x]][1]
+					self.draw_seq ((x, y), pb)
+		else:
+			# Draw clicked sequence.
+			x0, y0 = self.selected_seq
+			pos0 = y0 * self.width + x0
+			pb = self.pixbufs[s[pos0]][1]
+			self.draw_seq (self.selected_seq, pb)
+			# Draw selectable frames.
+			frames = data.seq.seq[s[pos0]].frames
+			if x0 + len (frames) - 1 <= self.width:
+				off = x0
+			else:
+				off = max (0, self.width - (len (frames) - 1))
+			for f in range (1, len (frames)):
+				pb = self.pixbufs[s[pos0]][f]
+				y = y0 + 1 + (f - 1 + off) / self.width
+				x = (f - 1 + off) % self.width
+				self.draw_seq ((x, y), pb)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
-		self.selecting = False
-		if View.keypress (self, widget, e):	# Handle global keys.
-			pass
-		elif e.keyval == gtk.keysyms.Home:	# restore sane panning
-			self.offset = [0, 0]
-			self.update ()
-		else:
-			sel = self.get_selected_sequence (self.pointer_pos[0], self.pointer_pos[1])
-			View.keypress_seq (self, e.keyval, sel)
+		if e.keyval == gtk.keysyms.Escape: # Cancel operation.
+			the_gui.setmap = True
+		elif e.keyval == gtk.keysyms.Return: # Confirm operation.
+			e.x, e.y, e.mask = self.get_window ().get_pointer ()
+			e.type = gtk.gdk.BUTTON_PRESS
+			e.button = 1
+			self.button_on (widget, e)
 	def get_selected_sequence (self, x, y):
 		s = seqlist ()
 		ns = (len (s) + self.width - 1) / self.width
 		if x >= 0 and x < self.tilesize * self.width and y >= 0 and y < self.tilesize * ns:
 			target = (y / self.tilesize) * self.width + x / self.tilesize
 			if len (s) > target:
-				return (s[target], 1)
+				return s[target]
 		return None
-	def keyrelease (self, widget, e):
-		pass
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
 		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
-		if e.button == 3:	# pan view.
-			self.panning = True
+		seq = self.get_selected_sequence (*self.pointer_pos)
+		if e.button == 1:	# perform action or change selected sequence
+			if len (spriteselect) != 1:
+				return
+			if spriteselect[0][2]:
+				spr = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
+				spr.touch_seq = seq
+				the_gui.setmap = True
+				viewmap.update ()
+			else:
+				if seq != '':
+					self.selected_seq = self.pointer_tile
+					self.update ()
+		elif e.button == 2:	# add new sprite
+			if seq == '':
+				return
+			if viewmap.newinfo[2] not in data.world.room:
+				# TODO: add for selected screen.
+				return
+			self.selected_seq = self.pointer_tile
+			self.update ()
+	def button_off (self, widget, e):
+		if self.selected_seq == None:
 			return
-		sel = self.get_selected_sequence (*self.pointer_pos)
-		if sel == None:
+		self.pointer_pos = int (e.x), int (e.y)
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
+		s = seqlist ()
+		x0, y0 = self.selected_seq
+		pos0 = y0 * self.width + x0
+		frames = data.seq.seq[s[pos0]].frames
+		if x0 + len (frames) - 1 <= self.width:
+			off = x0
+		else:
+			off = max (0, self.width - (len (frames) - 1))
+		lx = self.pointer_tile[0]
+		ly = self.pointer_tile[1] - y0 - 1
+		lframe = ly * self.width + lx + 1 - off
+		if self.pointer_tile[0] == x0 and self.pointer_tile[1] == y0:
+			frame = 1
+		elif lframe >= 0 and lframe < len (frames):
+			frame = lframe
+		else:
+			# Selected nothing; return to selection.
+			self.selected_seq = None
 			return
-		#fselect = (sel[0], sel[1], None, None, True)
-		View.update (self)
+		if e.button == 1:
+			spr = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
+			# Don't accidentily change sprite when warp target is selected.
+			if spriteselect[0][2]:
+				# Don't return to the map.
+				return
+			spr.seq = s[y0 * self.width + x0]
+			spr.frame = frame
+		elif e.button == 2:
+			(x, y), (ox, oy), n = viewmap.newinfo
+			name = data.world.room[n].add_sprite ((ox, oy), s[pos0], frame)
+			sp = data.world.room[n].sprite[name]
+			sp.type = 1
+			sp.size = 100
+			sp.brain = 'none'
+			sp.script = ''
+			sp.speed = 1
+			sp.base_walk = ''
+			sp.base_idle = ''
+			sp.base_attack = ''
+			sp.base_die = ''
+			sp.timer = 33
+			sp.que = 0
+			sp.hard = False
+			sp.left = 0
+			sp.top = 0
+			sp.right = 0
+			sp.bottom = 0
+			sp.warp = None
+			sp.touch_seq = ''
+			sp.gold = 0
+			sp.hitpoints = 0
+			sp.strength = 0
+			sp.defense = 0
+			sp.exp = 0
+			sp.sound = ''
+			sp.vision = 0
+			sp.nohit = True
+			sp.touch_damage = 0
+			spriteselect[:] = ((n, name, False),)
+			update_editgui ()
+		else:
+			# Don't return to the map.
+			return
+		self.selected_seq = None
+		the_gui.setmap = True
+		viewmap.update ()
 
 class ViewCollection (View):
 	def __init__ (self):
@@ -1032,61 +1262,196 @@ class ViewCollection (View):
 		c = collectionlist ()
 		nc = (len (c) + self.width - 1) / self.width
 		self.set_size_request (self.width * self.tilesize, nc * self.tilesize)
+		self.available = []
+		self.selected_seq = None
 	def update (self):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
-		c = collectionlist ()
+		c = self.available
 		nc = (len (c) + self.width - 1) / self.width
-		for y in range (nc):
-			for x in range (self.width):
-				dpos = [(x, y)[t] * self.tilesize - self.offset[t] for t in range (2)]
-				if y * self.width + x >= len (c):
-					self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
-					continue
-				for d in (1, 2, 3, 4, 6, 7, 8, 9):
-					if d in data.seq.collection[c[y * self.width + x]]:
-						break
-				pb = self.cpixbufs[c[y * self.width + x]][d][1]
-				self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
-				self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pb), self.tilesize), 0, 0, dpos[0], dpos[1])
+		if self.selected_seq == None:
+			for y in range (nc):
+				for x in range (self.width):
+					if y * self.width + x >= len (c):
+						self.draw_seq ((x, y), None)
+						continue
+					if c[y * self.width + x][0] == '':
+						continue
+					seq = c[y * self.width + x]
+					pb = self.cpixbufs[seq[0]][seq[1]][1]
+					self.draw_seq ((x, y), pb)
+		else:
+			# Draw clicked sequence.
+			x0, y0 = self.selected_seq
+			pos0 = y0 * self.width + x0
+			seq = c[pos0]
+			pb = self.cpixbufs[seq[0]][seq[1]][1]
+			self.draw_seq (self.selected_seq, pb)
+			# Draw selectable frames.
+			frames = data.seq.collection[seq[0]][seq[1]].frames
+			if x0 + len (frames) - 1 <= self.width:
+				off = x0
+			else:
+				off = max (0, self.width - (len (frames) - 1))
+			for f in range (1, len (frames)):
+				pb = self.cpixbufs[seq[0]][seq[1]][f]
+				y = y0 + 1 + (f - 1 + off) / self.width
+				x = (f - 1 + off) % self.width
+				self.draw_seq ((x, y), pb)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+	def direction (self, d):
+		self.thedirection = d
+		self.available = [('', None)]
+		for c in collectionlist ():
+			if d in data.seq.collection[c]:
+				self.available += ((c, d),)
+			elif d == None:
+				self.available += ((c, [x for x in data.seq.collection[c].keys () if type (x) == int][0]),)
 	def get_selected_sequence (self, x, y):
-		c = collectionlist ()
+		c = self.available
 		nc = (len (c) + self.width - 1) / self.width
 		if x >= 0 and x < self.tilesize * self.width and y >= 0 and y < self.tilesize * nc:
 			target = (y / self.tilesize) * self.width + x / self.tilesize
 			if target <= len (c):
-				return ((c[target], [x for x in data.seq.collection[c[target]].keys () if type (x) == int][0]), 1)
+				return c[target]
 		return None
 	def keypress (self, widget, e):
-		self.selecting = False
-		if View.keypress (self, widget, e):	# Handle global keys.
-			pass
-		elif e.keyval == gtk.keysyms.Home:	# restore sane panning
-			self.offset = [0, 0]
-			self.update ()
+		if e.keyval == gtk.keysyms.Escape: # Cancel operation.
+			the_gui.setmap = True
+			return
+		elif e.keyval == gtk.keysyms.Return: # Confirm operation.
+			e.x, e.y, e.mask = self.get_window ().get_pointer ()
+			e.type = gtk.gdk.BUTTON_PRESS
+			e.button = 1
+			self.button_on (widget, e)
+		elif e.keyval == gtk.keysyms.a: # set base attack.
+			View.collectiontype = 'attack'
+		elif e.keyval == gtk.keysyms.b: # set base walk.
+			View.collectiontype = 'walk'
+		elif e.keyval == gtk.keysyms.d: # set base die.
+			View.collectiontype = 'die'
+		elif e.keyval == gtk.keysyms.i: # set base idle.
+			View.collectiontype = 'idle'
 		else:
-			sel = self.get_selected_sequence (self.pointer_pos[0], self.pointer_pos[1])
-			View.keypress_seq (self, e.keyval, sel)
-	def keyrelease (self, widget, e):
-		pass
+			return
+		self.button_on (widget, e)
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
 		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
-		if e.button == 3:	# pan view.
-			self.panning = True
+		seq = self.get_selected_sequence (*self.pointer_pos)
+		if seq == None:
 			return
-		if e.button != 1:
+		if e.button == 1:	# perform action or change selected sequence
+			if View.collectiontype == None:
+				if len (spriteselect) != 1:
+					return
+				if spriteselect[0][2]:
+					spr = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
+					spr.touch_seq = seq
+					the_gui.setmap = True
+					viewmap.update ()
+				else:
+					if seq[0] != '':
+						self.selected_seq = self.pointer_tile
+						self.update ()
+			else:
+				for s in spriteselect:
+					if View.collectiontype == 'idle':
+						data.world.room[s[0]].sprite[s[1]].base_idle = seq
+					elif View.collectiontype == 'die':
+						data.world.room[s[0]].sprite[s[1]].base_die = seq
+					elif View.collectiontype == 'walk':
+						data.world.room[s[0]].sprite[s[1]].base_walk = seq
+					elif View.collectiontype == 'attack':
+						data.world.room[s[0]].sprite[s[1]].base_attack = seq
+					else:
+						raise AssertionError ('invalid collection type %s' % View.collectiontype)
+		elif e.button == 2:	# add new sprite
+			if View.collectiontype != None or seq == '':
+				return
+			if viewmap.newinfo[2] not in data.world.room:
+				# TODO: add for selected screen.
+				return
+			self.selected_seq = self.pointer_tile
+			self.update ()
+	def button_off (self, widget, e):
+		if self.selected_seq == None:
 			return
-		sel = self.get_selected_sequence (*self.pointer_pos)
-		if sel == None:
+		self.pointer_pos = int (e.x), int (e.y)
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / self.tilesize for x in range (2)]
+		c = self.available
+		x0, y0 = self.selected_seq
+		pos0 = y0 * self.width + x0
+		seq = c[pos0]
+		frames = data.seq.collection[seq[0]][seq[1]].frames
+		if x0 + len (frames) - 1 <= self.width:
+			off = x0
+		else:
+			off = max (0, self.width - (len (frames) - 1))
+		lx = self.pointer_tile[0]
+		ly = self.pointer_tile[1] - y0 - 1
+		lframe = ly * self.width + lx + 1 - off
+		if self.pointer_tile[0] == x0 and self.pointer_tile[1] == y0:
+			frame = 1
+		elif lframe >= 0 and lframe < len (frames):
+			frame = lframe
+		else:
+			# Selected nothing; return to selection.
+			self.selected_seq = None
 			return
-		#fselect = (sel[0], 1, None, None, True)
-		View.update (self)
+		if e.button == 1:
+			spr = data.world.room[spriteselect[0][0]].sprite[spriteselect[0][1]]
+			# Don't accidentily change sprite when warp target is selected.
+			if spriteselect[0][2]:
+				# Don't return to the map.
+				return
+			spr.seq = seq
+			spr.frame = frame
+		elif e.button == 2:	# add new sprite
+			(x, y), (ox, oy), n = viewmap.newinfo
+			if n not in data.world.room:
+				# TODO: add for selected screen.
+				return
+			name = data.world.room[n].add_sprite ((ox, oy), seq, 1)
+			sp = data.world.room[n].sprite[name]
+			sp.type = 1
+			sp.size = 100
+			sp.brain = 'bisshop'
+			sp.script = ''
+			sp.speed = 1
+			sp.base_walk = seq[0]
+			sp.base_idle = ''
+			sp.base_attack = ''
+			sp.base_die = ''
+			sp.timer = 33
+			sp.que = 0
+			sp.hard = False
+			sp.left = 0
+			sp.top = 0
+			sp.right = 0
+			sp.bottom = 0
+			sp.warp = None
+			sp.touch_seq = ''
+			sp.gold = 0
+			sp.hitpoints = 0
+			sp.strength = 0
+			sp.defense = 0
+			sp.exp = 0
+			sp.sound = ''
+			sp.vision = 0
+			sp.nohit = True
+			sp.touch_damage = 0
+			spriteselect[:] = ((n, name, False),)
+			update_editgui ()
+		else:
+			return
+		self.selected_seq = None
+		the_gui.setmap = True
+		viewmap.update ()
 
 class ViewTiles (View):
 	def __init__ (self):
@@ -1106,15 +1471,26 @@ class ViewTiles (View):
 		View.draw_tiles (self, 1)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		if the_gui.get_showtilehard:
+			# TODO: draw hardness
+			pass
 	def keypress (self, widget, e):
 		self.selecting = False
-		if View.keypress (self, widget, e):	# Handle global keys.
-			pass
-		elif View.keypress_tiles (self, e):
-			pass
-		elif e.keyval == gtk.keysyms.Home:	# center screen
+		if e.keyval == gtk.keysyms.Home:	# center screen
 			s = (12, 8)
 			self.offset = [((self.pointer_pos[x] + self.offset[x]) / s[x] / 50) * s[x] * 50 + (s[x] / 2) * 50 - self.screensize[x] / 2 for x in range (2)]
+			self.update ()
+		elif e.keyval == gtk.keysyms.t:		# toggle tile screen
+			the_gui.setmap = True
+		elif e.keyval == gtk.keysyms.y:		# yank tiles into buffer
+			copybuffer.clear ()
+			for i in select.data:
+				s = View.find_tile (self, i, i[2])
+				copybuffer.add ((i[0], i[1], i[2], s[0], s[1], s[2]))
+			copystart = select.start
+			the_gui.setmap = True
+		elif e.keyval == gtk.keysyms.h:		# toggle show hardness
+			the_gui.set_showtilehard = not the_gui.get_showtilehard
 			self.update ()
 	def move (self, widget, e):
 		ex, ey, emask = self.get_window ().get_pointer ()
@@ -1130,8 +1506,6 @@ class ViewTiles (View):
 		if self.selecting:
 			View.select_tiles (self, tile, 1)
 		self.update ()
-	def keyrelease (self, widget, e):
-		pass
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
@@ -1172,8 +1546,6 @@ class ViewWorld (View):
 		self.buffer.draw_rectangle (self.pastegc, False, self.pointer_pos[0] - targetsize[0] / 2, self.pointer_pos[1] - targetsize[1] / 2, targetsize[0] - 1, targetsize[1] - 1)
 		if not (config.lowmem and config.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
-	def keyrelease (self, widget, e):
-		pass
 	def select (self):
 		self.selecting = True
 		s = (32, 24)

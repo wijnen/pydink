@@ -17,16 +17,16 @@ gtk
 			VBox setpage=setmap
 				External expand=:True id=viewmap
 				HBox expand=:False
-					CheckButton value=show_hard toggled=update
+					CheckButton value=get_showhard toggled=update set=set_showhard
 						'Show hardness
 					CheckButton value=show_sprites toggled=update set=:True
 						'Show sprites
-					CheckButton value=editing_sprites toggled=update set=:True
-						'Edit sprites
 			External id=viewcollection setpage=setcollection
 			External id=viewseq setpage=setseq
-	Window title=":Tiles - Python Dink Editor"
-		External id=viewtiles
+			VBox setpage=settiles
+				External expand=:True id=viewtiles
+				CheckButton value=get_showtilehard toggled=update set=set_showtilehard
+					'Show hardness
 	Window title=":Settings - Python Dink Editor"
 		Table columns=2
 			External id=viewworld
