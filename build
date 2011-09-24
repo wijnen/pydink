@@ -43,7 +43,8 @@ button-1 = button-start 1	76 40	game-start
 button-2 = button-continue 1	524 40	game-continue
 button-3 = button-quit 1	560 440	game-quit
 button-4 = button-ordering 1	104 440	game-credits
-#run = custom-start
+#title-script = custom-title
+#start-script = custom-start
 pointer = special 8
 ''')
 check (os.path.join (root, os.path.join ('seq', 'info' + os.extsep + 'txt')), '''\
@@ -70,8 +71,8 @@ for l in open (title).readlines ():
 	w = l.split ('=', 1)
 	if len (w) != 2:
 		continue
-	if w[0].strip () == 'run':
-		other_scripts += w[1].strip ()
+	if w[0].strip () in ('start-script', 'title-script'):
+		other_scripts += (w[1].strip (),)
 		continue
 	if not w[0].strip ().startswith ('button-') and not w[0].strip ().startswith ('sprite-'):
 		continue
@@ -95,62 +96,62 @@ button_click = '''\
 	spawn ("start-game");
 	kill_this_task ();
 '''
-for s in button_scripts:
-	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
-void main ()
-{
-}
-
-void buttonon ()
-{
-	sp_pframe (current_sprite, 2);
-}
-
-void buttonoff ()
-{
-	sp_pframe (current_sprite, 1);
-}
-
-void click ()
-{
-''' + button_click + '''\
-}
-''')
-	button_click = '	// TODO\n'
-for s in sprite_scripts:
-	if s in button_scripts:
-		continue
-	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
-// TODO
-void main ()
-{
-}
-
-void talk ()
-{
-}
-
-void touch ()
-{
-}
-
-void hit ()
-{
-}
-''')
-for s in other_scripts:
-	if s in sprite_scripts:
-		continue
-	if s == 'escape':
-		script_main = 'kill_game ();\n'
-	else:
-		script_main = '// TODO\n'
-	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
-void main ()
-{
-''' + script_main + '''\
-}
-''')
+#for s in button_scripts:
+#	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
+#void main ()
+#{
+#}
+#
+#void buttonon ()
+#{
+#	sp_pframe (current_sprite, 2);
+#}
+#
+#void buttonoff ()
+#{
+#	sp_pframe (current_sprite, 1);
+#}
+#
+#void click ()
+#{
+#''' + button_click + '''\
+#}
+#''')
+#	button_click = '	// TODO\n'
+#for s in sprite_scripts:
+#	if s in button_scripts:
+#		continue
+#	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
+#// TODO
+#void main ()
+#{
+#}
+#
+#void talk ()
+#{
+#}
+#
+#void touch ()
+#{
+#}
+#
+#void hit ()
+#{
+#}
+#''')
+#for s in other_scripts:
+#	if s in sprite_scripts:
+#		continue
+#	if s == 'escape':
+#		script_main = 'kill_game ();\n'
+#	else:
+#		script_main = '// TODO\n'
+#	check (os.path.join (os.path.join (root, 'script'), s + os.extsep + 'c'), '''\
+#void main ()
+#{
+#''' + script_main + '''\
+#}
+#''')
 if created:
 	room = os.path.join (os.path.join (root, 'world'), '400-15-12')
 	check (room)
@@ -170,39 +171,6 @@ if created:
 ''')
 	sprite = os.path.join (room, 'sprite')
 	check (sprite)
-	check (os.path.join (sprite, 'church'), '''\
-x = 300
-y = 300
-#frame = 1
-#type = 1
-#size = 100
-#active = 1
-brain = none
-#script =
-#speed = 1
-#base_walk = collection
-#base_idle = collection
-#base_attack = collection
-#base_die = collection
-#timer = 33
-#que = 0
-#hard = yes
-#left = 0
-#top = 0
-#right = 0
-#bottom = 0
-#warp = room x y
-#touch_seq = sequence
-#gold = 0
-#hitpoints = 0
-#strength = 0
-#defense = 0
-#exp = 0
-#sound = sample-name
-#vision = 0
-#nohit = no
-#touch_damage = 0
-''')
 	print 'Content created: not running build.'
 	sys.exit (0)
 

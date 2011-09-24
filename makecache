@@ -18,233 +18,233 @@ savedir = os.path.expanduser (cachedir)
 if not os.path.isdir (savedir):
 	os.makedirs (savedir)
 
-collection_names = [(x.split ()[0], int (x.split ()[1])) for x in '''\
-idle 10
-duck 20
-pig 40
-walk 70
-hit 100
-duckbloody 110
-duckhead 120
-pillbug 130
-pillbugdie 140
-dragon 200
-dragondie 210
-redmaiden 220
-oldman 230
-brownmaiden 240
-bluemaiden 250
-fairy 260
-redknight 270
-blueknight 280
-silverknight 290
-goldknight 300
-push 310
-shoot 320
-girl 330
-merchant 340
-mom 350
-brownmom 360
-bluemerchant 370
-greenmerchant 380
-purplemerchant 390
-soldier 400
-peasant 410
-comet 500
-fireball 510
-seeding 520
-bonca 530
-boncaattack 540
-boncadie 550
-purplegnome 560
-bluegnome 570
-greengnome 580
-grayboncaattack 590
-graybonca 600
-purplebonca 610
-purpleboncaattack 620
-slayerattack 630
-slayer 640
-bluepuddle 650
-bluepuddledie 660
-greenpuddle 670
-greenpuddledie 680
-redpuddle 690
-redpuddledie 700
-redknightattack 710
-silverknightattack 720
-blueknightattack 730
-goldknightattack 740
-hammergoblinattack 750
-hammergoblin 760
-horngoblinattack 770
-horngoblin 780
-goblinattack 790
-goblin 800
-giantattack 810
-giant 820
-spikeidle 830
-spike 840'''.split ('\n')]
+collection_names = [(x.split ()[0], int (x.split ()[1]), x.split ()[2], x.split ()[3], x.split ()[4], x.split ()[5]) for x in '''\
+idle 10 repeat none none none
+duck 20 duck none none none
+pig 40 pig none none none
+walk 70 bisshop none hit none
+hit 100 play none none none
+duckbloody 110 bisshop none none none
+duckhead 120 mark none none none
+pillbug 130 bisshop en-pill none pillbugdie
+pillbugdie 140 mark none none none
+dragon 200 rook en-drag none dragondie
+dragondie 210 mark none none none
+redmaiden 220 person none none none
+oldman 230 person none none none
+brownmaiden 240 person none none none
+bluemaiden 250 person none none none
+fairy 260 person none none none
+redknight 270 person none redknightattack none
+blueknight 280 person none blueknightattack none
+silverknight 290 person none silverknightattack none
+goldknight 300 person none goldknightattack none
+push 310 repeat none none none
+shoot 320 repeat none none none
+girl 330 person none none none
+merchant 340 person none none none
+mom 350 person none none none
+brownmom 360 person none none none
+bluemerchant 370 person none none none
+greenmerchant 380 person none none none
+purplemerchant 390 person none none none
+soldier 400 person none none none
+peasant 410 person none none none
+comet 500 missile none none none
+fireball 510 missile none none none
+seeding 520 mark none none none
+bonca 530 bisshop en-bonc boncaattack boncadie
+boncaattack 540 repeat none none none
+boncadie 550 mark none none none
+purplegnome 560 person none none none
+bluegnome 570 person none none none
+greengnome 580 person none none none
+grayboncaattack 590 repeat none none none
+graybonca 600 bisshop en-bong grayboncaattack boncadie
+purplebonca 610 bisshop en-bonc1 purpleboncaattack boncadie
+purpleboncaattack 620 repeat none none none
+slayerattack 630 repeat none none none
+slayer 640 bisshop en-slay slayerattack none
+bluepuddle 650 bisshop en-slimb none bluepuddledie
+bluepuddledie 660 mark none none none
+greenpuddle 670 bisshop en-slimg none greenpuddledie
+greenpuddledie 680 mark none none none
+redpuddle 690 bisshop en-slim none redpuddledie
+redpuddledie 700 mark none none none
+redknightattack 710 repeat none none none
+silverknightattack 720 repeat none none none
+blueknightattack 730 repeat none none none
+goldknightattack 740 repeat none none none
+hammergoblinattack 750 repeat none none none
+hammergoblin 760 person none hammergoblinattack none
+horngoblinattack 770 repeat none none none
+horngoblin 780 person none horngoblinattack none
+goblinattack 790 repeat none none none
+goblin 800 person none goblinattack none
+giantattack 810 repeat none none none
+giant 820 bisshop en-gh giantattack none
+spikeidle 830 bisshop en-bonc none none
+spike 840 bisshop en-bonc none none'''.split ('\n')]
 
-sequence_names = [(x.split ()[0], int (x.split ()[1])) for x in '''\
-special 10
-treefire 20
-arrow 25
-textbox 30
-innwalls 31
-tree 32
-outinn 33
-doorleft 50
-doorright 51
-heart 52
-goldheart 53
-smallheart 54
-bluebottle 55
-redbottle 56
-purplebottle 57
-bridge 58
-cabin 59
-church 60
-doorout1 61
-doorout2 62
-home 63
-inacc 64
-grass 65
-garden 66
-castle 67
-doorcastle 68
-gatecastle 69
-explode 70
-crazybottle 75
-wallstone 80
-snakeb 81
-snakec 82
-snakem 83
-teleport 84
-axe 85
-fire 86
-table 87
-crack 89
-grave 90
-forest 91
-beach 92
-fence 93
-spray 94
-rock 95
-building 96
-rocks 97
-castle-l 150
-castle-la 151
-castle-r 152
-castle-ra 153
-damage 154
-fire2 155
-fire3 156
-fire4 157
-hole 158
-monument 159
-atomc 161
-circle 162
-bluestar-fast 163
-magic1 164
-shiny 165
-spark 166
-shock 167
-whirl 168
-bluestar 169
-redstar 170
-blast 171
-barrel 173
-redbarrel 174
-chest1 175
-chest2 176
-chest3 177
-coin 178
-bush 179
-status 180
-nums 181
-numr 182
-numb 183
-nump 184
-numy 185
-landmark 186
-spurt 187
-spurtl 188
-spurtr 189
-health-w 190
-health-g 191
-button-ordering 192
-button-quit 193
-button-start 194
-button-continue 195
-title 196
-startme1 197
-startme3 198
-startme7 199
-startme9 200
-redmaidendie 225
-brownmaidendie 245
-bluemaidendie 255
-redknightdie 275
-blueknightdie 285
-silverknightdie 295
-goldknightdie 305
-girldie 335
-merchantdie 345
-momdie 355
-brownmomdie 365
-bluemerchantdie 375
-greenmerchantdie 385
-purplemerchantdie 395
-soldierdie 405
-peasantdie 415
-bomb 420
-food 421
-paper 422
-menu 423
-island 424
-torch 425
-boatman3 426
-fire1 427
-stairs 428
-catapult 429
-seed4 430
-seed6 431
-shadow 432
-splash 433
-bluefish 434
-yellowfish 435
-die 436
-item-m 437
-item-w 438
-fishx 439
-blueflop 440
-yellowflop 441
-level 442
-box1 443
-box3 444
-box 445
-tomb 446
-tool 447
-cup 448
-save 449
-health-br 450
-health-r 451
-crawl 452
-arrow-l 456
-arrow-r 457
-sign 458
-shelf 459
-lab 460
-chair 461
-poster 462
-grain 463
-horngoblinattackswing 780
-slayerdie 645
-hammergoblindie 765
-horngoblindie 785
-goblindie 805
-giantdie 825'''.split ('\n')]
+sequence_names = [(x.split ()[0], int (x.split ()[1]), x.split ()[2], x.split ()[3], (x.split ()[4] == 'hard')) for x in '''\
+special 10 none none nohard
+treefire 20 play none hard
+arrow 25 repeat none nohard
+textbox 30 none none nohard
+innwalls 31 none none hard
+tree 32 none none hard
+outinn 33 none none hard
+doorleft 50 none none hard
+doorright 51 none none hard
+heart 52 repeat heart hard
+goldheart 53 repeat gheart hard
+smallheart 54 repeat sheart hard
+bluebottle 55 repeat bpotion hard
+redbottle 56 repeat rpotion hard
+purplebottle 57 repeat ppotion hard
+bridge 58 none none nohard
+cabin 59 none none hard
+church 60 none none hard
+doorout1 61 none none hard
+doorout2 62 none none hard
+home 63 none none hard
+inacc 64 none none hard
+grass 65 none none nohard
+garden 66 none none nohard
+castle 67 none none hard
+doorcastle 68 none none hard
+gatecastle 69 none none hard
+explode 70 play none hard
+crazybottle 75 repeat apotion hard
+wallstone 80 none none hard
+snakeb 81 repeat none nohard
+snakec 82 repeat none nohard
+snakem 83 repeat none nohard
+teleport 84 repeat none hard
+axe 85 repeat none nohard
+fire 86 repeat fire hard
+table 87 none none hard
+crack 89 none none nohard
+grave 90 none none hard
+forest 91 none none hard
+beach 92 none none nohard
+fence 93 none none hard
+spray 94 repeat none nohard
+rock 95 none none hard
+building 96 none none hard
+rocks 97 none none hard
+castle-l 150 none none hard
+castle-la 151 none none hard
+castle-r 152 none none hard
+castle-ra 153 none none hard
+damage 154 none none nohard
+fire2 155 repeat fire hard
+fire3 156 repeat fire hard
+fire4 157 repeat fire hard
+hole 158 none none nohard
+monument 159 none none hard
+atomc 161 none none nohard
+circle 162 none none nohard
+bluestar-fast 163 repeat none hard
+magic1 164 repeat none nohard
+shiny 165 repeat none nohard
+spark 166 repeat none nohard
+shock 167 repeat none hard
+whirl 168 repeat none hard
+bluestar 169 repeat none hard
+redstar 170 repeat none hard
+blast 171 repeat none hard
+barrel 173 none none hard
+redbarrel 174 none none hard
+chest1 175 none none hard
+chest2 176 none none hard
+chest3 177 none none hard
+coin 178 none none hard
+bush 179 none none hard
+status 180 none none nohard
+nums 181 none none nohard
+numr 182 none none nohard
+numb 183 none none nohard
+nump 184 none none nohard
+numy 185 none none nohard
+landmark 186 none none hard
+spurt 187 none none nohard
+spurtl 188 none none nohard
+spurtr 189 none none nohard
+health-w 190 none none nohard
+health-g 191 none none nohard
+button-ordering 192 none none nohard
+button-quit 193 none none nohard
+button-start 194 none none nohard
+button-continue 195 none none nohard
+title 196 none none nohard
+startme1 197 none none nohard
+startme3 198 none none nohard
+startme7 199 none none nohard
+startme9 200 none none nohard
+redmaidendie 225 mark none nohard
+brownmaidendie 245 mark none nohard
+bluemaidendie 255 mark none nohard
+redknightdie 275 mark none nohard
+blueknightdie 285 mark none nohard
+silverknightdie 295 mark none nohard
+goldknightdie 305 mark none nohard
+girldie 335 mark none nohard
+merchantdie 345 mark none nohard
+momdie 355 mark none nohard
+brownmomdie 365 mark none nohard
+bluemerchantdie 375 mark none nohard
+greenmerchantdie 385 mark none nohard
+purplemerchantdie 395 mark none nohard
+soldierdie 405 mark none nohard
+peasantdie 415 mark none nohard
+bomb 420 none none nohard
+food 421 none none hard
+paper 422 none none hard
+menu 423 none none hard
+island 424 none none nohard
+torch 425 none none hard
+boatman3 426 repeat none hard
+fire1 427 repeat fire hard
+stairs 428 none none hard
+catapult 429 none none hard
+seed4 430 mark none nohard
+seed6 431 mark none nohard
+shadow 432 shadow none nohard
+splash 433 repeat none nohard
+bluefish 434 repeat none nohard
+yellowfish 435 repeat none nohard
+die 436 play none nohard
+item-m 437 none none nohard
+item-w 438 none none nohard
+fishx 439 none none nohard
+blueflop 440 repeat none nohard
+yellowflop 441 repeat none nohard
+level 442 none none nohard
+box1 443 none none hard
+box3 444 none none hard
+box 445 none none hard
+tomb 446 none none hard
+tool 447 none none hard
+cup 448 none none hard
+save 449 repeat savebot hard
+health-br 450 none none nohard
+health-r 451 none none nohard
+crawl 452 play none nohard
+arrow-l 456 none none nohard
+arrow-r 457 none none nohard
+sign 458 none none hard
+shelf 459 none none hard
+lab 460 none none hard
+chair 461 none none hard
+poster 462 none none hard
+grain 463 none none hard
+horngoblinattackswing 780 repeat none nohard
+slayerdie 645 mark none nohard
+hammergoblindie 765 mark none nohard
+horngoblindie 785 mark none nohard
+goblindie 805 mark none nohard
+giantdie 825 mark none nohard'''.split ('\n')]
 
 def read_lsb (f):
 	ret = 0
@@ -303,30 +303,39 @@ defaults = [[read_lsb (f) for x in range (8 * 12 + 32)] for s in range (41)]
 data = [None] * 800
 tilefiles = [None] * 41
 for n in range (41):
-	for t in defaults[n][:8 * 12]:
-		if t >= 800:
-			sys.stderr.write ('Warning: invalid default hardness tile from default hard.dat: %d from tile file %d\n' % (t, n))
-			continue
-		if data[t] == None:
-			f.seek (2608 * t)
-			dat = f.read (2608)
-			data[t] = Image.new ('RGBA', (50, 50), None)
-			pixels = data[t].load ()
-			for y in range (50):
-				for x in range (50):
-					p = dat[y * 51 + x]
-					if p == '\0':
-						pixels[y, x] = (0, 0, 0, 0)
-					elif p == '\1' or p == '\3':
-						pixels[y, x] = (255, 255, 255, 255)
-					elif p == '\2':
-						pixels[y, x] = (0, 0, 255, 255)
-					else:
-						sys.stderr.write ('Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (n, x, y, ord (p)))
-						pixels[y, x] = (0, 0, 0, 0)
 	tilef, tilefiles[n] = loaddinkfile ('dink\\tiles\\ts%02d.bmp' % (n + 1))
-	tilef = Image.open (tilef)
-	image = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[0] / 50 * 50))
+	tilef = Image.open (tilef).convert ('RGBA')
+	orig = tilef.load ()
+	for ty in range (8):
+		for tx in range (12):
+			t = defaults[n][ty * 12 + tx]
+			if t >= 800:
+				sys.stderr.write ('Warning: invalid default hardness tile from default hard.dat: %d from tile file %d\n' % (t, n))
+				continue
+			if tx * 50 >= tilef.size[0] or ty * 50 >= tilef.size[1]:
+				continue
+			if data[t] == None:
+				f.seek (2608 * t)
+				dat = f.read (2608)
+				data[t] = Image.new ('RGBA', (50, 50), None)
+				pixels = data[t].load ()
+				for y in range (50):
+					for x in range (50):
+						# Watch out! The x and y are reversed. Why, Seth???
+						p = dat[x * 51 + y]
+						if p == '\0':
+							pixels[x, y] = (0, 0, 0, 0)
+						elif p == '\1' or p == '\3':
+							pixels[x, y] = (255, 255, 255, 255)
+						elif p == '\2':
+							pixels[x, y] = (0, 0, 255, 255)
+						else:
+							sys.stderr.write ('Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (n, x, y, ord (p)))
+							pixels[x, y] = (0, 0, 0, 0)
+	image = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[1] / 50 * 50))
+	mask = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[1] / 50 * 50), (0, 0, 0, 128))
+	image.paste ((0, 0, 0, 128))
+	image.paste (tilef, None, mask)
 	for y in range (8):
 		for x in range (12):
 			if tilef.size[0] < (x + 1) * 50 or tilef.size[1] < (y + 1) * 50:
@@ -334,7 +343,8 @@ for n in range (41):
 			if defaults[n][y * 12 + x] >= 800:
 				sys.stderr.write ('Warning: invalid hardness in default hard.dat %d:%d,%d (%d,%d) = %d\n' % (n, x, y, tilef.size[0], tilef.size[1], defaults[n][y * 12 + x]))
 				continue
-			image.paste (data[defaults[n][y * 12 + x]], (50 * x, 50 * y))
+			i = data[defaults[n][y * 12 + x]]
+			image.paste (i, (50 * x, 50 * y), i)
 	image.save (os.path.join (savedir, 'hard-%02d' % (n + 1) + os.extsep + 'png'))
 
 # read dink.ini; make a list of sequences and sequence collections using the name list at the start.
@@ -564,6 +574,10 @@ for c in collection_names:
 		del sequence_codes[c[1] + d]
 	assert collections[c[0]] != {}
 	collections[c[0]]['code'] = c[1]
+	collections[c[0]]['brain'] = c[2]
+	collections[c[0]]['script'] = '' if c[3] == 'none' else c[3]
+	collections[c[0]]['attack'] = '' if c[4] == 'none' else c[4]
+	collections[c[0]]['die'] = '' if c[5] == 'none' else c[5]
 
 # Create the sequences.
 sequences = {}
@@ -571,6 +585,9 @@ for s in sequence_names:
 	codes.add (s[1])
 	sequences[s[0]] = sequence_codes[s[1]]
 	sequences[s[0]].name = s[0]
+	sequences[s[0]].brain = s[2]
+	sequences[s[0]].script = '' if s[3] == 'none' else s[3]
+	sequences[s[0]].hard = s[4]
 	del sequence_codes[s[1]]
 
 assert sequence_codes == {}

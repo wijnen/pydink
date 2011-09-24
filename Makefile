@@ -1,4 +1,4 @@
-current: pde pde.gui
+karel: pde pde.gui
 	./pde $@
 
 %: %.in

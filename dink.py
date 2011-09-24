@@ -33,6 +33,15 @@ from config import dinkprog
 
 cachedir = os.path.expanduser (cachedir)
 tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cachedir, 'data')))
+filename = ''
+
+def error (message):
+	sys.stderr.write ('%s: Error: %s\n' % (filename, message))
+
+def nice_assert (test, message):
+	if test:
+		return
+	error (message)
 
 #class filepart:
 #	def __init__ (self, name, offset, length):
@@ -42,7 +51,7 @@ tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cach
 #		self.file.seek (offset)
 #		self.pos = 0
 #	def read (self, size):
-#		assert size > 0
+#		assert (size > 0)
 #		if self.pos + size >= self.length:
 #			size = self.length - self.pos
 #		self.pos += size
@@ -55,8 +64,8 @@ tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cach
 #		elif how == 2:
 #			p += self.length
 #		else:
-#			assert how == 0
-#		assert p <= self.length
+#			nice_assert (how == 0, 'invalid seek type')
+#		nice_assert (p <= self.length, 'seek beyond end of file')
 #		self.file.seek (self.offset + p)
 def filepart (name, offset, length):
 	f = open (name)
@@ -87,8 +96,12 @@ brains = ['none', 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'te
 def make_brain (name):
 	if name in brains:
 		return brains.index (name)
-	ret = int (name)
-	assert ret >= len (brains)
+	try:
+		ret = int (name)
+	except:
+		error ('unknown and non-numeric brain %s' % name)
+	if ret >= len (brains):
+		error ('accessing named brain %s by number (%d)' % (brains[ret], ret))
 	return ret
 
 predefined = [
@@ -116,14 +129,57 @@ default_globals = {
 		"missile_target": 0,
 		"enemy_sprite": 0,
 		"magic_cost": 0,
-		"missle_source": 0
+		"missle_source": 0,
+
+		"story": 0,
+		"old_womans_duck": 0,
+		"nuttree": 0,
+		"letter": 0,
+		"little_girl": 0,
+		"farmer_quest": 0,
+		"save_x": 0,
+		"save_y": 0,
+		"safe": 0,
+		"pig_story": 0,
+		"wizard_see": 0,
+		"mlibby": 0,
+		"wizard_again": 0,
+		"snowc": 0,
+		"duckgame": 0,
+
+		"gossip": 0,
+		"robbed": 0,
+		"dinklogo": 0,
+		"rock_placement": 0,
+		"temphold": 0,
+		"temp1hold": 0,
+		"temp2hold": 0,
+		"temp3hold": 0,
+		"temp4hold": 0,
+		"temp5hold": 0,
+		"temp6hold": 0,
+		"town1": 0,
+		"s2-milder": 0,
+		"thief": 0,
+		"caveguy": 0,
+		"s2-aunt": 0,
+		"tombob": 0,
+		"mayor": 0,
+		"hero": 0,
+		"s2-nad": 0,
+		"gobpass": 0,
+		"bowlore": 0,
+		"s4-duck": 0,
+		"s5-jop": 0,
+		"s7-boat": 0,
+		"s2-map": 0
 	}
 the_globals = {}
 for i in default_globals:
 	the_globals[i] = default_globals[i]
 
 def convert_image (im):
-	k = Image.eval (im.convert ('RGBA'), lambda (v): [v, 254][v == 255])
+	k = Image.eval (im.convert ('RGBA'), lambda v: [v, 254][v == 255])
 	bg = Image.new ('RGB', k.size, (255, 255, 255))
 	bg.paste (k)
 	return bg
@@ -137,14 +193,14 @@ def readlines (f):
 		if l.strip ()[0] == '#':
 			continue
 		r = re.match (r'(.*)=(.*)', l.strip ())
-		assert r != None
-		assert r.group (1) not in ret
+		nice_assert (r != None, 'invalid line in input file: %s' % l)
+		nice_assert (r.group (1) not in ret, 'duplicate definition of %s' % r.group (1))
 		ret[r.group (1).strip ()] = r.group (2).strip ()
 	return ret
 
 def get (d, member, default = None):
 	if member not in d:
-		assert default != None and default != int
+		nice_assert (default != None and default != int, 'member %s has no default, but is missing in file' % member)
 		return d, default
 	if default == None:
 		ret = d[member]
@@ -152,7 +208,7 @@ def get (d, member, default = None):
 		if d[member].lower () in ['true', 'yes', '1']:
 			ret = True
 		else:
-			assert d[member].lower () in ['false', 'no', '0']
+			nice_assert (d[member].lower () in ['false', 'no', '0'], 'invalid value for boolean setting %s' % member)
 			ret = False
 	elif default == int:
 		ret = int (d[member])
@@ -162,7 +218,7 @@ def get (d, member, default = None):
 	return d, ret
 
 def put (f, member, value, default = None):
-	assert value != None
+	nice_assert (value != None, "Writing %s without a value" % member)
 	if value == default:
 		return
 	if type (value) == bool:
@@ -179,7 +235,7 @@ def make_lsb (num, size):
 	return ret
 
 def make_string (s, size):
-	assert len (s) < size
+	nice_assert (len (s) < size, "String %s of length %d doesn't fit in field of size %d" % (s, len (s), size))
 	return s + '\0' * (size - len (s))
 
 def token (script, allow_comment = False):
@@ -195,7 +251,7 @@ def token (script, allow_comment = False):
 				return s, '', False
 		if s.startswith ('/*'):
 			p = s.find ('*/', 2)
-			assert p >= 0
+			nice_assert (p >= 0, 'unfinished comment')
 			if not allow_comment:
 				continue
 			return s[:p + 2], s[p + 2:].lstrip (), False
@@ -206,16 +262,16 @@ def token (script, allow_comment = False):
 			return i, s[len (i):].lstrip (), False
 	if s[0] == '"':
 		p = s.find ('"', 1)
-		assert p >= 0
+		nice_assert (p >= 0, 'unfinished string')
 		n = s.find ('\n', 1)
-		assert n == -1 or n > p
+		nice_assert (n == -1 or n > p, 'unfinished string')
 		return s[:p + 1], s[p + 1:].lstrip (), False
 	is_name = True
 	r = re.match ('[a-zA-Z_][a-zA-Z_0-9]*', s)
 	if r == None:
 		is_name = False
 		r = re.match ('[0-9]+', s)
-		assert r != None
+		nice_assert (r != None, 'unrecognized token %s' % s.split ()[0])
 	key = r.group (0)
 	return key, s[len (key):].lstrip (), is_name
 
@@ -229,49 +285,92 @@ def push (ret, operators):
 
 max_tmp = 0
 current_tmp = 0
-def build (expr, as_bool):
+def build (expr, as_bool, invert = False):
 	"""Build an expression or subexpression. Return expr, before"""
 	global current_tmp
 	if type (expr) == str:
-		assert not as_bool
+		# Simple expression.
 		if as_bool:
-			return expr + ' != 0', ''
+			if invert:
+				return expr + ' == 0', ''
+			else:
+				return expr + ' != 0', ''
 		else:
-			return expr, ''
+			if invert:
+				tmp = '&tmp%d' % current_tmp
+				current_tmp += 1
+				return tmp, tmp + ' = 0;\r\nif (' + expr + ' == 0)\r\n' + tmp + ' = 1;\r\n'
+			else:
+				return expr, ''
 	if len (expr) == 3:
 		# function call: name, args, before
-		assert not as_bool
-		return expr[0] + ' (' + ', '.join (expr[1]) + ')', expr[2]
-	if expr[0] in ['==', '!=', '<=', '>=', '<', '>']:
-		assert as_bool
-		e0, b0 = build (expr[1][0], False)
-		e1, b1 = build (expr[1][1], False)
-		return e0 + ' ' + expr[0] + ' ' + e1, b0 + b1
-	if expr[0] in ['&&', '||']:
-		assert as_bool
-		e0, b0 = build (expr[1][0], True)
-		e1, b1 = build (expr[1][1], True)
+		f = expr[0] + '(' + ', '.join (expr[1]) + ')'
+		if as_bool:
+			if invert:
+				return f + ' == 0', expr[2]
+			else:
+				return f + ' != 0', expr[2]
+		if invert:
+			tmp = '&tmp%d' % current_tmp
+			current_tmp += 1
+			return tmp, expr[2] + tmp + ' = 0;\r\nif (' + f + ' == 0)\r\n' + tmp + ' = 1;\r\n'
+		return f, expr[2]
+	tests = ('==', '!=', '<=', '>', '>=', '<')
+	if expr[0] in tests:
+		e0, b0 = build (expr[1][0], False, False)
+		e1, b1 = build (expr[1][1], False, False)
+		if invert:
+			e = e0 + ' ' + tests[tests.index (expr[0]) ^ 1] + ' ' + e1
+		else:
+			e = e0 + ' ' + expr[0] + ' ' + e1
+		if as_bool:
+			return e, b0 + b1
 		tmp = '&tmp%d' % current_tmp
 		current_tmp += 1
-		if expr[0] == '&&':
-			return tmp + ' == 1', b0 + b1 + tmp + ' = 0;\nif (' + e0 + ')\n{\nif (' + e1 + ')\n' + tmp + ' = 1;\n}\n'
+		if invert:
+			return tmp + ' == 1', b0 + b1 + tmp + ' = 0;\r\nif (' + e0 + tests[tests.index (expr[0]) ^ 1] + e1 + ')\r\n' + tmp + ' = 1;\r\n}\r\n'
 		else:
-			return tmp + ' == 1', b0 + b1 + tmp + ' = 0;\nif (' + e0 + ')\n' + tmp + ' = 1;\nif (' + e1 + ')\n' + tmp + ' = 1;\n'
-	assert expr[0] in ['*', '/', '+', '-', '!']
-	assert not as_bool
+			return tmp + ' == 1', b0 + b1 + tmp + ' = 0;\r\nif (' + e0 + expr[0] + e1 + ')\r\n' + tmp + ' = 1;\r\n'
+	if expr[0] in ['&&', '||']:
+		e0, b0 = build (expr[1][0], True, invert)
+		e1, b1 = build (expr[1][1], True, invert)
+		tmp = '&tmp%d' % current_tmp
+		current_tmp += 1
+		if as_bool:
+			e = tmp + ' == 1'
+		else:
+			e = tmp
+		if (expr[0] == '&&') ^ invert:
+			return e, b0 + b1 + tmp + ' = 0;\r\nif (' + e0 + ')\r\n{\r\nif (' + e1 + ')\r\n' + tmp + ' = 1;\r\n}\r\n'
+		else:
+			return e, b0 + b1 + tmp + ' = 0;\r\nif (' + e0 + ')\r\n' + tmp + ' = 1;\r\nif (' + e1 + ')\r\n' + tmp + ' = 1;\r\n'
+	if expr[0] == '!':
+		if invert:
+			return build (['!=', [expr[1][0], '0']], as_bool, False)
+		return build (expr[1][0], as_bool, True)
+	nice_assert (expr[0] in ['*', '/', '+', '-'], 'unknown operator %s' % expr[0])
 	tmp = '&tmp%d' % current_tmp
 	current_tmp += 1
 	if len (expr[1]) == 2:
-		e0, b0 = build (expr[1][0], False)
-		e1, b1 = build (expr[1][1], False)
+		e0, b0 = build (expr[1][0], False, False)
+		e1, b1 = build (expr[1][1], False, False)
 	else:
 		e0, b0 = '0', ''
-		e1, b1 = build (expr[1][0], False)
+		e1, b1 = build (expr[1][0], False, False)
 	if expr[0] == '+' or expr[0] == '-':
 		op = expr[0] + '='
 	else:
 		op = expr[0]
-	return tmp, b0 + b1 + '%s = %s;\n%s %s %s;\n' % (tmp, e0, tmp, op, e1)
+	if as_bool:
+		if invert:
+			return tmp + '== 0', b0 + b1 + '%s = %s;\r\n%s %s %s;\r\n' % (tmp, e0, tmp, op, e1)
+		else:
+			return tmp + '!= 0', b0 + b1 + '%s = %s;\r\n%s %s %s;\r\n' % (tmp, e0, tmp, op, e1)
+	else:
+		if invert:
+			return tmp, b0 + b1 + '%s = %s;\r\n%s %s %s;\r\nif (%s != 0)\r\n%s = 0;\r\nelse\r\n%s = 1;\r\n' % (tmp, e0, tmp, op, e1, tmp, tmp, tmp)
+		else:
+			return tmp, b0 + b1 + '%s = %s;\r\n%s %s %s;\r\n' % (tmp, e0, tmp, op, e1)
 
 next_mangled = 0
 mangled_names = {}
@@ -305,58 +404,65 @@ def mangle_function (name, args, dink):
 	sp_brain
 	sp_sound
 
+	Change function name of sp_nohard into sp_hard, because of its inverted argument; raise exception on using sp_hard
+
 	return name, args, before.'''
 	if name == 'add_item' or name == 'add_magic':
-		assert len (args) == 3
-		assert args[1][0] == '"'
+		nice_assert (len (args) == 3, '%s requires 3 arguments (%d given)' % (name, len (args)))
+		nice_assert (args[1][0] == '"' and args[1][-1] == '"', 'second argument of %s must be a sequence name' % name)
 		return name, [args[0], str (dink.seq.find_seq (args[1][1:-1]).code), args[2]], ''
 	elif name == 'create_sprite':
-		assert len (args) == 5
-		assert args[2][0] == '"'
+		nice_assert (len (args) == 5, '%s requires 5 arguments (%d given)' % (name, len (args)))
+		nice_assert (args[2][0] == '"' and args[2][-1] == '"', 'third argument of %s must be a sequence name' % name)
 		return name, [args[0], args[1], str (make_brain (args[2])), str (dink.seq.find_seq (args[3][1:-1]).code), args[4]], ''
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
-		assert len (args) == 2
-		assert args[0][0] == '"'
+		nice_assert (len (args) == 2, '%s requires 2 arguments (%d given)' % (name, len (args)))
+		nice_assert (args[0][0] == '"' and args[0][-1] == '"', 'first argument of %s must be a brain name' % name)
 		return name, [str (make_brain (args[0][1:-1])), args[1]], ''
 	elif name == 'playmidi':
-		assert len (args) == 1
-		assert args[0][0] == '"'
+		nice_assert (len (args) == 1, '%s requires 1 argument (%d given)' % (name, len (args)))
+		nice_assert (args[0][0] == '"' and args[0][-1] == '"', 'argument of %s must be a music name' % name)
 		return name, [str (dink.sound.find_music (args[0][1:-1]))], ''
 	elif name == 'playsound':
-		assert len (args) == 4 or len (args) == 5
-		assert args[0][0] == '"'
+		nice_assert (len (args) == 4 or len (args) == 5, '%s requires 4 or 5 arguments (%d given)' % (name, len (args)))
+		nice_assert (args[0][0] == '"' and args[0][-1] == '"', 'argument of %s must be a sound name' % name)
 		return name, [str (dink.sound.find_sound (args[0][1:-1]))] + args[1:], ''
 	elif name == 'preload_seq':
-		assert len (args) == 1
-		assert args[0][0] == '"'
+		nice_assert (len (args) == 1, '%s requires 1 argument (%d given)' % (name, len (args)))
+		nice_assert (args[0][0] == '"' and args[0][-1] == '"', 'argument of %s must be a sequence name' % name)
 		return name, [str (dink.seq.find_seq (args[0][1:-1]).code)], ''
 	elif name == 'sp':
-		assert len (args) == 1
-		assert args[0][0] == '"'
+		nice_assert (len (args) == 1, '%s requires 1 argument (%d given)' % (name, len (args)))
+		nice_assert (args[0][0] == '"' and args[0][-1] == '"', 'argument of %s must be a sprite name' % name)
 		name = args[0][1:-1]
 		sprite = None
 		# Sprite names used with sp () must be unique in the entire game, because the script doesn't know from which room it's called.
 		for r in dink.world.room:
 			if name in dink.world.room[r].sprite:
-				assert sprite == None
+				nice_assert (sprite == None, 'referenced sprite %s is not unique' % name)
 				sprite = dink.world.room[r].sprite[name]
 		return 'sp', [str (sprite.editcode)], ''
 	elif name == 'sp_base_attack' or name == 'sp_base_death' or name == 'sp_base_idle' or name == 'sp_base_walk':
-		assert len (args) == 2
-		assert args[1][0] == '"'
+		nice_assert (len (args) == 2, '%s requires 2 arguments (%d given)' % (name, len (args)))
+		nice_assert (args[1][0] == '"' and args[0][-1] == '"', 'second argument of %s must be a sequence collection name' % name)
 		return name, [args[0], str (dink.seq.collection_code (args[1][1:-1]))], ''
 	elif name == 'sp_brain':
-		assert len (args) == 1 or len (args) == 2
+		nice_assert (len (args) == 1 or len (args) == 2, '%s requires 1 or 2 arguments (%d given)' % (name, len (args)))
 		if len (args) == 2:
+			nice_assert (args[1][0] == '"' and args[0][-1] == '"', 'second argument of %s must be omitted, or a sequence collection name' % name)
 			v = make_brain (args[1][1:-1])
 		else:
 			v = -1
 		return name, [args[0], str (v)], ''
 	elif name == 'sp_sound':
-		assert len (args) == 2
-		assert args[1][0] == '"'
+		nice_assert (len (args) == 2, '%s requires 2 arguments (%d given)' % (name, len (args)))
+		nice_assert (args[1][0] == '"' and args[0][-1] == '"', 'second argument of %s must be a sound name' % name)
 		return name, [args[0], str (dink.sound.find_sound (args[1][1:-1]))], ''
+	elif name == 'sp_nohard':
+		nice_assert (len (args) == 2, '%s requires 2 arguments (%d given)' % (name, len (args)))
+		return 'sp_hard', args, ''
 	else:
+		nice_assert (name != 'sp_hard', 'sp_hard must be called sp_nohard because of its argument meaning')
 		return name, args, ''
 
 def read_args (dink, script):
@@ -368,7 +474,7 @@ def read_args (dink, script):
 		while True:
 			if script[0] == '"':
 				p = script.find ('"', 1)
-				assert p >= 0
+				nice_assert (p >= 0, 'unterminated string')
 				# mangle variable references.
 				s = script[:p + 1]
 				pos = 0
@@ -381,7 +487,7 @@ def read_args (dink, script):
 					sp += s[:pos]
 					s = s[:pos + 1]
 					e = s.find (';')
-					assert e >= 0
+					nice_assert (e >= 0, 'incomplete reference in string')
 					var = s[:e]
 					s = s[e + 1:]
 					if var == '':
@@ -399,11 +505,11 @@ def read_args (dink, script):
 			t, script, isname = token (script, True)
 			if t != ',':
 				break
-	assert t == ')'
+	nice_assert (t == ')', 'unterminated argument list')
 	return b, args, script
 
 def parse_expr (parent, script, allow_cmd = False, restart = True, as_bool = None):
-	assert as_bool != None
+	assert as_bool in (True, False)
 	global current_tmp, max_tmp
 	if restart:
 		if current_tmp > max_tmp:
@@ -420,19 +526,19 @@ def parse_expr (parent, script, allow_cmd = False, restart = True, as_bool = Non
 					ret, operators = push (ret, operators)
 				continue
 			if t == ',' or t == ';' or t == ')':
-				assert ['(', 0, 100] not in operators
+				nice_assert (['(', 0, 100] not in operators, 'incomplete subexpression')
 				while operators != []:
 					ret, operators = push (ret, operators)
 				assert len (ret) == 1
 				if allow_cmd:
-					assert ret[0][0] == '='
+					nice_assert (ret[0][0] == '=', 'standalone expressions must be assignments')
 					e, b = build (ret[0][1][1], as_bool = False)
 					return ret[0][1][0] + ' = ' + e, b, t + ' ' + script
 				e, b = build (ret[0], as_bool)
 				return e, b, t + ' ' + script
 			if allow_cmd and t == '=':
 				# assignments are almost never allowed in an expression.
-				assert operators == [] and len (ret) == 1 and ret[0] == '&'
+				nice_assert (operators == [] and len (ret) == 1 and ret[0] == '&', 'assignment not allowed here')
 				while operators != [] and operators[-1][2] < 6:
 					ret, operators = push (ret, operators)
 				operators += ([t, 2, 6],)
@@ -465,7 +571,7 @@ def parse_expr (parent, script, allow_cmd = False, restart = True, as_bool = Non
 			elif t in ['+', '-', '!']:
 				operators += ([t, 1, 0],)
 			else:
-				assert t and (isname or (t[0] >= '0' and t[0] <= '9'))
+				nice_assert (t and (isname or (t[0] >= '0' and t[0] <= '9')), 'syntax error')
 				if isname:
 					name = t
 					if script.startswith ('('):
@@ -481,10 +587,9 @@ def parse_expr (parent, script, allow_cmd = False, restart = True, as_bool = Non
 					ret += (t,)
 				need_operator = True
 
-def maybe_add_global (the_locals, name):
-	if name not in the_locals:
-		global the_globals
-		the_globals[name] = 0
+def check_exists (the_locals, name):
+	name = mangle (name)
+	return name in the_locals or name in the_globals
 
 def preprocess (script, dink, filename):
 	the_locals = []
@@ -493,65 +598,87 @@ def preprocess (script, dink, filename):
 	numlabels = 0
 	atend = ''
 	realatend = ''
+	indentonce = False
+	choice_title = None
 	while True:
 		i = '\t' * len (indent)
 		t, script, isname = token (script, True)
 		if t == 'else':
-			ret += i + 'else\n'
+			ret += i + 'else\r\n'
 			# don't do the atend code just yet.
 			continue
 		if not t:
 			break
+		if indentonce:
+			i += '\t'
 		if t.startswith ('//'):
 			comment = script.split ('\n', 1)[0]
-			ret += i + t + comment + '\n'
+			ret += i + t + comment + '\r\n'
 			script = script[len (comment) + 1:]
 			continue
 		if t.startswith ('/*'):
 			comment = script.split ('*/', 1)[0]
-			ret += i + t + comment + '*/\n'
+			ret += i + t + comment + '*/\r\n'
 			script = script[len (comment) + 2:]
 			continue
+		indentonce = False
 		if len (indent) == 0:
-			assert t == 'void'
+			if t == 'extern':
+				t, script, isname = token (script)
+				if t == 'int':
+					t, script, isname = token (script)
+				nice_assert (isname, 'invalid argument for extern')
+				name = t
+				t, script, isname = token (script)
+				nice_assert (t == ';', 'junk after extern')
+				nice_assert (mangle (name) not in the_locals, 'global variable %s already defined as local' % name)
+				name = mangle (name)
+				if name not in the_globals:
+					the_globals[name] = 0
+				continue
+			nice_assert (t == 'void', 'invalid token at top level; only extern or void allowed')
 			t, script, isname = token (script)
-			assert isname
+			nice_assert (isname, 'function name required after top level void')
 			name = t
 			t, script, isname = token (script)
-			assert t == '('
+			nice_assert (t == '(', '(empty) argument list required for function definition')
 			t, script, isname = token (script)
-			assert t == ')'
+			if t == 'void':
+				t, script, isname = token (script)
+			nice_assert (t == ')', 'function argument list must be empty')
 			t, script, isname = token (script)
-			assert t == '{'
+			nice_assert (t == '{', 'function body not defined')
 			indent += ('',)
-			ret += 'void %s ()\n{\n' % name
+			ret += 'void %s(void)\r\n{\r\n' % name
 			continue
 		ret += realatend
 		realatend = ''
 		if t == '{':
 			indent += (atend,)
 			atend = ''
+			ret += i[1:] + '{\r\n'
 			continue
 		if t == '}':
-			assert atend == ''
-			ret += i[:-1] + '}\n'
+			nice_assert (atend == '', 'incomplete command at end of block')
+			ret += i[:-1] + '}\r\n'
 			realatend = indent[-1]
 			indent = indent[:-1]
 			if len (indent) == 0:
-				ret += '\n'
+				ret += '\r\n'
 			continue
 		if t == 'while':
 			t, script, isname = token (script)
-			assert t == '('
+			nice_assert (t == '(', 'parenthesis required after while')
 			e, before, script = parse_expr (dink, script, as_bool = True)
 			t, script, isname = token (script)
-			assert t == ')'
+			nice_assert (t == ')', 'parenthesis for while not closed')
 			start = 'while%d' % numlabels
 			numlabels += 1
 			end = 'while%d' % numlabels
 			numlabels += 1
-			ret += i + start + ':\n' + before + i + 'if (' + e + ') goto ' + end + '\n'
-			atend = i + 'goto ' + start + '\n' + i + end + ':\n' + atend
+			ret += i + start + ':\r\n' + before + i + 'if (' + e + ') goto ' + end + '\r\n'
+			atend = i + 'goto ' + start + '\r\n' + i + end + ':\r\n' + atend
+			indentonce = True
 			continue
 		elif t == 'for':
 			# for (i = 0; i < 4; ++i) foo;
@@ -564,106 +691,120 @@ def preprocess (script, dink, filename):
 			# 	goto loop
 			# end:
 			t, script, isname = token (script)
-			assert t == '('
+			nice_assert (t == '(', 'parenthesis required after for')
 			if script[0] != ';':
 				e1, b1, script = parse_expr (dink, script, allow_cmd = True, as_bool = False)
 			else:
 				e1, b1 = '', ''
 			t, script, isname = token (script)
-			assert t == ';'
+			nice_assert (t == ';', 'two semicolons required in for argument')
 			e2, b2, script = parse_expr (dink, script, as_bool = True)
 			t, script, isname = token (script)
-			assert t == ';'
+			nice_assert (t == ';', 'two semicolons required in for argument')
 			if script[0] != ')':
 				e3, b3, script = parse_expr (dink, script, allow_cmd = True, as_bool = False)
 			else:
 				e3, b3 = '', ''
 			t, script, isname = token (script)
-			assert t == ')'
+			nice_assert (t == ')', 'parenthesis for for not closed')
 			start = 'for%d' % numlabels
 			numlabels += 1
 			end = 'for%d' % numlabels
 			numlabels += 1
-			ret += b1 + i + e1 + ';\n' + i + start + ':\n' + b2 + i + 'if (' + e2 + ') goto ' + end + '\n'
-			atend = b3 + i + e3 + ';\n' + i + 'goto ' + start + '\n' + i + end + ':\n' + atend
+			ret += b1 + i + e1 + ';\r\n' + i + start + ':\r\n' + b2 + i + 'if (' + e2 + ') goto ' + end + '\r\n'
+			atend = b3 + i + e3 + ';\r\n' + i + 'goto ' + start + '\r\n' + i + end + ':\r\n' + atend
+			indentonce = True
 			continue
 		elif t == 'if':
 			t, script, isname = token (script)
-			assert t == '('
+			nice_assert (t == '(', 'parenthesis required after if')
 			e, before, script = parse_expr (dink, script, as_bool = True)
 			t, script, isname = token (script)
-			assert t == ')'
-			ret += before + i + 'if (' + e + ')\n'
+			nice_assert (t == ')', 'parenthesis not closed for if')
+			ret += before + i + 'if (' + e + ')\r\n'
 			# Don't add the atend code here.
+			indentonce = True
 			continue
 		elif t == 'int':
 			t, script, isname = token (script)
-			assert isname
+			nice_assert (isname, 'local definition without name')
 			name = t
 			if name not in the_locals:
 				the_locals += (name,)
 			t, script, isname = token (script)
 			if t == '=':
 				e, before, script = parse_expr (dink, script, as_bool = False)
-				ret += before + i + 'int &' + mangle (name) + ' = ' + e + ';\n'
+				ret += before + i + 'int &' + mangle (name) + ' = ' + e + ';\r\n'
 			else:
-				ret += i + 'int &' + mangle (name) + ';\n'
+				ret += i + 'int &' + mangle (name) + ';\r\n'
 				script = t + ' ' + script
 		elif t == 'goto':
 			t, script, isname = token (script)
-			assert isname
-			print filename + ": Warning: script is using goto; DON'T DO THAT!"
-			ret += i + 'goto ' + t + ';\n'
+			nice_assert (isname, 'goto without target')
+			print (filename + ": Warning: script is using goto; DON'T DO THAT!")
+			ret += i + 'goto ' + t + ';\r\n'
 		else:
-			assert isname
+			nice_assert (isname, 'syntax error')
 			name = t
 			t, script, isname = token (script)
 			if t == ':':
-				print filename + ": Warning: defining a label is only useful for goto; DON'T DO THAT!"
-				ret += i + name + ':\n'
+				print (filename + ": Warning: defining a label is only useful for goto; DON'T DO THAT!")
+				ret += i + name + ':\r\n'
 			elif t in ['=', '+=', '-=']:
-				maybe_add_global (the_locals, name)
+				nice_assert (check_exists (the_locals, name), 'use of undefined variable %s' % name)
 				op = t
 				e, before, script = parse_expr (dink, script, as_bool = False)
-				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\n'
+				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\r\n'
 			elif t in ['*=', '/=']:
 				# Really, the target language is too broken for words...
-				maybe_add_global (the_locals, name)
+				nice_assert (check_exists (the_locals, name), 'use of undefined variable %s' % name)
 				op = t[0]
 				e, before, script = parse_expr (dink, script, as_bool = False)
-				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\n'
+				ret += before + i + '&' + mangle (name) + ' ' + op + ' ' + e + ';\r\n'
 			else:
-				assert t == '('
+				nice_assert (t == '(', 'syntax error')
 				global current_tmp, max_tmp
 				if current_tmp > max_tmp:
 					max_tmp = current_tmp
 				current_tmp = 0
-				if name == 'choice':
-					# TODO: title and settings.
+				if name == 'choice_title':
+					b, args, script = read_args (dink, script)
+					nice_assert (len (args) >= 1 and len (args) <= 3 and args[0][0] == '"', 'invalid argument list for %s' % name)
+					choice_title = b, args
+				elif name == 'choice':
 					b = ''
-					c = i + 'choice_start ();\n'
+					c = i + 'choice_start ();\r\n'
+					if choice_title != None:
+						if len (choice_title) > 1:
+							c += i + 'set_y %s\r\n' % choice_title[1]
+						if len (choice_title) > 2:
+							c += i + 'set_title_color %s\r\n' % choice_title[2]
+						c += i + 'title_start();\r\n'
+						c += i + '\t' + choice_title[1:-1] + '\r\n'
+						c += i + 'title_end();\r\n'
+						choice_title = None
 					while True:
 						t, script, isname = token (script)
 						if t[0] != '"':
 							e, before, script = parse_expr (dink, t + script, restart = False, as_bool = True)
 							t, script, isname = token (script)
-							assert t[0] == '"'
+							nice_assert (t[0] == '"', 'choice requires a string')
 							b += before
 							t = e + ' ' + t
-						c += i + t + '\n'
+						c += i + t + '\r\n'
 						t, script, isname = token (script)
 						if t == ')':
 							break
-						assert t == ','
-					ret += b + c + i + 'choice_end ();\n'
+						nice_assert (t == ',', 'choice requires a comma')
+					ret += b + c + i + 'choice_end ();\r\n'
 				else:
 					b, args, script = read_args (dink, script)
 					f, a, bf = mangle_function (name, args, dink)
-					ret += b + bf + i + f + '(' + ', '.join (a) + ');\n'
+					ret += b + bf + i + f + '(' + ', '.join (a) + ');\r\n'
 		realatend = atend
 		atend = ''
 		t, script, isname = token (script)
-		assert (t == ';')
+		nice_assert ((t == ';'), 'missing semicolon')
 	return ret
 
 class Sprite:
@@ -681,22 +822,25 @@ class Room:
 			self.indoor = False
 			self.codes = []
 			return
-		f = open (os.path.join (root, 'info' + os.extsep + 'txt'))
+		global filename
+		filename = os.path.join (root, 'info' + os.extsep + 'txt')
+		f = open (filename)
 		self.tiles = []
 		for ty in range (8):
 			ln = f.readline ()
 			self.tiles += ([[int (z) for z in y.split (',')] for y in ln.split ()],)
-			assert len (self.tiles[-1]) == 12
+			nice_assert (len (self.tiles[-1]) == 12, 'invalid line in %s/info.txt: not 12 tiles on a line' % root)
 		info = readlines (f)
 		info, self.hard = get (info, 'hard', '')
 		info, self.script = get (info, 'script', '')
 		info, self.music = get (info, 'music', '')
 		info, self.indoor = get (info, 'indoor', False)
-		assert info == {}
+		nice_assert (info == {}, 'unused data in %s/info.txt' % root)
 		sdir = os.path.join (root, "sprite")
 		self.codes = []
 		for s in os.listdir (sdir):
-			info = readlines (open (os.path.join (sdir, s)))
+			filename = os.path.join (sdir, s)
+			info = readlines (open (filename))
 			r = re.match ('(.+?)(-(\d*?))?(\..*)?$', s)
 			base = r.group (1)
 			s = base
@@ -707,7 +851,7 @@ class Room:
 			self.sprite[s] = Sprite ()
 			if r.group (3) != None:
 				self.sprite[s].num = int (r.group (3))
-				assert self.sprite[s].num not in self.codes
+				nice_assert (self.sprite[s].num not in self.codes, 'duplicate definition of sprite code %d' % self.sprite[s].num)
 				self.codes += (self.sprite[s].num,)
 			else:
 				self.sprite[s].num = None
@@ -717,9 +861,11 @@ class Room:
 			seq = seq.split ()
 			if len (seq) == 1:
 				self.sprite[s].seq = seq[0]
-			else:
-				assert len (seq) == 2
+			elif len (seq) == 2:
 				self.sprite[s].seq = (seq[0], int (seq[1]))
+			else:
+				print 'Warning: strange seq:', seq
+				self.sprite[s].seq = None
 			info, self.sprite[s].frame = get (info, 'frame', 1)
 			info, self.sprite[s].type = get (info, 'type', 1)	# 0 for background, 1 for person or sprite, 3 for invisible
 			info, self.sprite[s].size = get (info, 'size', 100)
@@ -752,7 +898,7 @@ class Room:
 			info, self.sprite[s].vision = get (info, 'vision', 0)
 			info, self.sprite[s].nohit = get (info, 'nohit', False)
 			info, self.sprite[s].touch_damage = get (info, 'touch_damage', 0)
-			assert info == {}
+			nice_assert (info == {}, 'unused data for sprite %s' % s)
 		code = 0
 		for s in self.sprite:
 			if self.sprite[s].num != None:
@@ -764,8 +910,32 @@ class Room:
 	def add_sprite (self, pos, seq, frame):
 		if type (seq) == str:
 			s = seq
+			the_seq = self.parent.seq.find_seq (s)
+			if the_seq == None:
+				print ('seq %s not found' % s)
+				return None
+			brain = the_seq.brain
+			script = the_seq.script
+			walk = ''
+			attack = ''
+			die = ''
+			hard = the_seq.hard
 		else:
 			s = seq[0]
+			the_collection = self.parent.seq.find_collection (s)
+			if the_collection == None:
+				print ('collection %s not found' % s)
+				return None
+			if seq[1] not in the_collection:
+				print ('direction %d not in collection %s' % (seq[1], seq[0]))
+				return None
+			the_seq = the_collection[seq[1]]
+			brain = the_collection['brain']
+			script = the_collection['script']
+			walk = seq[0]
+			attack = the_collection['attack']
+			die = the_collection['die']
+			hard = False
 		os = s
 		i = 0
 		while s in self.sprite:
@@ -778,22 +948,22 @@ class Room:
 		self.sprite[s].frame = frame
 		self.sprite[s].type = 1
 		self.sprite[s].size = 100
-		self.sprite[s].brain = 'none'
-		self.sprite[s].script = ''
+		self.sprite[s].brain = brain
+		self.sprite[s].script = script
 		self.sprite[s].speed = 1
-		self.sprite[s].base_walk = ''
+		self.sprite[s].base_walk = walk
 		self.sprite[s].base_idle = ''
-		self.sprite[s].base_attack = ''
+		self.sprite[s].base_attack = attack
 		self.sprite[s].timer = 33
 		self.sprite[s].que = 0
-		self.sprite[s].hard = True
+		self.sprite[s].hard = hard
 		self.sprite[s].left = 0
 		self.sprite[s].top = 0
 		self.sprite[s].right = 0
 		self.sprite[s].bottom = 0
 		self.sprite[s].warp = None
 		self.sprite[s].touch_seq = ''
-		self.sprite[s].base_die = ''
+		self.sprite[s].base_die = die
 		self.sprite[s].gold = 0
 		self.sprite[s].hitpoints = 0
 		self.sprite[s].strength = 0
@@ -868,8 +1038,10 @@ class Room:
 class World:
 	def __init__ (self, parent):
 		self.parent = parent
-		d = os.path.join (parent.root, 'world')
 		self.room = {}
+		if self.parent.root == None:
+			return
+		d = os.path.join (parent.root, 'world')
 		for y in range (24):
 			for x in range (32):
 				n = y * 32 + x + 1
@@ -930,7 +1102,10 @@ class World:
 			mdat.write (make_lsb (spr.warp[2], 4))
 		else:
 			mdat.write ('\0' * 16)
-		mdat.write (make_lsb (coll (spr.touch_seq), 4))
+		if spr.touch_seq == '':
+			mdat.write (make_lsb (0, 4))
+		else:
+			mdat.write (make_lsb (self.parent.seq.find_seq (spr.touch_seq).code, 4))
 		mdat.write (make_lsb (coll (spr.base_die), 4))
 		mdat.write (make_lsb (spr.gold, 4))
 		mdat.write (make_lsb (spr.hitpoints, 4))
@@ -1008,28 +1183,34 @@ class World:
 			mdat.write ('\0' * 1019)
 
 class Tile:
+	# self.tile is a list of (tiles, hardness, code). Code means:
+	# 0: hardness from original, image from original
+	# 1: hardness from original, image from dmod
+	# 2: hardness from dmod, image from original
+	# 3: hardness from dmod, image from dmod
 	def __init__ (self, parent):
 		self.parent = parent
 		self.hard = {}
 		self.tile = [None] * 41
 		d = os.path.join (parent.root, "tile")
-		ext = os.extsep + 'png'
-		for t in os.listdir (d):
-			h = '-hard' + ext
-			if not t.endswith (h):
-				continue
-			base = t[:-len (h)]
-			image = Image.open (os.path.join (d, t))
-			if re.match ('^\d\d$', base):
-				n = int (base) - 1
-				assert n <= 41
-				t = os.path.join (d, base + ext)
-				if os.path.exists (t):
-					self.tile[n] = (convert_image (Image.open (t)), image, 3)
+		if os.path.exists (d):
+			ext = os.extsep + 'png'
+			for t in os.listdir (d):
+				h = '-hard' + ext
+				if not t.endswith (h):
+					continue
+				base = t[:-len (h)]
+				image = Image.eval (Image.open (os.path.join (d, t)).convert ('RGBA'), lambda v: 255 if v > 200 else 0)
+				if re.match ('^\d\d$', base):
+					n = int (base) - 1
+					nice_assert (n < 41, 'tile screen must be at most 41')
+					t = os.path.join (d, base + ext)
+					if os.path.exists (t):
+						self.tile[n] = (convert_image (Image.open (t)), image, 3)
+					else:
+						self.tile[n] = (convert_image (Image.open (filepart (*tilefiles[n]))), image, 2)
 				else:
-					self.tile[n] = (convert_image (Image.open (filepart (*tilefiles[n]))), image, 2)
-			else:
-				self.hard[base] = convert_image (Image.open (os.path.join (d, t)))
+					self.hard[base] = image
 		for n in range (41):
 			if self.tile[n] == None:
 				t = os.path.join (d, str (n) + ext)
@@ -1037,35 +1218,52 @@ class Tile:
 					tilefile = (convert_image (Image.open (t)), 1)
 				else:
 					tilefile = (convert_image (Image.open (filepart (*tilefiles[n]))), 0)
-				image = Image.open (os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png'))
+				image = Image.eval (Image.open (os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png')).convert ('RGBA'), lambda v: 255 if v > 200 else 0)
 				self.tile[n] = (tilefile[0], image, tilefile[1])
 	def find_hard (self, hard, x, y, bmp, tx, ty):
 		if hard != '':
-			assert hard in self.hard
+			nice_assert (hard in self.hard, 'reference to undefined hardness screen %s' % hard)
 			ret = self.hardmap[hard][y][x]
 			if ret == self.tilemap[bmp][y][x]:
 				return 0
 		return 0
 	def save (self):
+		if len (self.hard) == 0:
+			for i in range (41):
+				if self.tile[i] != 0:
+					break
+			else:
+				return
 		d = os.path.join (self.parent.root, 'tile')
 		os.mkdir (d)
-		# TODO
+		for h in self.hard:
+			self.hard[h].save (os.path.join (d, h + '-hard' + os.extsep + 'png'))
+		for n in range (41):
+			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
+				self.tile[n][0].save (os.path.join (d, '%02d' % n + os.extsep + 'png'))
+			if self.tile[n][2] == 2 or self.tile[n][2] == 3:
+				self.tile[n][1].save (os.path.join (d, '%02d-hard' % n + os.extsep + 'png'))
 	def write_hard (self, image, h):
+		'''Write hardness of all tiles in a given screen to hard.dat (opened as h). Return map of indices used.'''
 		ret = [None] * 8
 		for y in range (8):
 			ret[y] = [None] * 12
 			for x in range (12):
 				if image.size[0] < (x + 1) * 50 or image.size[1] < (y + 1) * 50:
+					# Don't try to read out of bounds.
 					continue
+				# Get the tile.
 				tile = image.crop ((x * 50, y * 50, (x + 1) * 50, (y + 1) * 50))
 				s = tile.tostring ()
 				try:
+					# Check if it's already in the file.
 					m = self.hmap.index (s)
 				except ValueError:
 					# Not in map yet; add new tile to file and map.
 					m = len (self.hmap)
-					for ty in range (50):
-						for tx in range (50):
+					# Note that x and y are reversed. Why? Because Seth liked it that way...
+					for tx in range (50):
+						for ty in range (50):
 							p = tile.getpixel ((tx, ty))
 							if p == (0, 0, 0, 0):
 								h.write ('\0')
@@ -1074,8 +1272,7 @@ class Tile:
 							elif p == (0, 0, 255, 255):
 								h.write ('\2')
 							else:
-								print p
-								raise ValueError ('invalid pixel in hard tile')
+								error ('invalid pixel in hard tile: %s' % str (p))
 						h.write ('\0')	# junk
 					h.write ('\0' * 58)	# junk
 					self.hmap += (s,)
@@ -1092,13 +1289,17 @@ class Tile:
 		self.hardmap = {}
 		self.tilemap = [None] * 41
 		for t in self.hard:
+			# Write hardness for custom hard screens.
 			self.hardmap[t] = self.write_hard (self.hard[t], h)
 		for n in range (41):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
+				# Write custom tile screens.
 				self.tile[n][0].save (os.path.join (d, str (t) + os.extsep + 'bmp'))
+			# Write hardness for standard tiles.
 			self.tilemap[n] = self.write_hard (self.tile[n][1], h)
-		assert len (self.hmap) <= 800
+		nice_assert (len (self.hmap) <= 800, 'More than 800 hardness tiles defined (%d)' % len (self.hmap))
 		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
+		# Write hardness index for tile screens.
 		for t in range (41):
 			m = self.tilemap[t]
 			for y in range (8):
@@ -1106,8 +1307,11 @@ class Tile:
 					if m[y][x] != None:
 						h.write (make_lsb (m[y][x], 4))
 					else:
-						# fill it with junk
+						# fill it with junk.
 						h.write (make_lsb (0, 4))
+			# Fill up with junk.
+			h.write ('\0' * 32 * 4)
+		# Fill the rest with junk.
 		h.write ('\0' * (8000 - len (self.tile) * 8 * 12 * 4))
 
 # A sequence has members:
@@ -1136,10 +1340,14 @@ class Seq:
 		self.parent = parent
 		self.seq = sequences
 		self.collection = collections
+		self.current_collection = None
+		if self.parent.root == None:
+			return
 		d = os.path.join (parent.root, "seq")
 		# Read info specific to this dmod.
-		infofile = open (os.path.join (d, 'info' + os.extsep + 'txt'))
-		self.current_collection = None
+		global filename
+		filename = os.path.join (d, 'info' + os.extsep + 'txt')
+		infofile = open (filename)
 		while True:
 			info = readlines (infofile)
 			if info == {}:
@@ -1147,7 +1355,7 @@ class Seq:
 			if 'collection' in info:
 				# The next blocks with a direction are a collection.
 				info, self.current_collection = get (info, "collection")
-				assert info == {}
+				nice_assert (info == {}, 'unused data in %s' % infofile)
 				if self.current_collection not in self.collection:
 					self.collection[self.current_collection] = {code: -1}
 				continue
@@ -1155,22 +1363,22 @@ class Seq:
 				# This block is about a sequence which was declared in dink.ini.
 				self.current_collection = None
 				info, base = get (info, 'append')
-				assert base in self.seq
+				nice_assert (base in self.seq, 'append to undefined sequence %s' % base)
 			else:
 				if 'name' in info:
 					# This block defines a new sequence.
 					self.current_collection = None
 					info, base = get (info, 'name')
-					assert base not in self.seq
+					nice_assert (base not in self.seq, 'sequence %s already exists' % base)
 					self.seq[base] = Sequence ()
 					is_new = True
 				else:
 					# This block is part of a collection.
-					assert self.current_collection != None
+					nice_assert (self.current_collection != None, 'collection definition required')
 					base = None
 					self.seq[None] = Sequence ()
 					info, self.direction = get (info, 'direction', int)
-					assert self.direction >= 1 and self.direction <= 9 and self.direction != 5
+					nice_assert (self.direction >= 1 and self.direction <= 9 and self.direction != 5, 'invalid direction %d' % self.direction)
 					info, is_new = get (info, 'new', True)
 				if is_new:
 					self.seq[base].code = -1
@@ -1197,7 +1405,7 @@ class Seq:
 			info, self.seq[base].now = get (info, 'load-now', self.seq[base].now)
 			info, self.seq[base].preload = get (info, 'preload', self.seq[base].preload)
 			info, self.seq[base].type = get (info, 'type', self.seq[base].type)
-			assert self.seq[base].type in ('normal', 'black', 'leftalign', 'notanim')
+			nice_assert (self.seq[base].type in ('normal', 'black', 'leftalign', 'notanim'), 'invalid special type %s' % self.seq[base].type)
 			info, num = get (info, 'frames', len (self.seq[base].frames))
 			if len (self.seq[base].frames) < num:
 				self.seq[base].frames += [None] * (num - len (self.seq[base].frames))
@@ -1211,12 +1419,12 @@ class Seq:
 					info, frame = get (info, 'frame-%d', int)
 					self.seq[base].frames[f].source = (seq, frame)
 				else:
-					assert self.seq[base].frames[f] != None
+					nice_assert (self.seq[base].frames[f] != None, 'frame %d of sequence %s not defined' % (f, base))
 				# TODO: fill frame members.
 			info, box = get (info, 'hardbox', '')
 			if box != '':
 				box = [int (x) for x in box.split ()]
-				assert len (box) == 4
+				nice_assert (len (box) == 4, 'hardbox must have 4 members')
 				self.seq[base].hardbox = box
 				for f in range (1, len (self.seq[base].frames)):
 					self.seq[base].frames[f].hardbox = box
@@ -1225,10 +1433,10 @@ class Seq:
 				self.seq[base].delay = delay
 				for f in range (1, len (self.seq[base].frames)):
 					self.seq[base].frames[f].delay = delay
-			assert info == {}
+			nice_assert (info == {}, 'unused data in %s' % infofile)
 			if self.current_collection != None:
-				assert base == None
-				assert self.direction not in self.collection[self.current_collection]
+				nice_assert (base == None, 'cannot define name (%s) for collection member (%s)' % (base, self.current_collection))
+				nice_assert (self.direction not in self.collection[self.current_collection], 'duplicate definition of direction %d for collection %s' % (self.direction, self.current_collection))
 				self.collection[self.current_collection].seq[self.direction] = self.seq[base]
 				del self.seq[base]
 		# Give codes to all unassigned collections and sequences.
@@ -1253,7 +1461,7 @@ class Seq:
 						continue
 					if self.collection[c][i].code == name:
 						return self.collection[c][i]
-			print name
+			print (name)
 			raise AssertionError ('undefined numerical code for find_seq')
 		elif type (name) == str:
 			if name not in self.seq:
@@ -1268,7 +1476,7 @@ class Seq:
 			return None
 		return self.collection[name]
 	def collection_code (self, name):
-		if name.startswith ('*'):
+		if type (name) == str and name.startswith ('*'):
 			seq = self.find_seq (name[1:])
 			if seq == None:
 				return 0
@@ -1284,8 +1492,8 @@ class Seq:
 		# TODO
 	def build_seq (self, ini, seq):
 		if seq.preload:
-			ini.write ('// Preload\n')
-			ini.write ('load_sequence_now %s %d\n' % (seq.preload, seq.code))
+			ini.write ('// Preload\r\n')
+			ini.write ('load_sequence_now %s %d\r\n' % (seq.preload, seq.code))
 		if seq.now:
 			now = '_now'
 		else:
@@ -1293,35 +1501,35 @@ class Seq:
 		if seq.type == 'normal':
 			if seq.position == None:
 				if seq.delay != None:
-					ini.write ('load_sequence%s %s %d %d\n' % (now, seq.filepath, seq.code, seq.delay))
+					ini.write ('load_sequence%s %s %d %d\r\n' % (now, seq.filepath, seq.code, seq.delay))
 				else:
-					ini.write ('load_sequence%s %s %d\n' % (now, seq.filepath, seq.code))
+					ini.write ('load_sequence%s %s %d\r\n' % (now, seq.filepath, seq.code))
 			else:
 				if seq.delay != None:
-					ini.write ('load_sequence%s %s %d %d %d %d %d %d %d %d\n' % (now, seq.filepath, seq.code, seq.delay, seq.position[0], seq.position[1], seq.hardbox[0], seq.hardbox[1], seq.hardbox[2], seq.hardbox[3]))
+					ini.write ('load_sequence%s %s %d %d %d %d %d %d %d %d\r\n' % (now, seq.filepath, seq.code, seq.delay, seq.position[0], seq.position[1], seq.hardbox[0], seq.hardbox[1], seq.hardbox[2], seq.hardbox[3]))
 				else:
-					ini.write ('load_sequence%s %s %d %d %d %d %d %d %d\n' % (now, seq.filepath, seq.code, seq.position[0], seq.position[1], seq.hardbox[0], seq.hardbox[1], seq.hardbox[2], seq.hardbox[3]))
+					ini.write ('load_sequence%s %s %d %d %d %d %d %d %d\r\n' % (now, seq.filepath, seq.code, seq.position[0], seq.position[1], seq.hardbox[0], seq.hardbox[1], seq.hardbox[2], seq.hardbox[3]))
 		else:
-			ini.write ('load_sequence%s %s %d %s\n' % (now, seq.filepath, seq.code, seq.type.upper ()))
+			ini.write ('load_sequence%s %s %d %s\r\n' % (now, seq.filepath, seq.code, seq.type.upper ()))
 		for f in range (1, len (seq.frames)):
 			# TODO: save images.
 			if seq.frames[f].source != None:
-				ini.write ('set_frame_frame %d %d %d %d\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
+				ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
 			if (len (seq.frames[f].hardbox) == 4 and seq.frames[f].hardbox != seq.hardbox) or (len (seq.frames[f].position) == 2 and seq.frames[f].position != seq.position):
-				ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\n' % (seq.code, f, seq.frames[f].position[0], seq.frames[f].position[1], seq.frames[f].hardbox[0], seq.frames[f].hardbox[1], seq.frames[f].hardbox[2], seq.frames[f].hardbox[3]))
+				ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\r\n' % (seq.code, f, seq.frames[f].position[0], seq.frames[f].position[1], seq.frames[f].hardbox[0], seq.frames[f].hardbox[1], seq.frames[f].hardbox[2], seq.frames[f].hardbox[3]))
 			if seq.frames[f].source != None or seq.frames[f].delay != seq.delay:
-				ini.write ('set_frame_delay %d %d %d\n' % (seq.code, f, int (seq.frames[f].delay)))
+				ini.write ('set_frame_delay %d %d %d\r\n' % (seq.code, f, int (seq.frames[f].delay)))
 			if seq.special == f:
-				ini.write ('set_frame_special %d %d\n' % (seq.code, f))
+				ini.write ('set_frame_special %d %d 1\r\n' % (seq.code, f))
 		if seq.repeat:
-			ini.write ('set_frame_frame %d %d -1\n' % (seq.code, len (seq.frames)))
+			ini.write ('set_frame_frame %d %d -1\r\n' % (seq.code, len (seq.frames)))
 	def build (self, root):
 		# Write graphics/*
 		# Write dink.ini
 		d = os.path.join (root, 'graphics')
 		if not os.path.exists (d):
 			os.mkdir (d)
-		ini = open (os.path.join (root, 'dink.ini'), 'w')
+		ini = open (os.path.join (root, 'dink' + os.extsep + 'ini'), 'w')
 		for c in self.collection:
 			for s in self.collection[c]:
 				if s not in (1,2,3,4,6,7,8,9):
@@ -1338,9 +1546,13 @@ class Sound:
 		self.music = {}
 		other = []
 		codes = []
+		if self.parent.root == None:
+			return
 		d = os.path.join (parent.root, "sound")
 		for s in os.listdir (d):
-			data = open (os.path.join (d, s)).read ()
+			global filename
+			filename = os.path.join (d, s)
+			data = open (filename).read ()
 			if not s.endswith (ext):
 				continue
 			r = re.match ('(\d+)-', s)
@@ -1349,7 +1561,7 @@ class Sound:
 			else:
 				code = int (r.group (1))
 				self.sound[s[len (r.group (0)):]] = (code, data)
-				assert code not in codes
+				nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
 				codes += (code,)
 		i = 1
 		for s in other:
@@ -1374,7 +1586,7 @@ class Sound:
 		"""Find midi file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
 			return 0
-		assert name in self.music
+		nice_assert (name in self.music, 'reference to undefined music %s' % name)
 		return self.music[name][0]
 	def save (self):
 		d = os.path.join (self.parent.root, "sound")
@@ -1404,15 +1616,31 @@ class Script:
 	def __init__ (self, parent):
 		self.parent = parent
 		self.data = {}
+		if self.parent.root == None:
+			self.title_music = ''
+			self.title_color = 0
+			self.title_bg = ''
+			self.start_map = 400
+			self.start_x = 320
+			self.start_y = 200
+			self.title_pointer_seq = 'special'
+			self.title_pointer_frame = 8
+			self.title_script = ''
+			self.start_script = ''
+			self.title_sprite = []
+			self.title_button = []
+			return
 		d = os.path.join (parent.root, "script")
 		for s in os.listdir (d):
 			ext = os.extsep + 'c'
 			if not s.endswith (ext):
 				continue
 			base = s[:-len (ext)]
-			assert base not in self.data
+			nice_assert (base not in self.data, 'duplicate definition of script %s' % base)
 			self.data[base] = open (os.path.join (d, s)).read ()
-		f = open (os.path.join (parent.root, "title" + os.extsep + "txt"))
+		global filename
+		filename = os.path.join (parent.root, "title" + os.extsep + "txt")
+		f = open (filename)
 		info = readlines (f)
 		info, self.title_music = get (info, 'music', '')
 		info, self.title_color = get (info, 'color', 0)
@@ -1422,7 +1650,8 @@ class Script:
 		info, p = get (info, 'pointer', 'special 8')
 		p = p.split ()
 		self.title_pointer_seq, self.title_pointer_frame = p[0], int (p[1])
-		info, self.title_run = get (info, 'run', '')
+		info, self.title_script = get (info, 'title-script', '')
+		info, self.start_script = get (info, 'start-script', '')
 		info, n = get (info, 'sprites', 0)
 		self.title_sprite = []
 		for s in range (n):
@@ -1432,16 +1661,16 @@ class Script:
 				spr += ('repeat',)
 			if len (spr) == 5:
 				spr += ('',)
-			assert len (spr) == 6
+			nice_assert (len (spr) == 6, 'sprite-* must have 4, 5 or 6 arguments (%d given)' % len (spr))
 			self.title_sprite += ((spr[0], int (spr[1]), int (spr[2]), int (spr[3]), spr[4], spr[5]),)
 		info, n = get (info, 'buttons', int)
 		self.title_button = []
 		for s in range (n):
 			info, b = get (info, 'button-%d' % (s + 1))
 			b = b.split ()
-			assert len (b) == 5
+			nice_assert (len (b) == 5, 'button-* must have 5 arguments (%d given)' % len (b))
 			self.title_sprite += ((b[0], int (b[1]), int (b[2]), int (b[3]), 'button', b[4]),)
-		assert info == {}
+		nice_assert (info == {}, 'unused data in title definition')
 	def save (self):
 		d = os.path.join (self.parent.root, "script")
 		os.mkdir (d)
@@ -1466,6 +1695,8 @@ class Script:
 				if sprites[i][4] == 'repeat':
 					sprites[i][4:] = []
 			put (f, 'sprite-%d' % (i + 1), ' '.join (sprites[i]))
+		put (f, 'title-script', self.title_script, '')
+		put (f, 'start-script', self.start_script, '')
 	def build (self, root):
 		# Write Story/*
 		d = os.path.join (root, 'story')
@@ -1476,87 +1707,137 @@ class Script:
 			f.write (preprocess (self.data[name], self.parent, name))
 		# Write start.c
 		s = open (os.path.join (d, 'start' + os.extsep + 'c'), 'w')
-		s.write ('void main ()\n{\n')
+		s.write ('void main ()\r\n{\r\n')
 		for n, snd in zip (range (len (self.parent.sound.sound)), self.parent.sound.sound):
-			s.write ('\tload_sound ("%s.wav", %d);\n' % (snd, n))
-		s.write ('\tset_dink_speed (3);\n\tsp_frame_delay (1,0);\n')
+			s.write ('\tload_sound ("%s.wav", %d);\r\n' % (snd, n))
+		s.write ('\tset_dink_speed (3);\r\n\tsp_frame_delay (1,0);\r\n')
 		if self.title_bg != '':
-			s.write ('\tcopy_bmp_to_screen ("%s");\n' % self.title_bg)
+			s.write ('\tcopy_bmp_to_screen ("%s");\r\n' % self.title_bg)
 		else:
-			s.write ('\tfill_screen (%d);\n' % self.title_color)
-		if self.title_run != '':
-			s.write ('\tspawn ("%s");\n' % self.title_run)
+			s.write ('\tfill_screen (%d);\r\n' % self.title_color)
+		if self.title_script != '':
+			s.write ('\tspawn ("%s");\r\n' % self.title_script)
 		s.write ('''\
-	sp_seq (1, 0);
-	sp_brain (1, 13);
-	sp_pseq (1, %d);
-	sp_pframe (1, %d);
-	sp_que (1, 20000);
-	sp_noclip (1, 1);
-	int &crap;
+	load_sound("QUACK.WAV", 1);\r
+	load_sound("PIG1.WAV", 2);\r
+	load_sound("PIG2.WAV", 3);\r
+	load_sound("PIG3.WAV", 4);\r
+	load_sound("PIG4.WAV", 5);\r
+	load_sound("BURN.WAV", 6);\r
+	load_sound("OPEN.WAV", 7);\r
+	load_sound("SWING.WAV", 8);\r
+	load_sound("PUNCH.WAV", 9);\r
+	load_sound("SWORD2.WAV", 10);\r
+	load_sound("SELECT.WAV", 11);\r
+	load_sound("WSCREAM.WAV", 12);\r
+	load_sound("PICKER.WAV", 13);\r
+	load_sound("GOLD.WAV", 14);\r
+	load_sound("GRUNT1.WAV", 15);\r
+	load_sound("GRUNT2.WAV", 16);\r
+	load_sound("SEL1.WAV", 17);\r
+	load_sound("ESCAPE.WAV", 18);\r
+	load_sound("NONO.WAV", 19);\r
+	load_sound("SEL2.WAV", 20);\r
+	load_sound("SEL3.WAV", 21);\r
+	load_sound("HIGH2.WAV", 22);\r
+	load_sound("FIRE.WAV", 23);\r
+	load_sound("SPELL1.WAV", 24);\r
+	load_sound("CAVEENT.WAV", 25);\r
+	load_sound("SNARL1.WAV", 26);\r
+	load_sound("SNARL2.WAV", 27);\r
+	load_sound("SNARL3.WAV", 28);\r
+	load_sound("HURT1.WAV", 29);\r
+	load_sound("HURT2.WAV", 30);\r
+	load_sound("ATTACK1.WAV", 31);\r
+	load_sound("CAVEENT.WAV", 32);\r
+	load_sound("LEVEL.WAV", 33);\r
+	load_sound("SAVE.WAV", 34);\r
+	load_sound("SPLASH.WAV", 35);\r
+	load_sound("SWORD1.WAV", 36);\r
+	load_sound("BHIT.WAV", 37);\r
+	load_sound("SQUISH.WAV", 38);\r
+	load_sound("STAIRS.WAV", 39);\r
+	load_sound("STEPS.WAV", 40);\r
+	load_sound("ARROW.WAV", 41);\r
+	load_sound("FLYBY.WAV", 42);\r
+	load_sound("SECRET.WAV", 43);\r
+	load_sound("BOW1.WAV", 44);\r
+	load_sound("KNOCK.WAV", 45);\r
+	load_sound("DRAG1.WAV", 46);\r
+	load_sound("DRAG2.WAV", 47);\r
+	load_sound("AXE.WAV", 48);\r
+	load_sound("BIRD1.WAV", 49);\r
+	sp_seq (1, 0);\r
+	sp_brain (1, 13);\r
+	sp_pseq (1, %d);\r
+	sp_pframe (1, %d);\r
+	sp_que (1, 20000);\r
+	sp_noclip (1, 1);\r
+	int &crap;\r
 ''' % (self.parent.seq.find_seq (self.title_pointer_seq).code, self.title_pointer_frame))
 		for t in self.title_sprite:
-			s.write ('\t&crap = create_sprite (%d, %d, %d, %d, %d);\n' % (t[2], t[3], make_brain (t[4]), self.parent.seq.find_seq (t[0]).code, t[1]))
+			s.write ('\t&crap = create_sprite (%d, %d, %d, %d, %d);\r\n' % (t[2], t[3], make_brain (t[4]), self.parent.seq.find_seq (t[0]).code, t[1]))
 			if t[5] != '':
-				s.write ('\tsp_script(&crap, "%s");\n' % t[5])
-				s.write ('\tsp_touch_damage (&crap, -1);\n')
-			s.write ('\tsp_noclip (&crap, 1);\n')
+				s.write ('\tsp_script(&crap, "%s");\r\n' % t[5])
+				s.write ('\tsp_touch_damage (&crap, -1);\r\n')
+			s.write ('\tsp_noclip (&crap, 1);\r\n')
 		if self.title_music != '':
-			s.write ('\tplaymidi ("%s.mid");\n' % self.title_music)
-		s.write ('\tkill_this_task ();\n}\n')
+			s.write ('\tplaymidi ("%s.mid");\r\n' % self.title_music)
+		s.write ('\tkill_this_task ();\r\n}\r\n')
 		# Write main.c
 		s = open (os.path.join (d, 'main' + os.extsep + 'c'), 'w')
-		s.write ('void main ()\n{\n')
+		s.write ('void main ()\r\n{\r\n')
 		global the_globals
 		for v in the_globals:
-			s.write ('\tmake_global_int ("&%s", %d);\n' % (v, the_globals[v]))
+			s.write ('\tmake_global_int ("&%s", %d);\r\n' % (v, the_globals[v]))
 		for t in range (max_tmp):
-			s.write ('\tmake_global_int ("&tmp%s", %d);\n' % (t, 0))
-		s.write ('\tkill_this_task ();\n}\n')
+			s.write ('\tmake_global_int ("&tmp%s", %d);\r\n' % (t, 0))
+		s.write ('\tkill_this_task ();\r\n}\r\n')
 		# Write start-game.c
-		s = open (os.path.join (d, 'start-game' + os.extsep + 'c'), 'w')
+		s = open (os.path.join (d, 'start-game' + os.extsep + 'c'), 'wb')
 		s.write ('''\
-void main ()
-{
-	wait (1);
-	&player_map = %d;
-	sp_x (1, %d);
-	sp_y (1, %d);
-	sp_base_walk (1, %d);
-	sp_base_attack (1, %d);
-	set_dink_speed (3);
-	set_mode (2);
-	reset_timer ();
-	sp_dir (1, 4);
-	sp_brain (1, %d);
-	sp_que (1, 0);
-	sp_noclip (1, 0);
-	load_screen ();
-	draw_screen ();
-	draw_status ();
-	kill_this_task ();
-}
-''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink')))
+void main ()\r
+{\r
+%s	wait (1);\r
+	&player_map = %d;\r
+	sp_x (1, %d);\r
+	sp_y (1, %d);\r
+	sp_base_walk (1, %d);\r
+	sp_base_attack (1, %d);\r
+	set_dink_speed (3);\r
+	set_mode (2);\r
+	reset_timer ();\r
+	sp_dir (1, 4);\r
+	sp_brain (1, %d);\r
+	sp_que (1, 0);\r
+	sp_noclip (1, 0);\r
+	load_screen ();\r
+	draw_screen ();\r
+	&update_status = 1;\r
+	draw_status ();\r
+	kill_this_task ();\r
+}\r
+''' % (('\tspawn ("' + self.start_script + '");\r\n' if self.start_script != '' else ''), self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink')))
 
 class Dink:
 	def __init__ (self, root):
-		self.baseroot = os.path.abspath (os.path.normpath (root))
-		d = os.path.dirname (self.baseroot)
-		b = os.path.basename (self.baseroot)
-		l = os.listdir (d)
-		src = [x for x in l if x.startswith (b + '.') and re.match ('^\d+$', x[len (b) + 1:])]
-		if src == []:
-			assert b in l
-			self.root = self.baseroot
+		if root == None:
+			self.root = None
 		else:
-			src.sort (key = lambda (x): int (x[len (b) + 1:]))
-			self.root = self.baseroot + src[-1][len (b):]
+			self.root = os.path.abspath (os.path.normpath (root))
 		self.tile = Tile (self)
 		self.world = World (self)
 		self.seq = Seq (self)
 		self.sound = Sound (self)
 		self.script = Script (self)
-		self.info = open (os.path.join (self.root, 'info' + os.extsep + 'txt')).read ()
+		if root == None:
+			self.info = ''
+			self.preview = None
+			self.splash = None
+			return
+		global filename
+		filename = os.path.join (self.root, 'info' + os.extsep + 'txt')
+		self.info = open (filename).read ()
 		im = os.path.join (self.root, 'image')
 		p = os.path.join (im, 'preview' + os.extsep + 'png')
 		if os.path.exists (p):
@@ -1570,18 +1851,23 @@ class Dink:
 			self.splash = None
 	def save (self, root = None):
 		if root != None:
-			self.baseroot = os.path.abspath (os.path.normpath (root))
-		d = os.path.dirname (self.root)
-		b = os.path.basename (self.root)
-		l = os.listdir (d)
-		src = [x for x in l if x.startswith (b + '.') and re.match ('^\d+$', x[len (b) + 1:])]
-		if src == []:
-			assert b in l
-			self.root = self.baseroot
+			self.root = os.path.abspath (os.path.normpath (root))
+		if os.path.exists (self.root):
+			d = os.path.dirname (self.root)
+			b = os.path.basename (self.root)
+			l = os.listdir (d)
+			src = [x for x in l if x.startswith (b + '.') and re.match ('^\d+$', x[len (b) + 1:])]
+			if src == []:
+				backup = self.root + '.0'
+			else:
+				src.sort (key = lambda x: int (x[len (b) + 1:]))
+				backup = self.root + ('.%d' % (int (src[-1][len (b) + 1:]) + 1))
+			os.mkdir (backup)
+			for f in os.listdir (self.root):
+				if not f.startswith ('.'):
+					os.rename (os.path.join (self.root, f), os.path.join (backup, f))
 		else:
-			src.sort (key = lambda (x): int (x[len (b) + 1:]))
-			self.root = self.baseroot + ('.%d' % (int (src[-1][len (b) + 1:]) + 1))
-		os.mkdir (self.root)
+			os.mkdir (self.root)
 		self.tile.save ()
 		self.world.save ()
 		self.seq.save ()
@@ -1616,20 +1902,20 @@ class Dink:
 		if self.preview != None:
 			self.preview.save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
 		if self.splash != None:
-			self.splash.save (os.path.join (os.path.join (root, 'tiles'), 'splash' + os.extsep + 'bmp'))
+			self.splash.save (os.path.join (root, 'tiles', 'splash' + os.extsep + 'bmp'))
 		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)
 	def play (self, map = None, x = None, y = None):
 		if y != None:
-			tmp = self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_run
+			tmp = self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script
 			self.script.start_map = map
 			self.script.start_x = x
 			self.script.start_y = y
-			self.script.title_run = 'start-game'
+			self.script.title_script = 'start-game'
 		builddir = tempfile.mkdtemp ()
 		try:
 			self.build (builddir)
-			os.spawnl (os.P_WAIT, dinkprog, dinkprog, '-g', builddir, '-r', dinkdir, '-d', '-w')
+			os.spawnl (os.P_WAIT, dinkprog, dinkprog, '-g', builddir, '-r', dinkdir, '-w')
 		finally:
 			shutil.rmtree (builddir)
 		if y != None:
-			self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_run = tmp
+			self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script = tmp

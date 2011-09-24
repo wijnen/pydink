@@ -1,5 +1,5 @@
-# Set this to true if you have 512 MB or less real RAM memory.
-lowmem = True
+# Set this to True if you have 512 MB or less real RAM memory.
+lowmem = False
 # Maximum number of pixbufs in cache. This setting is only used if lowmem == True.
 # Indication: there are 224 built-in sequences.
 maxcache = 500
