@@ -275,6 +275,12 @@ class View (gtk.DrawingArea):
 		if worldpos[0] % 12 == 0:
 			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0], screenpos[1] + 49)
 	def draw_tile_hard (self, screenpos, worldpos):
+		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
+		if n in data.world.room and data.world.room[n].hard != '':
+			h = data.world.room[n].hard
+			if h in View.hardcache:
+				self.buffer.draw_pixbuf (View.gc, View.hardcache[h], (worldpos[0] % 12) * 50, (worldpos[1] % 8) * 50, screenpos[0], screenpos[1], 50, 50)
+				return
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
 			w, h = View.bmp[b[0]].get_size ()
@@ -496,7 +502,7 @@ class ViewMap (View):
 		# Now draw them all in the right order. First the pixbufs, then hardness, then wireframe information.
 		for s in lst:
 			if s[0][0] == None:
-				# This is only a warp target.
+				# This is a warp target.
 				continue
 			(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 			# Draw the pixbuf.
@@ -735,8 +741,7 @@ class ViewMap (View):
 			pass
 		elif e.keyval == gtk.keysyms.p: # play
 			os.system (the_gui['sync'])
-			for s in data.script.data:
-				data.script.data[s] = open (os.path.join (tmpdir, s + '.c')).read ()
+			sync ()
 			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
 			data.play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
@@ -756,6 +761,7 @@ class ViewMap (View):
 				tile = tiles[random.randrange (len (copybuffer))][3:6]
 				data.world.room[n].tiles[i[1] % 8][i[0] % 12] = tile
 		elif e.keyval == gtk.keysyms.s: # save
+			sync ()
 			data.save ()
 		elif e.keyval == gtk.keysyms.t: # show tilescreen
 			the_gui.settiles = True
@@ -848,43 +854,43 @@ class ViewMap (View):
 			self.moveinfo = None
 		elif e.keyval == gtk.keysyms.space: # start screen pan
 			self.moveinfo = 'pan', p, self.make_cancel ()
-		elif e.keyval == gtk.keysyms.KP_0: # new sprite from sequence
+		elif e.keyval == gtk.keysyms.KP_0 or e.keyval == gtk.keysyms.KP_Insert: # new sprite from sequence
 			self.newinfo = p, (ox, oy), n
 			viewseq.update ()
 			the_gui.setseq = True
-		elif e.keyval == gtk.keysyms.KP_1: # new sprite with direction 1
+		elif e.keyval == gtk.keysyms.KP_1 or e.keyval == gtk.keysyms.KP_End: # new sprite with direction 1
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (1)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_2: # new sprite with direction 2
+		elif e.keyval == gtk.keysyms.KP_2 or e.keyval == gtk.keysyms.KP_Down: # new sprite with direction 2
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (2)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_3: # new sprite with direction 3
+		elif e.keyval == gtk.keysyms.KP_3 or e.keyval == gtk.keysyms.KP_Next: # new sprite with direction 3
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (3)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_4: # new sprite with direction 4
+		elif e.keyval == gtk.keysyms.KP_4 or e.keyval == gtk.keysyms.KP_Left: # new sprite with direction 4
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (4)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_5: # new sprite from collection with any direction
+		elif e.keyval == gtk.keysyms.KP_5 or e.keyval == gtk.keysyms.KP_Begin: # new sprite from collection with any direction
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (None)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_6: # new sprite with direction 6
+		elif e.keyval == gtk.keysyms.KP_6 or e.keyval == gtk.keysyms.KP_Right: # new sprite with direction 6
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (6)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_7: # new sprite with direction 7
+		elif e.keyval == gtk.keysyms.KP_7 or e.keyval == gtk.keysyms.KP_Home: # new sprite with direction 7
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (7)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_8: # new sprite with direction 8
+		elif e.keyval == gtk.keysyms.KP_8 or e.keyval == gtk.keysyms.KP_Up: # new sprite with direction 8
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (8)
 			the_gui.setcollection = True
-		elif e.keyval == gtk.keysyms.KP_9: # new sprite with direction 9
+		elif e.keyval == gtk.keysyms.KP_9 or e.keyval == gtk.keysyms.KP_Prior: # new sprite with direction 9
 			self.newinfo = p, (ox, oy), n
 			viewcollection.direction (9)
 			the_gui.setcollection = True
@@ -1744,6 +1750,7 @@ def update_editgui ():
 	screen = spriteselect[0][0]
 	the_gui.set_screen = screen
 	the_gui.set_screen_script = data.world.room[screen].script
+	the_gui.set_screen_hardness = data.world.room[screen].hard
 	the_gui.set_screen_music = data.world.room[screen].music
 	the_gui.set_indoor = data.world.room[screen].indoor
 	the_gui.set_spritelist = keylist (data.world.room[screen].sprite, lambda x: x)
@@ -1812,6 +1819,8 @@ def update_gui (dummy):
 	# Selected screen: update
 	# Screen script
 	data.world.room[screen].script = the_gui.get_screen_script
+	# Screen hardness
+	data.world.room[screen].hard = the_gui.get_screen_hardness
 	# Screen music
 	data.world.room[screen].music = the_gui.get_screen_music
 	# Indoor
@@ -1915,18 +1924,89 @@ def update_gui (dummy):
 def do_edit (s):
 	if s == '':
 		return
-	name = os.path.join (tmpdir, s + '.c')
+	name = os.path.join (tmpdir, s + os.extsep + 'c')
 	if s not in data.script.data:
 		data.script.data[s] = ''
 		# Create the empty file.
 		open (name, 'w')
 	os.system (the_gui['run-script'].replace ('$SCRIPT', name))
 
+def do_edit_hard (h, room):
+	if h == '' or room not in data.world.room:
+		return
+	name = os.path.join (tmpdir, h + os.extsep + 'png')
+	if os.path.exists (name):
+		# Update hardness.
+		data.tile.hard[h] = dink.make_hard_image (name)
+	image = Image.new ('RGB', (50 * 12, 50 * 8), (0, 0, 0))
+	# Write all tiles
+	for y in range (8):
+		for x in range (12):
+			n, tx, ty = data.world.room[room].tiles[y][x]
+			image.paste (data.tile.tile[n][0].crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50)), (x * 50, y * 50))
+	# Write all sprites. Ignore sprites from other screens.
+	lst = []
+	for spr in data.world.room[room].sprite:
+		sp = data.world.room[room].sprite[spr]
+		pos = (sp.x, sp.y)
+		seq = data.seq.find_seq (sp.seq)
+		lst += ((pos, sp, seq),)
+	lst.sort (key = lambda x: x[0][1] - x[1].que)
+	for spr in lst:
+		frame = spr[2].frames[spr[1].frame]
+		(x, y), (left, top, right, bottom), box = viewmap.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+		if right <= left or bottom <= top:
+			continue
+		# Draw the pixbuf.
+		sprite = Image.open (dink.filepart (*frame.cache)).convert ('RGBA')
+		p = sprite.load ()
+		for y in range (sprite.size[1]):
+			for x in range (sprite.size[0]):
+				if (spr[2].type == 'black' and p[x, y][:3] == (0, 0, 0)) or (spr[2].type != 'black' and p[x, y][:3] == (255, 255, 255)):
+					p[x, y] = (0, 0, 0, 0)
+		if box != None:
+			sprite = image.crop (box)
+		sprite = sprite.resize ((right - left, bottom - top))
+		image.paste (sprite, (left, top), sprite)
+	# Make dark
+	image = Image.eval (image, lambda v: v / 2)
+	# Add hardness
+	if h not in data.tile.hard:
+		# Fill with default hardness for tiles.
+		for y in range (8):
+			for x in range (12):
+				hard = data.tile.tile[n][1].crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50))
+				# Paste twice for extra intensity (190 minimum)
+				image.paste (hard, (x * 50, y * 50), hard)
+				image.paste (hard, (x * 50, y * 50), hard)
+		# Make sure it is checked when playing or saving.
+		data.tile.hard[h] = image
+	else:
+		# Paste twice for extra intensity (190 minimum)
+		image.paste (data.tile.hard[h], None, data.tile.hard[h])
+		image.paste (data.tile.hard[h], None, data.tile.hard[h])
+	image.save (name)
+	os.system (the_gui['edit-hardness'].replace ('$IMAGE', name))
+	sync ()
+
+def edit_screen_hardness (self, dummy = None):
+	do_edit_hard (the_gui.get_screen_hardness, int (the_gui.get_screen))
+
 def edit_screen_script (self, dummy = None):
 	do_edit (the_gui.get_screen_script)
 
 def edit_script (self, dummy = None):
 	do_edit (the_gui.get_script)
+
+def sync ():
+	for s in data.script.data:
+		data.script.data[s] = open (os.path.join (tmpdir, s + os.extsep + 'c')).read ()
+	View.hardcache = {}
+	for h in data.tile.hard:
+		p = os.path.join (tmpdir, h + os.extsep + 'png')
+		if os.path.exists (p):
+			data.tile.hard[h] = dink.make_hard_image (p)
+		View.hardcache[h] = viewmap.image2pixbuf (data.tile.hard[h])
 
 root = sys.argv[1]
 data = dink.Dink (root)
@@ -1942,15 +2022,21 @@ viewworld = ViewWorld ()
 
 tmpdir = tempfile.mkdtemp (prefix = 'dink-scripts-')
 for s in data.script.data:
-	open (os.path.join (tmpdir, s + '.c'), 'w').write (data.script.data[s])
+	open (os.path.join (tmpdir, s + os.extsep + 'c'), 'w').write (data.script.data[s])
+sync ()
 
 the_gui = gui.gui (external = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld })
 the_gui.update = update_gui
 the_gui.new_sprite = new_sprite
 the_gui.edit_screen_script = edit_screen_script
+the_gui.edit_screen_hardness = edit_screen_hardness
 the_gui.edit_script = edit_script
 the_gui ()
 
 for s in data.script.data:
-	os.unlink (os.path.join (tmpdir, s + '.c'))
+	os.unlink (os.path.join (tmpdir, s + os.extsep + 'c'))
+for h in data.tile.hard:
+	p = os.path.join (tmpdir, h + os.extsep + 'png')
+	if os.path.exists (p):
+		os.unlink (p)
 os.rmdir (tmpdir)

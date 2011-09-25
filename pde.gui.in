@@ -1,5 +1,6 @@
 gtk
 	Set name=run-script value="x-terminal-emulator -e vi '$SCRIPT'"
+	Set name=edit-hardness value="gimp '$IMAGE'"
 	Set name=sync value=""
 	Set name=default-gc value="black"
 	Set name=grid-gc value="gray"
@@ -130,7 +131,10 @@ gtk
 						'Screen
 						SpinButton range=:1,768 value-changed=new_screen value=get_screen set=set_screen
 						'Hardness
-						FileChooserButton
+						HBox
+							Entry changed=update value=get_screen_hardness set=set_screen_hardness
+							Button clicked=edit_screen_hardness
+								'Edit
 						'Script
 						HBox
 							Entry changed=update value=get_screen_script set=set_screen_script

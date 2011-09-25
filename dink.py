@@ -43,6 +43,21 @@ def nice_assert (test, message):
 		return
 	error (message)
 
+def make_hard_image (path):
+	src = Image.open (path).convert ('RGB')
+	spix = src.load ()
+	ret = Image.new ('RGBA', src.size)
+	rpix = ret.load ()
+	for y in range (src.size[1]):
+		for x in range (src.size[0]):
+			if spix[x, y][2] < 150:
+				rpix[x, y] = (0, 0, 0, 0)
+			elif spix[x, y][1] >= 150:
+				rpix[x, y] = (255, 255, 255, 128)
+			else:
+				rpix[x, y] = (0, 0, 255, 128)
+	return ret
+
 #class filepart:
 #	def __init__ (self, name, offset, length):
 #		self.offset = offset
@@ -1200,7 +1215,7 @@ class Tile:
 				if not t.endswith (h):
 					continue
 				base = t[:-len (h)]
-				image = Image.eval (Image.open (os.path.join (d, t)).convert ('RGBA'), lambda v: 255 if v > 200 else 0)
+				image = make_hard_image (os.path.join (d, t))
 				if re.match ('^\d\d$', base):
 					n = int (base) - 1
 					nice_assert (n < 41, 'tile screen must be at most 41')
@@ -1218,14 +1233,14 @@ class Tile:
 					tilefile = (convert_image (Image.open (t)), 1)
 				else:
 					tilefile = (convert_image (Image.open (filepart (*tilefiles[n]))), 0)
-				image = Image.eval (Image.open (os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png')).convert ('RGBA'), lambda v: 255 if v > 200 else 0)
+				image = make_hard_image (os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png'))
 				self.tile[n] = (tilefile[0], image, tilefile[1])
 	def find_hard (self, hard, x, y, bmp, tx, ty):
 		if hard != '':
 			nice_assert (hard in self.hard, 'reference to undefined hardness screen %s' % hard)
 			ret = self.hardmap[hard][y][x]
-			if ret == self.tilemap[bmp][y][x]:
-				return 0
+			if ret != self.tilemap[bmp][ty][tx]:
+				return ret
 		return 0
 	def save (self):
 		if len (self.hard) == 0:
@@ -1267,9 +1282,9 @@ class Tile:
 							p = tile.getpixel ((tx, ty))
 							if p == (0, 0, 0, 0):
 								h.write ('\0')
-							elif p == (255, 255, 255, 255):
+							elif p == (255, 255, 255, 128):
 								h.write ('\1')
-							elif p == (0, 0, 255, 255):
+							elif p == (0, 0, 255, 128):
 								h.write ('\2')
 							else:
 								error ('invalid pixel in hard tile: %s' % str (p))
