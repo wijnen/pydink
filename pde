@@ -445,6 +445,7 @@ class ViewMap (View):
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
 		self.set_size_request (50 * 12, 50 * 8)
 		self.firstconfigure = True
+		self.current_selection = 0
 	def configure (self, widget, e):
 		View.configure (self, widget, e)
 		if self.firstconfigure:
@@ -733,9 +734,14 @@ class ViewMap (View):
 				self.moveinfo = 'resize', (avg, dist, size), self.make_cancel ()
 		elif e.keyval == gtk.keysyms.m: # move selected sprites
 			self.moveinfo = 'move', None, self.make_cancel ()
-		elif e.keyval == gtk.keysyms.n: # find next
-			# TODO
-			pass
+		elif e.keyval == gtk.keysyms.n: # jump to next
+			if len (spriteselect) > 0:
+				self.current_selection += 1
+				if self.current_selection >= len (spriteselect):
+					self.current_selection = 0
+				s = spriteselect[self.current_selection]
+				spr = data.world.room[s[0]].sprite[s[1]]
+				self.goto (self.make_global (s[0], (spr.x, spr.y)))
 		elif e.keyval == gtk.keysyms.o: # open group
 			# TODO
 			pass
@@ -805,6 +811,13 @@ class ViewMap (View):
 		elif e.keyval == gtk.keysyms.slash: # search sprite by pattern
 			# TODO
 			pass
+		elif e.keyval == gtk.keysyms.quoteright: # toggle nohit
+			for s in spriteselect:
+				if s[2]:
+					continue
+				spr = data.world.room[s[0]].sprite[s[1]]
+				spr.nohit = not spr.nohit
+			update_editgui ()
 		elif e.keyval == gtk.keysyms.quoteleft: # enter comand
 			# TODO
 			pass
@@ -1166,6 +1179,7 @@ class ViewMap (View):
 				sp.x, sp.y = p
 				rm = (s[1] / (8 * 50)) * 32 + (s[0] / (12 * 50)) + 1
 				if rm != room:
+					print 'new room', rm, room
 					if rm in data.world.room:
 						# Move the sprite to a different room.
 						name = spriteselect[mover][1]
@@ -1180,7 +1194,9 @@ class ViewMap (View):
 						spriteselect[mover] = (room, nm, False)
 					else:
 						# New room doesn't exist; use old one.
+						print 'old room after all', op
 						sp.x, sp.y = op
+						sp.x += 20
 				else:
 					# Don't update entire gui, because it's too slow.
 					global updating
@@ -1217,7 +1233,7 @@ class ViewMap (View):
 		self.pointer_pos = pos
 		self.pointer_tile = [(self.pointer_pos[t] + self.offset[t]) / 50 for t in range (2)]
 		if self.moveinfo == None:
-			self.update ()
+			#self.update ()
 			return
 		elif self.moveinfo[0] == 'tileselect':
 			View.select_tiles (self, tile, 0)
@@ -1269,7 +1285,6 @@ class ViewMap (View):
 			raise AssertionError ('invalid moveinfo type %s' % self.moveinfo[0])
 		update_editgui ()
 		self.update ()
-		viewworld.update ()
 
 class ViewSeq (View):
 	def __init__ (self):
@@ -1968,6 +1983,21 @@ def do_edit_hard (h, room):
 			sprite = image.crop (box)
 		sprite = sprite.resize ((right - left, bottom - top))
 		image.paste (sprite, (left, top), sprite)
+	# Write sprite hardness as red boxes (ignored when reading back.
+	pixels = image.load ()
+	for spr in lst:
+		if spr[1].hard:
+			frame = spr[2].frames[spr[1].frame]
+			for x in range (frame.hardbox[2] - frame.hardbox[0]):
+				p = spr[0][0] - 20 + frame.hardbox[0] + x, spr[0][1] + frame.hardbox[1]
+				pixels[p] = tuple ([255] + list (pixels[p])[1:])
+				p = spr[0][0] - 20 + frame.hardbox[0] + x, spr[0][1] + frame.hardbox[3]
+				pixels[p] = tuple ([255] + list (pixels[p])[1:])
+			for y in range (frame.hardbox[3] - frame.hardbox[1]):
+				p = spr[0][0] - 20 + frame.hardbox[0], spr[0][1] + frame.hardbox[1] + y
+				pixels[p] = tuple ([255] + list (pixels[p])[1:])
+				p = spr[0][0] - 20 + frame.hardbox[2], spr[0][1] + frame.hardbox[1] + y
+				pixels[p] = tuple ([255] + list (pixels[p])[1:])
 	# Make dark
 	image = Image.eval (image, lambda v: v / 2)
 	# Add hardness
@@ -1975,6 +2005,7 @@ def do_edit_hard (h, room):
 		# Fill with default hardness for tiles.
 		for y in range (8):
 			for x in range (12):
+				n, tx, ty = data.world.room[room].tiles[y][x]
 				hard = data.tile.tile[n][1].crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50))
 				# Paste twice for extra intensity (190 minimum)
 				image.paste (hard, (x * 50, y * 50), hard)
@@ -1988,6 +2019,7 @@ def do_edit_hard (h, room):
 	image.save (name)
 	os.system (the_gui['edit-hardness'].replace ('$IMAGE', name))
 	sync ()
+	viewmap.update ()
 
 def edit_screen_hardness (self, dummy = None):
 	do_edit_hard (the_gui.get_screen_hardness, int (the_gui.get_screen))

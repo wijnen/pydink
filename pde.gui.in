@@ -1,5 +1,5 @@
 gtk
-	Set name=run-script value="x-terminal-emulator -e vi '$SCRIPT'"
+	Set name=run-script value="cd `dirname $SCRIPT` ; x-terminal-emulator -e vi `basename $SCRIPT`"
 	Set name=edit-hardness value="gimp '$IMAGE'"
 	Set name=sync value=""
 	Set name=default-gc value="black"
