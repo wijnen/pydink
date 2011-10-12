@@ -47,6 +47,7 @@ copystart = (0, 0, 0)		# Start tile at the time ctrl-c was pressed.
 select = Select ()		# Current tiles selection. See Select class above for contents.
 spriteselect = []		# Currently selected sprites: list of (screen, name, is_warp) tuples. 
 warptargets = {'broken':set ()}	# Map of warp targets per room.
+screenzoom = 1.0		# Number of pixels per tile in view.
 
 def make_avg ():
 	assert len (spriteselect) != 0
@@ -147,6 +148,15 @@ class View (gtk.DrawingArea):
 			View.cachedpb.remove (pb)
 		View.cachedpb = [pb] + View.cachedpb
 		return View.pixbuf[pb][0]
+	def makezoom (self):
+		View.zoombmp = []
+		for i in range (len (View.bmp)):
+			w, h = View.bmp[i].get_size ()
+			nw = int (w * screenzoom)
+			nh = int (h * screenzoom)
+			View.zoombmp += (gtk.gdk.Pixmap (self.get_window (), nw, nh),)
+			pb = gtk.gdk.pixbuf_get_from_drawable (None, View.bmp[i], View.bmp[i].get_colormap (), 0, 0, 0, 0, w, h)
+			View.zoombmp[i].draw_pixbuf (View.gc, pb.scale_simple (nw, nh, gtk.gdk.INTERP_NEAREST), 0, 0, 0, 0)
 	def start (self, widget):
 		self.realize ()
 		if View.started != None:
@@ -217,6 +227,7 @@ class View (gtk.DrawingArea):
 					else:
 						View.pixbufs[s][n] = View.cpixbufs[src.name[0]][src.name[1]][f.source[1]]
 		View.started = True
+		View.makezoom (self)
 		View.update (self)
 	def __init__ (self):
 		gtk.DrawingArea.__init__ (self)
@@ -256,37 +267,39 @@ class View (gtk.DrawingArea):
 		else:
 			self.get_window ().draw_drawable (View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
 	def draw_tile (self, screenpos, worldpos, screen_lines):
+		s = int (50 * screenzoom)
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
 			w, h = View.bmp[b[0]].get_size ()
-			if b[1] * 50 >= w or b[2] * 50 >= h:
-				self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0] + 1, screenpos[1] + 1, 50, 50)
+			if b[1] * s >= w or b[2] * s >= h:
+				self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0] + 1, screenpos[1] + 1, s, s)
 			else:
-				self.buffer.draw_drawable (View.gc, View.bmp[b[0]], b[1] * 50, b[2] * 50, screenpos[0], screenpos[1], 50, 50)
-			if screen_lines:
-				if worldpos[1] % 8 != 0:
-					self.buffer.draw_line (View.gridgc, screenpos[0], screenpos[1], screenpos[0] + 49, screenpos[1])
-				if worldpos[0] % 12 != 0:
-					self.buffer.draw_line (View.gridgc, screenpos[0], screenpos[1] + 1, screenpos[0], screenpos[1] + 49)
+				self.buffer.draw_drawable (View.gc, View.zoombmp[b[0]], b[1] * s, b[2] * s, screenpos[0], screenpos[1], s, s)
 		else:
-			self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0], screenpos[1], 50, 50)
+			self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0], screenpos[1], s, s)
 		if worldpos[1] % 8 == 0:
-			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0] + 49, screenpos[1])
+			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0] + s - 1, screenpos[1])
 		if worldpos[0] % 12 == 0:
-			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0], screenpos[1] + 49)
+			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0], screenpos[1] + s - 1)
+		if screen_lines:
+			if worldpos[1] % 8 != 0:
+				self.buffer.draw_line (View.gridgc, screenpos[0], screenpos[1], screenpos[0] + s - 1, screenpos[1])
+			if worldpos[0] % 12 != 0:
+				self.buffer.draw_line (View.gridgc, screenpos[0], screenpos[1] + 1, screenpos[0], screenpos[1] + s - 1)
 	def draw_tile_hard (self, screenpos, worldpos):
+		s = int (50 * screenzoom)
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.room and data.world.room[n].hard != '':
 			h = data.world.room[n].hard
 			if h in View.hardcache:
-				self.buffer.draw_pixbuf (View.gc, View.hardcache[h], (worldpos[0] % 12) * 50, (worldpos[1] % 8) * 50, screenpos[0], screenpos[1], 50, 50)
+				self.buffer.draw_pixbuf (View.gc, View.hardcache[h], (worldpos[0] % 12) * s, (worldpos[1] % 8) * s, screenpos[0], screenpos[1], s, s)
 				return
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
 			w, h = View.bmp[b[0]].get_size ()
-			if b[1] * 50 >= w or b[2] * 50 >= h:
+			if b[1] * s >= w or b[2] * s >= h:
 				return
-			self.buffer.draw_pixbuf (View.gc, View.hard[b[0]], b[1] * 50, b[2] * 50, screenpos[0], screenpos[1], 50, 50)
+			self.buffer.draw_pixbuf (View.gc, View.hard[b[0]], b[1] * s, b[2] * s, screenpos[0], screenpos[1], s, s)
 	def make_pixbuf50 (self, pb, newsize):
 		size = [pb.get_width (), pb.get_height ()]
 		if size[0] <= newsize and size[1] <= newsize:
@@ -299,12 +312,13 @@ class View (gtk.DrawingArea):
 			size[1] = newsize
 		return pb.scale_simple (size[0], size[1], gtk.gdk.INTERP_NEAREST)
 	def draw_tiles (self, which):
+		s = int (50 * screenzoom)
 		origin = [x / 50 for x in self.offset]
-		offset = [x % 50 for x in self.offset]
+		offset = [int ((x % 50) * screenzoom) for x in self.offset]
 		screens = set ()
 		# Fill screens with all screens from which sprites should be drawn.
-		for y in range (self.offset[1] / (8 * 50), (self.offset[1] + self.screensize[1] + 8 * 50) / (8 * 50)):
-			for x in range (self.offset[0] / (12 * 50), (self.offset[0] + self.screensize[0] + 12 * 50) / (12 * 50)):
+		for y in range (self.offset[1] / (8 * 50), int (self.offset[1] + self.screensize[1] / screenzoom + 8 * 50) / (8 * 50)):
+			for x in range (self.offset[0] / (12 * 50), int (self.offset[0] + self.screensize[0] / screenzoom + 12 * 50) / (12 * 50)):
 				screens.add (y * 32 + x + 1)
 				# and screens around it, for sprites which stick out.
 				screens.add (y * 32 + x + 1 + 1)
@@ -316,20 +330,20 @@ class View (gtk.DrawingArea):
 				screens.add (y * 32 + x + 1 - 1 + 32)
 				screens.add (y * 32 + x + 1 - 1 - 32)
 		# Draw tiles.
-		for y in range (offset[1] / 50, (self.screensize[1] + offset[1] + 50) / 50):
-			for x in range (offset[0] / 50, (self.screensize[0] + offset[0] + 50) / 50):
+		for y in range (offset[1] / 50, int (self.screensize[1] / screenzoom + offset[1] + 50) / 50):
+			for x in range (offset[0] / 50, int (self.screensize[0] / screenzoom + offset[0] + 50) / 50):
 				if (origin[0] + x < 0 or origin[0] + x >= self.tiles[0]) or (origin[1] + y < 0 or origin[1] + y >= self.tiles[1]):
-					self.buffer.draw_rectangle (self.emptygc, True, x * 50 - offset[0], y * 50 - offset[1], 50, 50)
+					self.buffer.draw_rectangle (self.emptygc, True, (x * 50 - offset[0]) * screenzoom, (y * 50 - offset[1]) * screenzoom, s, s)
 					continue
-				screenpos = (x * 50 - offset[0], y * 50 - offset[1])
+				screenpos = (int ((x * 50 - offset[0]) * screenzoom), int ((y * 50 - offset[1]) * screenzoom))
 				worldpos = (origin[0] + x, origin[1] + y)
 				self.draw_tile (screenpos, worldpos)
 				check = (worldpos[0], worldpos[1], which)
 				if check in select.data:
 					if check == select.start:
-						self.buffer.draw_rectangle (self.noshowgc, False, screenpos[0] + 1, screenpos[1] + 1, 48, 48)
+						self.buffer.draw_rectangle (self.noshowgc, False, screenpos[0] + 1, screenpos[1] + 1, s - 2, s - 2)
 					else:
-						self.buffer.draw_rectangle (self.selectgc, False, screenpos[0] + 1, screenpos[1] + 1, 48, 48)
+						self.buffer.draw_rectangle (self.selectgc, False, screenpos[0] + 1, screenpos[1] + 1, s - 2, s - 2)
 		return screens
 	def update (self):
 		for c in View.components:
@@ -443,9 +457,9 @@ class ViewMap (View):
 		self.pointer_tile = (0, 0)	# Tile that the pointer is currently pointing it, in world coordinates. That is: pointer_pos / 50.
 		self.waitselect = None		# Selection to use if button is released without moving.
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
+		self.current_selection = 0	# Index of "current" sprite in selection.
 		self.set_size_request (50 * 12, 50 * 8)
 		self.firstconfigure = True
-		self.current_selection = 0
 	def configure (self, widget, e):
 		View.configure (self, widget, e)
 		if self.firstconfigure:
@@ -487,7 +501,7 @@ class ViewMap (View):
 				seq = data.seq.find_seq (sp.seq)
 				is_selected = (s, spr, False) in spriteselect
 				lst += ((pos, sp, seq, is_selected),)
-		# Add sprites which warp to here.
+		# Add warp targets.
 		for s in screens:
 			if s not in warptargets:
 				continue
@@ -514,72 +528,77 @@ class ViewMap (View):
 			if box != None:
 				pb = pb.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
 			if right > left and bottom > top:
-				pb = pb.scale_simple (right - left, bottom - top, gtk.gdk.INTERP_NEAREST)
-				self.buffer.draw_pixbuf (None, pb, 0, 0, left, top)
+				pb = pb.scale_simple (int ((right - left) * screenzoom), int ((bottom - top) * screenzoom), gtk.gdk.INTERP_NEAREST)
+				self.buffer.draw_pixbuf (None, pb, 0, 0, int (left * screenzoom), int (top * screenzoom))
 		# Tile hardness.
 		origin = [x / 50 for x in self.offset]
-		offset = [x % 50 for x in self.offset]
-		for y in range (offset[1] / 50, (self.screensize[1] + offset[1] + 50) / 50):
-			for x in range (offset[0] / 50, (self.screensize[0] + offset[0] + 50) / 50):
+		offset = [int ((x % 50) * screenzoom) for x in self.offset]
+		ts = int (50 * screenzoom)
+		for y in range (offset[1], (self.screensize[1] + offset[1] + ts) / ts):
+			for x in range (offset[0], (self.screensize[0] + offset[0] + ts) / ts):
 				if (origin[0] + x < 0 or origin[0] + x >= self.tiles[0]) or (origin[1] + y < 0 or origin[1] + y >= self.tiles[1]):
 					continue
-				self.draw_tile_hard ((x * 50 - offset[0], y * 50 - offset[1]), (origin[0] + x, origin[1] + y))
+				self.draw_tile_hard ((int ((x * 50 - offset[0]) / screenzoom), int ((y * 50 - offset[1]) / screenzoom)), (origin[0] + x, origin[1] + y))
 		# Sprite hardness.
-		for s in lst:
-			if s[0][0] == None:
+		for spr in lst:
+			if spr[0][0] == None:
 				# This is a warp target.
 				continue
-			if not s[1].hard:
-				if s[3]:
-					(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
-					self.buffer.draw_rectangle (self.noshowgc, False, x + s[2].frames[s[1].frame].hardbox[0], y + s[2].frames[s[1].frame].hardbox[1], s[2].frames[s[1].frame].hardbox[2] - s[2].frames[s[1].frame].hardbox[0] - 1, s[2].frames[s[1].frame].hardbox[3] - s[2].frames[s[1].frame].hardbox[1] - 1)
+			if not spr[1].hard:
+				if spr[3]:
+					(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					self.buffer.draw_rectangle (self.noshowgc, False, int ((x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom), int ((y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom), int ((spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom), int ((spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom))
 				continue
-			(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
-			if s[3]:
-				self.buffer.draw_rectangle (self.hardgc, False, x + s[2].frames[s[1].frame].hardbox[0], y + s[2].frames[s[1].frame].hardbox[1], s[2].frames[s[1].frame].hardbox[2] - s[2].frames[s[1].frame].hardbox[0] - 1, s[2].frames[s[1].frame].hardbox[3] - s[2].frames[s[1].frame].hardbox[1] - 1)
+			(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+			if spr[3]:
+				self.buffer.draw_rectangle (self.hardgc, False, int ((x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom), int ((y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom), int ((spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom), int ((spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom))
 			else:
-				self.buffer.draw_rectangle (self.hardgc, False, x + s[2].frames[s[1].frame].hardbox[0], y + s[2].frames[s[1].frame].hardbox[1], s[2].frames[s[1].frame].hardbox[2] - s[2].frames[s[1].frame].hardbox[0] - 1, s[2].frames[s[1].frame].hardbox[3] - s[2].frames[s[1].frame].hardbox[1] - 1)
+				self.buffer.draw_rectangle (self.hardgc, False, int ((x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom), int ((y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom), int ((spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom), int ((spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom))
 		# Wireframe information for all except selected sprites.
-		for s in lst:
-			if s[3]:
+		for spr in lst:
+			if spr[3]:
 				continue
-			if s[0][0] != None:
+			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
-				(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+				(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 				# Que: not drawn for not selected sprites.
 				# Hotspot.
-				self.buffer.draw_line (self.noselectgc, x - 10, y, x + 10, y)
-				self.buffer.draw_line (self.noselectgc, x, y - 10, x, y + 10)
+				self.buffer.draw_line (self.noselectgc, int ((x - 10) * screenzoom), int (y * screenzoom), int ((x + 10) * screenzoom), int (y * screenzoom))
+				self.buffer.draw_line (self.noselectgc, int (x * screenzoom), int ((y - 10) * screenzoom), int (x * screenzoom), int ((y + 10) * screenzoom))
 			else:
 				# This is a warp target.
-				n, x, y = s[1].warp
+				n, x, y = spr[1].warp
 				y += ((n - 1) / 32) * 8 * 50 - self.offset[1]
 				x += ((n - 1) % 32) * 12 * 50 - self.offset[0] - 20
-				self.buffer.draw_line (self.noselectgc, x - 20, y, x + 20, y)
-				self.buffer.draw_line (self.noselectgc, x, y - 20, x, y + 20)
-				self.buffer.draw_arc (self.noselectgc, False, x - 15, y - 15, 30, 30, 0, 64 * 360)
+				self.buffer.draw_line (self.noselectgc, int ((x - 20) * screenzoom), int (y * screenzoom), int ((x + 20) * screenzoom), int (y * screenzoom))
+				self.buffer.draw_line (self.noselectgc, int (x * screenzoom), int ((y - 20) * screenzoom), int (x * screenzoom), int ((y + 20) * screenzoom))
+				self.buffer.draw_arc (self.noselectgc, False, int ((x - 15) * screenzoom), int ((y - 15) * screenzoom), int (30 * screenzoom), int (30 * screenzoom), 0, 64 * 360)
 		# No matter what is visible, always show selected sprite's stuff on top.
-		for s in lst:
-			if not s[3]:
+		for spr in lst:
+			if not spr[3]:
 				continue
-			if s[0][0] != None:
+			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
-				(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+				(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 				# Que.
-				self.buffer.draw_line (self.noshowgc, x - 40, y - s[1].que, x + 40, y - s[1].que)
+				self.buffer.draw_line (self.noshowgc, int ((x - 40) * screenzoom), int ((y - spr[1].que) * screenzoom), int ((x + 40) * screenzoom), int ((y - spr[1].que) * screenzoom))
 				# Hotspot
-				self.buffer.draw_line (self.selectgc, x - 10, y, x + 10, y)
-				self.buffer.draw_line (self.selectgc, x, y - 10, x, y + 10)
+				self.buffer.draw_line (self.selectgc, int ((x - 10) * screenzoom), int (y * screenzoom), int ((x + 10) * screenzoom), int (y * screenzoom))
+				self.buffer.draw_line (self.selectgc, int (x * screenzoom), int ((y - 10) * screenzoom), int (x * screenzoom), int ((y + 10) * screenzoom))
 			else:
 				# This is a warp target.
-				n, x, y = s[1].warp
+				n, x, y = spr[1].warp
 				y += ((n - 1) / 32) * 8 * 50 - self.offset[1]
 				x += ((n - 1) % 32) * 12 * 50 - self.offset[0] - 20
-				self.buffer.draw_line (self.selectgc, x - 20, y, x + 20, y)
-				self.buffer.draw_line (self.selectgc, x, y - 20, x, y + 20)
-				self.buffer.draw_arc (self.selectgc, False, x - 15, y - 15, 30, 30, 0, 64 * 360)
-				self.buffer.draw_rectangle (self.selectgc, False, x - 20, y - 20, 40, 40)
-		# Finally, draw a line if we're resizing.
+				x = int (x * screenzoom)
+				y = int (y + screenzoom)
+				s = 20 * screenzoom
+				a = 15 * screenzoom
+				self.buffer.draw_line (self.selectgc, x - s, y, x + s, y)
+				self.buffer.draw_line (self.selectgc, x, y - s, x, y + s)
+				self.buffer.draw_arc (self.selectgc, False, x - a, y - a, a * 2, a * 2, 0, 64 * 360)
+				self.buffer.draw_rectangle (self.selectgc, False, x - s, y - s, s * 2, s * 2)
+		# Finally, draw a line if we're resizing or zooming.
 		if self.moveinfo != None and self.moveinfo[0] == 'resize':
 			avg = [self.moveinfo[1][0][t] - self.offset[t] for t in range (2)]
 			self.buffer.draw_line (self.noshowgc, avg[0], avg[1], self.pointer_pos[0], self.pointer_pos[1])
@@ -597,11 +616,11 @@ class ViewMap (View):
 		spos = ((screen - 1) % 32, (screen - 1) / 32)
 		return [pos[x] + s[x] * spos[x] * 50 for x in range (2)]
 	def goto (self, pos):
-		self.offset = [pos[x] - self.screensize[x] / 2 for x in range (2)]
+		self.offset = [int (pos[x] - (self.screensize[x] * screenzoom) / 2) for x in range (2)]
 		self.update ()
 		viewworld.update ()
 	def make_cancel (self):
-		ret = [self.offset, []]
+		ret = [self.offset, [], screenzoom]
 		for s in spriteselect:
 			spr = data.world.room[s[0]].sprite[s[1]]
 			if s[2]:
@@ -611,6 +630,7 @@ class ViewMap (View):
 		return ret
 	def keypress (self, widget, e):
 		global copystart
+		global screenzoom
 		self.selecting = False
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 		sx = p[0] / (12 * 50)
@@ -632,7 +652,7 @@ class ViewMap (View):
 				spr = data.world.room[s[0]].sprite[s[1]]
 				if s[2]:
 					continue
-				t += ([0, 0])
+				t += ([0, 0],)
 				ssx = ((s[0] - 1) % 32) * 12 * 50
 				ssy = ((s[0] - 1) / 32) * 8 * 50
 				if p[0] < ssx + spr.left:
@@ -807,7 +827,9 @@ class ViewMap (View):
 				copybuffer.add ((i[0], i[1], i[2], s[0], s[1], s[2]))
 			copystart = select.start
 		elif e.keyval == gtk.keysyms.z: # start screen zoom
-			self.moveinfo = 'screenzoom', p, self.make_cancel ()
+			center = self.screensize[0] / 2, self.screensize[1] / 2
+			dist = make_dist (center, p)
+			self.moveinfo = 'screenzoom', (center, dist, [screenzoom]), self.make_cancel ()
 		elif e.keyval == gtk.keysyms.slash: # search sprite by pattern
 			# TODO
 			pass
@@ -825,8 +847,7 @@ class ViewMap (View):
 			spriteselect[:] = []
 			select.clear ()
 		elif e.keyval == gtk.keysyms.BackSpace: # restore screen zoom 100%
-			# TODO
-			pass
+			screenzoom = 1.0
 		elif e.keyval == gtk.keysyms.Home: # center screen
 			s = (12, 8)
 			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / 50 * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
@@ -852,6 +873,8 @@ class ViewMap (View):
 			# Reset change.
 			if self.moveinfo != None:
 				self.offset = self.moveinfo[2][0]
+				screenzoom = self.moveinfo[2][2]
+				self.makezoom ()
 				for s in range (len (spriteselect)):
 					spr = data.world.room[spriteselect[s][0]].sprite[spriteselect[s][1]]
 					if spriteselect[s][2]:
@@ -922,6 +945,7 @@ class ViewMap (View):
 		self.update ()
 		return True
 	def handle_cursor (self, diff):
+		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 		if self.moveinfo == None:
 			return
 		elif self.moveinfo[0] == 'tileselect':
@@ -953,8 +977,14 @@ class ViewMap (View):
 			# TODO
 			pass
 		elif self.moveinfo[0] == 'screenzoom':
-			# TODO
-			pass
+			global screenzoom
+			screenzoom *= 1.2 ** (diff[1] * 5 + diff[0])
+			if screenzoom < 0.02:
+				screenzoom = 0.02
+			self.makezoom ()
+			# adjust moveinfo to use new size
+			dist = make_dist (self.moveinfo[1][0], p)
+			self.moveinfo = 'screenzoom', (self.moveinfo[1][0], dist, [screenzoom]), self.moveinfo[2]
 		elif self.moveinfo[0] == 'pan':
 			self.offset = [self.offset[t] + diff[t] for t in range (2)]
 		self.update ()
@@ -1277,8 +1307,13 @@ class ViewMap (View):
 			# TODO
 			pass
 		elif self.moveinfo[0] == 'screenzoom':
-			# TODO
-			pass
+			p = [self.pointer_pos[t] + self.offset[t] for t in range (2)]
+			dist = make_dist (self.moveinfo[1][0], p)
+			global screenzoom
+			screenzoom = self.moveinfo[1][2][0] * dist / self.moveinfo[1][1]
+			if screenzoom < 0.02:
+				screenzoom = 0.02
+			self.makezoom ()
 		elif self.moveinfo[0] == 'pan':
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
 		else:
