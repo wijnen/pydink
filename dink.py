@@ -195,6 +195,7 @@ the_locals = {}
 the_globals = {}
 for i in default_globals:
 	the_globals[i] = default_globals[i]
+choice_title = [None, False]
 
 def convert_image (im):
 	k = Image.eval (im.convert ('RGBA'), lambda v: [v, 254][v == 255])
@@ -588,7 +589,6 @@ internal_functions = {
 		'set_callback_random': 'sii',
 		'set_dink_speed': 'i',
 		'set_keep_mouse': 'i',
-		'set_mode': 'i',
 		'show_bmp': 'sii',
 		'sound_set_kill': 'i',
 		'sound_set_survive': 'ii',
@@ -645,6 +645,7 @@ internal_functions = {
 		'sp_x': 'iI',
 		'sp_y': 'iI',
 		'spawn': 's',
+		'start_game': '',
 		'stop_entire_game': 'i',
 		'stop_wait_for_button': '',
 		'stopcd': '',
@@ -760,21 +761,24 @@ def tokenize_expr (parent, script, as_bool = None):
 						t, script, isname = token (script)
 						script, args = read_args (parent, script)
 						if type (name) == str:
-							if name in functions[filename]:
+							if filename in functions and name in functions[filename]:
 								# local function.
 								nice_assert (len (args) == len (functions[filename][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[filename][name][1])))
-								ret += ([(name,), args],)
+								ret += (['()', (filename, name), args],)
 							else:
 								# internal function.
+								if name == 'choice':
+									ret += (['choice', args, choice_title[0]])
+									choice_title[:] = [None, False]
 								direct = make_direct (parent, name, args)
 								if direct is not None:
 									ret += (direct,)
 								else:
-									ret += ([name, args],)
+									ret += (['internal', name, args],)
 						else:
 							# function in other file.
 							nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1])))
-							ret += ([name, args],)
+							ret += (['()', name, args],)
 						need_operator = True
 						continue
 					# variable reference.
@@ -788,13 +792,14 @@ def check_exists (the_locals, name):
 	return name in the_locals or name in the_globals
 
 def tokenize (script, dink, fname):
+	'''Tokenize a script completely. Return a list of functions (name, (rettype, args), definition-statement).'''
 	global the_locals
 	the_locals = []
 	ret = []
 	indent = []
 	numlabels = 0
-	choice_title = None
 	while True:
+		choice_title[1] = False
 		t, script, isname = token (script)
 		if not t:
 			break
@@ -825,7 +830,7 @@ def tokenize (script, dink, fname):
 		nice_assert (t == '{', 'function body not defined')
 		script, s = tokenize_statement ('{ ' + script, dink, fname, name)
 		ret += ((name, functions[fname][name], s),)
-	return script, ret
+	return ret
 
 def tokenize_statement (script, dink, fname, own_name):
 	global the_locals
@@ -870,7 +875,7 @@ def tokenize_statement (script, dink, fname, own_name):
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'first for-expression must be empty or assignment (not %s)' % a)
 			script, e = tokenize_expr (dink, script, as_bool = False)
-			f1 = (n, a, e)
+			f1 = (a, n, e)
 			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
 		else:
 			f1 = None
@@ -886,7 +891,7 @@ def tokenize_statement (script, dink, fname, own_name):
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'third for-expression must be empty or assignment (not %s)' % a)
 			script, e = tokenize_expr (dink, script, as_bool = False)
 			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
-			f3 = (n, a, e)
+			f3 = (a, n, e)
 		else:
 			f3 = None
 		t, script, isname = token (script)
@@ -948,14 +953,12 @@ def tokenize_statement (script, dink, fname, own_name):
 				t, script, isname = token (script)
 			nice_assert (t == '(', 'syntax error')
 			if name == 'choice_title':
+				nice_assert (choice_title[1] == False, 'duplicate choice_title without a choice')
+				choice_title[1] = True
 				script, args = read_args (dink, script)
 				nice_assert (len (args) >= 1 and len (args) <= 3 and args[0][0] == '"', 'invalid argument list for %s' % name)
-				title = args
-				script, choice = tokenize_statement (script, dink, fname, own_name)
-				need_semicolon = False
-				nice_assert (choice[0] == 'choice', 'missing choice after choice_title')
-				choice[-1] = title
-				ret = choice
+				choice_title[0] = args
+				ret = None
 			elif name == 'choice':
 				choices = []
 				while True:
@@ -972,7 +975,8 @@ def tokenize_statement (script, dink, fname, own_name):
 						break
 					nice_assert (t == ',', 'choice requires a comma')
 				nice_assert (choices != [], 'choice requires at least one option')
-				ret = 'choice', choices, None
+				ret = 'choice', choices, choice_title[0]
+				choice_title[:] = [None, False]
 			else:
 				script, args = read_args (dink, script)
 				if type (name) == str:
@@ -989,6 +993,7 @@ def tokenize_statement (script, dink, fname, own_name):
 					nice_assert (name[0] in functions and name[1] in functions[name[0]], 'function %s not found in file %s' % (name[1], name[0]))
 					nice_assert (len (a) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (a), len (functions[name[0]][name[1]][1])))
 					ret = '()', name, args
+	nice_assert (choice_title[1] == False or choice_title[0] == None, 'unused choice_title')
 	if need_semicolon:
 		t, script, isname = token (script)
 		nice_assert ((t == ';'), 'missing semicolon')
@@ -997,7 +1002,7 @@ def tokenize_statement (script, dink, fname, own_name):
 def preprocess (script, dink, fname):
 	global numlabels
 	numlabels = 0
-	script, fs = tokenize (script, dink, fname)
+	fs = tokenize (script, dink, fname)
 	return '\r\n'.join ([build_function_def (x, fname, dink) for x in fs])
 
 def build_function_def (data, fname, dink):
@@ -1093,7 +1098,7 @@ def build_statement (data, retval, indent, fname, dink):
 		numlabels += 1
 		ret = ''
 		if data[1] != None:
-			n, a, te = data[1]
+			a, n, te = data[1]
 			if a[0] in ('*', '/'):
 				a = a[0]
 			b, e = build_expr (dink, fname, te, indent)
@@ -1103,7 +1108,7 @@ def build_statement (data, retval, indent, fname, dink):
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
 		ret += build_statement (data[4], retval, indent, fname, dink)
 		if data[3] != None:
-			n, a, te = data[3]
+			a, n, te = data[3]
 			if a[0] in ('*', '/'):
 				a = a[0]
 			b, e = build_expr (dink, fname, te, indent)
@@ -1214,7 +1219,7 @@ class Room:
 			info, self.sprite[s].base_walk = get (info, 'base_walk', '')
 			info, self.sprite[s].base_idle = get (info, 'base_idle', '')
 			info, self.sprite[s].base_attack = get (info, 'base_attack', '')
-			info, self.sprite[s].timer = get (info, 'timer', 33)
+			info, self.sprite[s].timing = get (info, 'timing', 33)
 			info, self.sprite[s].que = get (info, 'que', 0)
 			info, self.sprite[s].hard = get (info, 'hard', True)
 			info, self.sprite[s].left = get (info, 'left', 0)
@@ -1227,7 +1232,7 @@ class Room:
 			else:
 				self.sprite[s].warp = [int (x) for x in w.split ()]
 			info, self.sprite[s].touch_seq = get (info, 'touch_seq', '')
-			info, self.sprite[s].base_die = get (info, 'base_die', '')
+			info, self.sprite[s].base_death = get (info, 'base_death', '')
 			info, self.sprite[s].gold = get (info, 'gold', 0)
 			info, self.sprite[s].hitpoints = get (info, 'hitpoints', 0)
 			info, self.sprite[s].strength = get (info, 'strength', 0)
@@ -1257,7 +1262,7 @@ class Room:
 			script = the_seq.script
 			walk = ''
 			attack = ''
-			die = ''
+			death = ''
 			hard = the_seq.hard
 		else:
 			s = seq[0]
@@ -1273,7 +1278,7 @@ class Room:
 			script = the_collection['script']
 			walk = seq[0]
 			attack = the_collection['attack']
-			die = the_collection['die']
+			death = the_collection['death']
 			hard = False
 		os = s
 		i = 0
@@ -1293,7 +1298,7 @@ class Room:
 		self.sprite[s].base_walk = walk
 		self.sprite[s].base_idle = ''
 		self.sprite[s].base_attack = attack
-		self.sprite[s].timer = 33
+		self.sprite[s].timing = 33
 		self.sprite[s].que = 0
 		self.sprite[s].hard = hard
 		self.sprite[s].left = 0
@@ -1302,7 +1307,7 @@ class Room:
 		self.sprite[s].bottom = 0
 		self.sprite[s].warp = None
 		self.sprite[s].touch_seq = ''
-		self.sprite[s].base_die = die
+		self.sprite[s].base_death = death
 		self.sprite[s].gold = 0
 		self.sprite[s].hitpoints = 0
 		self.sprite[s].strength = 0
@@ -1353,7 +1358,7 @@ class Room:
 			put (f, 'base_walk', self.sprite[s].base_walk, '')
 			put (f, 'base_idle', self.sprite[s].base_idle, '')
 			put (f, 'base_attack', self.sprite[s].base_attack, '')
-			put (f, 'timer', self.sprite[s].timer, 33)
+			put (f, 'timing', self.sprite[s].timing, 33)
 			put (f, 'que', self.sprite[s].que, 0)
 			put (f, 'hard', self.sprite[s].hard, True)
 			put (f, 'left', self.sprite[s].left, 0)
@@ -1363,7 +1368,7 @@ class Room:
 			if self.sprite[s].warp != None:
 				put (f, 'warp', ' '.join ([str (x) for x in self.sprite[s].warp]))
 			put (f, 'touch_seq', self.sprite[s].touch_seq, '')
-			put (f, 'base_die', self.sprite[s].base_die, '')
+			put (f, 'base_death', self.sprite[s].base_death, '')
 			put (f, 'gold', self.sprite[s].gold, 0)
 			put (f, 'hitpoints', self.sprite[s].hitpoints, 0)
 			put (f, 'strength', self.sprite[s].strength, 0)
@@ -1397,6 +1402,8 @@ class World:
 			n, x, y = [int (k) for k in r.groups ()]
 			if x >= 32 or y >= 24 or n != y * 32 + x + 1:
 				sys.stderr.write ("Warning: not using %s as room (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
+		# Assign initial sprite codes
+		self.set_codes (False)
 	def save (self):
 		os.mkdir (os.path.join (self.parent.root, 'world'))
 		for r in self.room:
@@ -1427,7 +1434,7 @@ class World:
 		mdat.write (make_lsb (coll (spr.base_idle), 4))
 		mdat.write (make_lsb (coll (spr.base_attack), 4))
 		mdat.write (make_lsb (0, 4))	# hit
-		mdat.write (make_lsb (spr.timer, 4))
+		mdat.write (make_lsb (spr.timing, 4))
 		mdat.write (make_lsb (spr.que, 4))
 		mdat.write (make_lsb (not spr.hard, 4))
 		mdat.write (make_lsb (spr.left, 4))
@@ -1445,7 +1452,7 @@ class World:
 			mdat.write (make_lsb (-1, 4))
 		else:
 			mdat.write (make_lsb (self.parent.seq.find_seq (spr.touch_seq).code, 4))
-		mdat.write (make_lsb (coll (spr.base_die), 4))
+		mdat.write (make_lsb (coll (spr.base_death), 4))
 		mdat.write (make_lsb (spr.gold, 4))
 		mdat.write (make_lsb (spr.hitpoints, 4))
 		mdat.write (make_lsb (spr.strength, 4))
@@ -1520,9 +1527,17 @@ class World:
 			# base script
 			mdat.write (make_string (self.room[s].script, 21))
 			mdat.write ('\0' * 1019)
+	def set_codes (self, per_screen):
+		editcode = 1
+		for room in self.room:
+			if per_screen:
+				editcode = 1
+			for sp in self.room[room].sprite:
+				self.room[room].sprite[sp].editcode = editcode
+				editcode += 1
 
 class Tile:
-	# self.tile is a list of (tiles, hardness, code). Code means:
+	# self.tile is a dict of num:(tiles, hardness, code). Code means:
 	# 0: hardness from original, image from original
 	# 1: hardness from original, image from dmod
 	# 2: hardness from dmod, image from original
@@ -1530,7 +1545,7 @@ class Tile:
 	def __init__ (self, parent):
 		self.parent = parent
 		self.hard = {}
-		self.tile = [None] * 41
+		self.tile = {}
 		d = os.path.join (parent.root, "tile")
 		if os.path.exists (d):
 			ext = os.extsep + 'png'
@@ -1539,26 +1554,27 @@ class Tile:
 				if not t.endswith (h):
 					continue
 				base = t[:-len (h)]
-				image = make_hard_image (os.path.join (d, t))
-				if re.match ('^\d\d$', base):
-					n = int (base) - 1
-					nice_assert (n < 41, 'tile screen must be at most 41')
+				f = os.path.join (d, t)
+				hardfile = (f, 0, os.stat (f).st_size)
+				if re.match ('^\d+$', base):
+					n = int (base)
 					t = os.path.join (d, base + ext)
 					if os.path.exists (t):
-						self.tile[n] = (convert_image (Image.open (t)), image, 3)
+						self.tile[n] = ((t, 0, os.stat (t).st_size), hardfile, 3)
 					else:
-						self.tile[n] = (convert_image (Image.open (filepart (*tilefiles[n]))), image, 2)
+						self.tile[n] = (tilefiles[n], hardfile, 2)
 				else:
-					self.hard[base] = image
+					self.hard[base] = hardfile
+		ext = os.extsep + 'bmp'
 		for n in range (41):
-			if self.tile[n] == None:
+			if n not in self.tile:
 				t = os.path.join (d, str (n) + ext)
 				if os.path.exists (t):
-					tilefile = (convert_image (Image.open (t)), 1)
+					tilefile = ((t, 0, os.stat (t).st_size), 1)
 				else:
-					tilefile = (convert_image (Image.open (filepart (*tilefiles[n]))), 0)
-				image = make_hard_image (os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png'))
-				self.tile[n] = (tilefile[0], image, tilefile[1])
+					tilefile = (tilefiles[n], 0)
+				hardfile = os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png')
+				self.tile[n] = (tilefile[0], (hardfile, 0, os.stat (hardfile).st_size), tilefile[1])
 	def find_hard (self, hard, x, y, bmp, tx, ty):
 		if hard != '':
 			nice_assert (hard in self.hard, 'reference to undefined hardness screen %s' % hard)
@@ -1576,12 +1592,12 @@ class Tile:
 		d = os.path.join (self.parent.root, 'tile')
 		os.mkdir (d)
 		for h in self.hard:
-			self.hard[h].save (os.path.join (d, h + '-hard' + os.extsep + 'png'))
+			Image.open (filepart (*self.hard[h])).save (os.path.join (d, h + '-hard' + os.extsep + 'png'))
 		for n in range (41):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
-				self.tile[n][0].save (os.path.join (d, '%02d' % n + os.extsep + 'png'))
+				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, '%02d' % n + os.extsep + 'png'))
 			if self.tile[n][2] == 2 or self.tile[n][2] == 3:
-				self.tile[n][1].save (os.path.join (d, '%02d-hard' % n + os.extsep + 'png'))
+				convert_image (Image.open (filepart (*self.tile[n][1]))).save (os.path.join (d, '%02d-hard' % n + os.extsep + 'png'))
 	def write_hard (self, image, h):
 		'''Write hardness of all tiles in a given screen to hard.dat (opened as h). Return map of indices used.'''
 		ret = [None] * 8
@@ -1620,22 +1636,25 @@ class Tile:
 	def build (self, root):
 		# Write tiles/*
 		# Write hard.dat
+		for i in self.tile:
+			nice_assert (1 <= int (i) <= 41, 'invalid tile number %s for building dmod')
 		d = os.path.join (root, 'tiles')
 		if not os.path.exists (d):
 			os.mkdir (d)
 		h = open (os.path.join (root, 'hard.dat'), "wb")
+		# TODO: fill first hardness tile with junk.
 		self.hmap = []
 		self.hardmap = {}
 		self.tilemap = [None] * 41
 		for t in self.hard:
 			# Write hardness for custom hard screens.
-			self.hardmap[t] = self.write_hard (self.hard[t], h)
+			self.hardmap[t] = self.write_hard (Image.open (filepart (*self.hard[t])), h)
 		for n in range (41):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
 				# Write custom tile screens.
-				self.tile[n][0].save (os.path.join (d, str (t) + os.extsep + 'bmp'))
+				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, str (t) + os.extsep + 'bmp'))
 			# Write hardness for standard tiles.
-			self.tilemap[n] = self.write_hard (self.tile[n][1], h)
+			self.tilemap[n] = self.write_hard (Image.open (filepart (*self.tile[n][1])), h)
 		nice_assert (len (self.hmap) <= 800, 'More than 800 hardness tiles defined (%d)' % len (self.hmap))
 		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
 		# Write hardness index for tile screens.
@@ -1652,26 +1671,33 @@ class Tile:
 			h.write ('\0' * 32 * 4)
 		# Fill the rest with junk.
 		h.write ('\0' * (8000 - len (self.tile) * 8 * 12 * 4))
+	def get_file (self, num):
+		return self.tile[num][0] + (None,)
+	def get_hard_file (self, name):
+		if type (name) == int:
+			return self.tile[name][1] + ((0, 0, 0),)
+		else:
+			return self.hard[name] + ((0, 0, 0),)
 
 # A sequence has members:
-#       frames, list with members:
-#               position        Hotspot position.
-#               hardbox		Hardbox: left, top, right, bottom.
-#               boundingbox      Bounding box: left, top, right, bottom.
-#               delay           Delay value for this frame.
-#               source          For copied frames, source; None otherwise.
-#               cache           Tuple of filename, offset, length of location of file
-#       boundingbox      Bounding box: left, top, right, bottom.
-#       delay           default delay.
-#       hardbox         default hardbox
-#       position        default position
-#       filepath        name for use in dink.ini
-#       repeat          bool, whether the sequence is set for repeating
-#       special         int, special frame
-#       now             bool, whether to load now
-#       code            int
-#       preload         string, name of sequence to preload into this code
-#       type            normal, notanim, black, or leftalign
+#	frames, list with members:
+#		position	Hotspot position.
+#		hardbox		Hardbox: left, top, right, bottom.
+#		boundingbox	Bounding box: left, top, right, bottom.
+#		delay		Delay value for this frame.
+#		source		For copied frames, source; None otherwise.
+#		cache		Tuple of filename, offset, length of location of file
+#	boundingbox	Bounding box: left, top, right, bottom.
+#	delay		default delay.
+#	hardbox		default hardbox
+#	position	default position
+#	filepath	name for use in dink.ini
+#	repeat		bool, whether the sequence is set for repeating
+#	special		int, special frame
+#	now		bool, whether to load now
+#	code		int
+#	preload		string, name of sequence to preload into this code
+#	type		normal, notanim, black, or leftalign
 class Seq:
 	def __init__ (self, parent):
 		"""Load all sequence and collection declarations from dink.ini, seq-names.txt (both internal) and seq/info.txt"""
@@ -1787,6 +1813,22 @@ class Seq:
 				self.seq[s].code = nextseq
 				codes += (nextseq,)
 				nextseq += 1
+	def get_dir_seq (self, collection, dir):
+		c = self.find_collection (collection)
+		order = {	1: (1, 4, 2, 9),
+				2: (2, 3, 1, 8),
+				3: (3, 6, 2, 7),
+				4: (4, 1, 7, 6),
+				6: (6, 3, 9, 4),
+				7: (7, 4, 8, 3),
+				8: (8, 7, 9, 2),
+				9: (9, 6, 8, 1)
+			}
+		for option in order[dir]:
+			if option in c:
+				return c[option]
+		# There's nothing usable. Get whatever exists.
+		return c[[x for x in c if type (x) == int][0]]
 	def find_seq (self, name):
 		if not name:
 			return None
@@ -1882,6 +1924,8 @@ class Seq:
 				self.build_seq (ini, self.collection[c][s])
 		for g in self.seq:
 			self.build_seq (ini, self.seq[g])
+	def get_file (self, seq, frame):
+		return seq.frames[frame].cache + ((0, 0, 0) if seq.type == 'black' else (255, 255, 255),)
 
 class Sound:
 	def __init__ (self, parent):
@@ -1971,6 +2015,7 @@ class Script:
 			self.title_pointer_seq = 'special'
 			self.title_pointer_frame = 8
 			self.title_script = ''
+			self.intro_script = ''
 			self.start_script = ''
 			self.title_sprite = []
 			self.title_button = []
@@ -1990,14 +2035,16 @@ class Script:
 		info, self.title_music = get (info, 'music', '')
 		info, self.title_color = get (info, 'color', 0)
 		info, self.title_bg = get (info, 'background', '')
-		info, self.preview = get (info, 'preview', '')
-		info, self.splash = get (info, 'splash', '')
+		# These settings belong to Image, but are in the title config file.
+		info, self.parent.image.preview = get (info, 'preview', '')
+		info, self.parent.image.splash = get (info, 'splash', '')
 		info, s = get (info, 'start')
 		self.start_map, self.start_x, self.start_y = [int (x) for x in s.split ()]
 		info, p = get (info, 'pointer', 'special 8')
 		p = p.split ()
 		self.title_pointer_seq, self.title_pointer_frame = p[0], int (p[1])
 		info, self.title_script = get (info, 'title-script', '')
+		info, self.intro_script = get (info, 'intro-script', '')
 		info, self.start_script = get (info, 'start-script', '')
 		info, n = get (info, 'sprites', 0)
 		self.title_sprite = []
@@ -2028,8 +2075,9 @@ class Script:
 		put (f, 'background', self.title_bg, '')
 		put (f, 'start', '%d %d %d' % (self.start_map, self.start_x, self.start_y))
 		put (f, 'pointer', '%s %d' % (self.title_pointer_seq, self.title_pointer_frame), 'special 8')
-		put (f, 'preview', self.preview, '')
-		put (f, 'splash', self.splash, '')
+		# These settings belong to Image, but are in the title config file.
+		put (f, 'preview', self.parent.image.preview, '')
+		put (f, 'splash', self.parent.image.splash, '')
 		buttons = [x for x in self.title_sprite if x[4] == 'button']
 		sprites = [x for x in self.title_sprite if x[4] != 'button']
 		put (f, 'buttons', len (buttons))
@@ -2044,20 +2092,26 @@ class Script:
 					sprites[i][4:] = []
 			put (f, 'sprite-%d' % (i + 1), ' '.join (sprites[i]))
 		put (f, 'title-script', self.title_script, '')
+		put (f, 'intro-script', self.intro_script, '')
 		put (f, 'start-script', self.start_script, '')
 	def find_functions (self, script, funcs):
 		global max_args
+		the_statics = []
 		while True:
 			t, script, isname = token (script)
 			if t == None:
 				break
-			if t == 'extern':
+			if t in ('static', 'extern'):
+				is_static = t == 'static'
 				t, script, isname = token (script)
-				if t == 'int':
-					t, script, isname = token (script)
-				nice_assert (isname, 'missing variable name after extern')
+				nice_assert (t == 'int', 'missing "int" for global variable declaration')
+				name, script, isname = token (script)
+				nice_assert (isname, 'missing variable name for global variable declaration')
 				t, script, isname = token (script)
-				nice_assert (t == ';', 'missing semicolon after extern');
+				nice_assert (t == ';', 'missing semicolon after global variable declaration');
+				if is_static:
+					nice_assert (name not in the_statics, "duplicate declaration of static variable")
+					the_statics += (name,)
 				continue
 			nice_assert (t == 'int' or t == 'void', 'syntax error while searching for function (found %s): ' % t + script)
 			rettype = t
@@ -2093,8 +2147,11 @@ class Script:
 			funcs[name] = [rettype, args]
 			if max_args < len (args):
 				max_args = len (args)
+		funcs[''] = the_statics
 	def compile (self):
-		'''Compile all scripts. Return a dictionary of files, each value in it is a dictionary of functions, each value is a list of statements.'''
+		'''Compile all scripts. Return a dictionary of files, each value in it is a dictionary of functions, each value is a sequence of statements.
+		It also fills the functions dictionary, which has fnames as keys and a dict of name:(retval, args) as values, plus '':[statics].
+		Statics is a list of names.'''
 		global functions
 		functions = {}
 		ret = {}
@@ -2103,7 +2160,9 @@ class Script:
 			functions[name.lower ()] = {}
 			self.find_functions (self.data[name], functions[name.lower ()])
 		for name in self.data:
-			tokenize (self.data[name], ret)
+			for f in tokenize (self.data[name.lower ()], self.parent, name.lower ()):
+				ret[name.lower ()][f[0]] = f[2]
+		return ret
 	def build (self, root):
 		# Write Story/*
 		global filename
@@ -2230,18 +2289,40 @@ void main ()\r
 	&player_map = %d;\r
 	sp_x (1, %d);\r
 	sp_y (1, %d);\r
-	load_screen ();\r
+%s	load_screen ();\r
 	draw_screen ();\r
 	&update_status = 1;\r
 	draw_status ();\r
 	fade_up ();\r
 	kill_this_task ();\r
 }\r
-''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink'), ('\texternal ("' + self.start_script + '", "main");\r\n' if self.start_script != '' else ''), self.start_map, self.start_x, self.start_y))
+''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink'), ('\texternal ("' + self.intro_script + '", "main");\r\n' if self.intro_script != '' else ''), self.start_map, self.start_x, self.start_y, ('\texternal ("' + self.start_script + '", "main");\r\n' if self.start_script != '' else '')))
+
+class Image:
+	def __init__ (self, parent):
+		self.parent = parent
+		im = os.path.join (self.parent.root, 'image')
+		self.images = {}
+		for i in os.listdir (im):
+			if i.endswith (os.extsep + 'png'):
+				name = os.path.join (im, i)
+				self.images[i[:-4]] = (os.path.join (im, i), 0, os.stat (name).st_size)
+	def save (self):
+		im = os.path.join (self.parent.root, 'image')
+		if self.images != {}:
+			os.mkdir (im)
+			for i in self.images:
+				convert_image (Image.open (filepart (*i))).save (os.path.join (im, i + os.extsep + 'png'))
+	def build (self, root):
+		for i in self.images:
+			if self.preview != i and self.splash != i:
+				convert_image (Image.open (filepart (*i))).save (os.path.join (root, 'graphics', i + os.extsep + 'bmp'))
 		if self.preview != '':
-			self.parent.image[self.preview].save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
+			convert_image (Image.open (filepart (*self.images[self.preview]))).save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
 		if self.splash != '':
-			self.parent.image[self.splash].save (os.path.join (root, 'tiles', 'splash' + os.extsep + 'bmp'))
+			convert_image (Image.open (filepart (*self.images[self.splash]))).save (os.path.join (root, 'tiles', 'splash' + os.extsep + 'bmp'))
+	def get_file (self, name):
+		return self.images[name] + (None,)
 
 class Dink:
 	def __init__ (self, root):
@@ -2249,6 +2330,7 @@ class Dink:
 			self.root = None
 		else:
 			self.root = os.path.abspath (os.path.normpath (root))
+		self.image = Image (self)
 		self.tile = Tile (self)
 		self.world = World (self)
 		self.seq = Seq (self)
@@ -2256,17 +2338,10 @@ class Dink:
 		self.script = Script (self)
 		if root == None:
 			self.info = ''
-			self.preview = ''
-			self.splash = ''
 			return
 		global filename
 		filename = os.path.join (self.root, 'info' + os.extsep + 'txt')
 		self.info = open (filename).read ()
-		im = os.path.join (self.root, 'image')
-		self.image = {}
-		for i in os.listdir (im):
-			if i.endswith (os.extsep + 'png'):
-				self.image[i[:-4]] = convert_image (Image.open (os.path.join (im, i)))
 	def save (self, root = None):
 		if root != None:
 			self.root = os.path.abspath (os.path.normpath (root))
@@ -2286,20 +2361,20 @@ class Dink:
 					os.rename (os.path.join (self.root, f), os.path.join (backup, f))
 		else:
 			os.mkdir (self.root)
+		self.image.save ()
 		self.tile.save ()
 		self.world.save ()
 		self.seq.save ()
 		self.sound.save ()
 		self.script.save ()
 		open (os.path.join (self.root, 'info' + os.extsep + 'txt'), 'w').write (self.info)
-		im = os.path.join (self.root, 'image')
-		if self.image != {}:
-			os.mkdir (im)
-			for i in self.image:
-				self.image[i].save (os.path.join (im, i + os.extsep + 'png'))
 	def build (self, root):
 		if not os.path.exists (root):
 			os.mkdir (root)
+		# Assign sprite codes
+		self.world.set_codes (True)
+		# Write images.
+		self.image.build (root)
 		# Write tiles/*
 		self.tile.build (root)
 		# Write dink.dat
@@ -2314,9 +2389,6 @@ class Dink:
 		# Write story/* This must be last, because preprocess needs all kinds of things to be initialized.
 		self.script.build (root)
 		# Write the rest
-		for i in self.image:
-			if self.script.preview != i and self.script.splash != i:
-				self.image[i].save (os.path.join (root, 'graphics', i + os.extsep + 'bmp'))
 		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)
 	def play (self, map = None, x = None, y = None):
 		if y != None:

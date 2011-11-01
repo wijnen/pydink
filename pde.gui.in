@@ -61,7 +61,7 @@ gtk
 									'Speed
 									SpinButton range=:0,255 value-changed=update set=set_speed:1 value=get_speed
 									'Timer
-									SpinButton range=:0,255 value-changed=update set=set_timer:33 value=get_timer
+									SpinButton range=:0,255 value-changed=update set=set_timing:33 value=get_timing
 									'Sound
 									Entry changed=update set=set_sound value=get_sound
 							Frame label=:Combat
@@ -101,7 +101,7 @@ gtk
 								'Attack
 								Entry changed=update set=set_baseattack value=get_baseattack
 								'Die
-								Entry changed=update set=set_basedie value=get_basedie
+								Entry changed=update set=set_basedeath value=get_basedeath
 						Frame label=:Warp/box set_label=:Warp/box
 							Table columns=2
 								CheckButton right=:2 value=get_warp set=set_warp toggled=update

@@ -577,7 +577,7 @@ for c in collection_names:
 	collections[c[0]]['brain'] = c[2]
 	collections[c[0]]['script'] = '' if c[3] == 'none' else c[3]
 	collections[c[0]]['attack'] = '' if c[4] == 'none' else c[4]
-	collections[c[0]]['die'] = '' if c[5] == 'none' else c[5]
+	collections[c[0]]['death'] = '' if c[5] == 'none' else c[5]
 
 # Create the sequences.
 sequences = {}

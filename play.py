@@ -1,197 +1,1123 @@
 #!/usr/bin/env python
 
-import dink
-import gtk
+# Data management:
+# Global data is stored by changing the game as an editor.
+# Global variables are in the_globals.
+# Local variables are in the_locals, which is a local variable of Script().
+# Static variables are in the_statics[fname], which is a member of Sprite; see below.
 
-class play (gtk.DrawingArea):
-	"Widget for playing dink."
-	def __init__ (self, dat, scale):
-		"Arguments: dink data and number of pixels per tile"
+# Current screen: scripts.
+# A new script is instantiated whenever a function is called. This is different from the original game.
+# It means that kill_this_task is useless (and not supported), and that you need static (or global) variables to communicate between event functions.
+# function calls lock the calling function until the called function returns. This is implemented with generators.
+# There is no way to communicate with a running script. It is not possible to count the scripts. There is no limit on the number of running scripts (except available memory).
+
+# Current screen: sprites.
+# Don't confuse Sprite and dink.Sprite! The former is a sprite on the screen, the latter a sprite in the editor.
+# All dink.Sprites of a screen are copied into Sprites when load_screen() is called.
+# A Sprite has the following members:
+# visible, x, y, brain, hitpoints, defense, strength, gold, size, seq, frame, pseq, pframe, speed, base_walk, base_idle, base_attack, base_death, timing, que, hard, cropbox, warp, touch_seq, exp, sound, vision, nohit, touch_damage, script.
+# src, num, editor_num, the_statics (dictionary of variables).
+# Background sprites are drawn to the background pixmap, after that, the object is destroyed. It is impossible to adjust anything about them.
+
+import gtkdink
+import gtk
+import gobject
+import sys
+
+class Sprite:
+	def __init__ (self, data, x = None, y = None, brain = None, seq = None, frame = None, script = None, src = None):
 		self.data = data
-		self.scale = scale
-		self.offset = 20 * scale / 50
+		if src != None:
+			assert brain == None and seq == None and frame == None and script == None
+			self.visible = src.type != 3
+			self.x = src.x if x == None else x
+			self.y = src.y if y == None else y
+			self.size = src.size
+			self.seq = None
+			self.frame = 1
+			self.pseq = data.data.seq.find_seq (src.seq)
+			self.pframe = src.frame
+			if src.type == 0:
+				return
+			self.brain = src.brain
+			self.hitpoints = src.hitpoints
+			self.defense = src.defense
+			self.strength = src.strength
+			self.gold = src.gold
+			self.speed = src.speed
+			self.base_walk = data.data.seq.find_collection (src.base_walk)
+			self.base_idle = data.data.seq.find_collection (src.base_idle)
+			self.base_attack = data.data.seq.find_collection (src.base_attack)
+			self.base_death = data.data.seq.find_collection (src.base_death)
+			self.timing = src.timing
+			self.que = src.que
+			self.hard = src.hard
+			self.cropbox = (src.left, src.top, src.right, src.bottom)
+			self.warp = src.warp
+			self.touch_seq = data.data.seq.find_seq (src.touch_seq)
+			self.exp = src.exp
+			self.sound = src.sound
+			self.vision = src.vision
+			self.nohit = src.nohit
+			self.touch_damage = src.touch_damage
+			self.editor_num = src.num
+			self.script = src.script
+		else:
+			assert x != None and y != None and brain != None and ((brain == 'text' and seq == None and frame == None) or (brain != 'text' and seq != None and frame != None))
+			self.visible = True
+			self.x = x
+			self.y = y
+			self.brain = brain
+			self.hitpoints = 0
+			self.defense = 0
+			self.strength = 0
+			self.gold = 0
+			self.size = 100
+			self.seq = None
+			self.frame = 1
+			self.pseq = data.data.seq.find_seq (seq) if seq != None else None
+			self.pframe = frame
+			self.speed = 2
+			self.base_walk = None
+			self.base_idle = None
+			self.base_attack = None
+			self.base_death = None
+			self.timing = 20
+			self.que = 0
+			self.hard = False
+			self.cropbox = (0, 0, 0, 0)
+			self.warp = None
+			self.touch_seq = None
+			self.exp = 0
+			self.sound = ''
+			self.vision = 0
+			self.nohit = False
+			self.touch_damage = 0
+			self.editor_num = None
+			self.script = script
+		if self.brain in ('repeat', 'mark', 'play', 'flare', 'missile'):
+			self.seq = self.pseq
+			self.frame = self.pframe
+		self.killdelay = None
+		self.state = None
+		self.set_state ('passive')
+		self.dir = 2
+		self.clip = True
+		self.frozen = False
+		self.dx = 0
+		self.dy = 0
+		self.ignore_hard = False
+		self.bbox = (0, 0, 0, 0)	# This will be updated when it is drawn.
+		self.the_statics = {}
+		if self.script:
+			for v in data.functions[self.script]['']:
+				self.the_statics[v] = 0
+		self.src = src
+		self.num = data.next_sprite
+		data.next_sprite += 1
+		data.sprites[self.num] = self
+	def set_state (self, state = None):
+		if state == self.state:
+			return
+		if state != None:
+			self.state = state
+		# Set seq according to state.
+		if self.state == 'passive':
+			return
+		elif self.state == 'idle':
+			if self.base_idle:
+				self.seq = self.data.data.seq.get_dir_seq (self.base_idle, self.dir)
+		elif self.state == 'walk':
+			if self.base_walk:
+				self.seq = self.data.data.seq.get_dir_seq (self.base_walk, self.dir)
+		elif self.state == 'attack':
+			if self.base_attack:
+				self.seq = self.data.data.seq.get_dir_seq (self.base_attack, self.dir)
+		elif self.state == 'die':
+			if self.base_death:
+				self.seq = self.data.data.seq.get_dir_seq (self.base_death, self.dir)
+		else:
+			raise AssertionError ('invalid state %s' % state)
+		self.frame = 1
+
+class Play (gtk.DrawingArea):
+	"Widget for playing dink."
+	def __init__ (self, data):
+		"Arguments: dink data and number of pixels per tile"
 		gtk.DrawingArea.__init__ (self)
+		self.data = data
+		self.offset = 20 * self.data.scale / 50
+		self.current_time = 0
 		self.set_can_focus (True)
 		self.connect_after ('realize', self.start)
 		self.pointer = True
-		self.pointerbutton = None
-		self.key = None
-		self.quit = False
-		self.brains = {
-				'dink': self.dinkbrain,
-				'bounce': self.bouncebrain,
-				'duck': self.duckbrain,
-				'pig': self.pigbrain,
-				'mark': self.markbrain,
-				'repeat': self.repeatbrain,
-				'play': self.playbrain,
-				'text': self.textbrain,
-				'bisshop': self.bisshopbrain,
-				'rook': self.rookbrain,
-				'missile': self.missilebrain,
-				'resize': self.resizebrain,
-				'pointer': self.pointerbrain,
-				'button': self.buttonbrain,
-				'shadow': self.shadowbrain,
-				'person': self.personbrain,
-				'flare': self.flarebrain
-				}
-	def start (self):
+		self.keep_mouse = False
+		self.control_down = 0
+		self.choice = None
+		self.choice_title = None
+		self.screenlock = False
+		self.cursorkeys = (gtk.keysyms.Left, gtk.keysyms.Up, gtk.keysyms.Right, gtk.keysyms.Down)
+		self.cursor = [False, False, False, False]
+		self.brains = [ 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'bisshop', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare' ]
+		self.the_globals = {}
+		for v in gtkdink.dink.the_globals:
+			self.the_globals[v] = gtkdink.dink.the_globals[v]
+		self.scripts = data.script.compile ()
+		self.functions = gtkdink.dink.functions
+		self.sprites = {}
+		self.next_sprite = 1
+		self.the_globals['player_map'] = None
+		self.box_start = None
+		self.bow = False, 0
+		self.fade = 0, True
+		self.events = []
+		self.item_selection = False
+		self.items = [None] * 16
+		self.magic = [None] * 8
+		self.current_weapon = None
+		self.current_magic = None
+	def start (self, widget):
 		gtk.DrawingArea.realize (self)
-		self.gc = gtk.gdk.gc (self.get_window ())
-		self.move (None)
-		self.pointerlast = self.pointerpos
-		w = 12 * scale + 2 * self.offset
-		h = 8 * scale + 80 * scale / 50
-		self.buffer = gtk.gdk.pixmap (self.get_window (), w, h)
-		self.bg = gtk.gdk.pixmap (self.get_window (), w, h)
+		pixmap = gtk.gdk.Pixmap(None, 1, 1, 1)
+		color = gtk.gdk.Color()
+		cursor = gtk.gdk.Cursor(pixmap, pixmap, color, color, 0, 0)
+		self.window.set_cursor (cursor)
+		self.data.set_window (self.window)
+		self.gc = gtk.gdk.GC (self.window)
+		self.clipgc = gtk.gdk.GC (self.window)
+		self.clipgc.set_clip_rectangle (gtk.gdk.Rectangle (self.offset, 0, self.data.scale * 12, self.data.scale * 8))
+		self.winw = 12 * self.data.scale + 2 * self.offset
+		self.winh = 8 * self.data.scale + 80 * self.data.scale / 50
+		self.buffer = gtk.gdk.Pixmap (self.window, self.winw, self.winh)
+		self.bg = gtk.gdk.Pixmap (self.window, self.winw, self.winh)
 		self.connect ('expose-event', self.expose)
 		self.connect ('key-press-event', self.keypress)
+		self.connect ('key-release-event', self.keyrelease)
 		self.connect ('button-press-event', self.button_on)
 		self.connect ('button-release-event', self.button_off)
 		self.connect ('motion-notify-event', self.move)
 		self.connect ('enter-notify-event', self.enter)
-		self.set_size_request (w, h)
-		self.add_events (gtk.gdk.KEY_PRESS_MASK | gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK | gtk.gdk.POINTER_MOTION_MASK | gtk.gdk.POINTER_MOTION_HINT_MASK | gtk.gdk.ENTER_NOTIFY_MASK)
-		self.gc.set_foreground (self.data.script.title_color)
-		self.buffer.draw_rectangle (self.gc, True, 0, 0, w, h)
+		self.set_size_request (self.winw, self.winh)
+		self.add_events (gtk.gdk.KEY_PRESS_MASK | gtk.gdk.KEY_RELEASE_MASK | gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK | gtk.gdk.POINTER_MOTION_MASK | gtk.gdk.POINTER_MOTION_HINT_MASK | gtk.gdk.ENTER_NOTIFY_MASK)
+		self.gc.set_foreground (self.data.get_color (self.data.script.title_color))
+		self.buffer.draw_rectangle (self.gc, True, 0, 0, self.winw, self.winh)
 		if self.data.script.title_bg != '':
-			self.buffer.draw_pixbuf (None, self.data.image[self.data.script.title_bg], 0, 0, 0, 0, w, h)
-		self.add_sprite (self.data.title_pointer_seq, self.data.title_pointer_frame, 0, 0, 'pointer')
-		for spr in self.data.title_sprite:
-			self.add_sprite (*spr)
-		if self.data.title_music != '':
-			self.play_music (self.data.title_music)
-		self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, w, h);
+			self.buffer.draw_pixbuf (None, self.data.get_image (self.data.script.title_bg), 0, 0, 0, 0, self.winw, self.winh)
+		p = self.add_sprite (self.data.script.title_pointer_seq, self.data.script.title_pointer_frame, 320, 240, 'pointer')
+		p.clip = False
+		p.que = -100000
+		for spr in self.data.script.title_sprite:
+			s = self.add_sprite (*spr)
+			s.clip = False
+		if self.data.script.title_music != '':
+			self.play_music (self.data.script.title_music)
+		self.expose (widget, (0, 0, self.winw, self.winh));
 		# Schedule first event immediately.
-		self.current_time = 0
+		self.events += ((0, self.update ()),)
 		gobject.idle_add (self.next_event)
 	def next_event (self):
+		self.events.sort (key = lambda x: x[0])
 		self.current_time = self.events[0][0]
-		while self.current_time == self.events[0][0]:
-			event = self.events.pop (0)[1]
-			if type (event) == Sprite:
-				self.brains[event.brain] (event)
-			elif type (event) == dink.Script:
-				# TODO
+		while self.current_time >= self.events[0][0]:
+			target = self.events.pop (0)[1]
+			result = next (target)
+			if result[0] == 'return':
 				pass
-			# TODO: handle event.
-		if self.events != []:
-			gobject.timeout_add (self.events[0].time - self.current_time, self.next_event)
+			elif result[0] == 'wait':
+				self.events += ((self.current_time + result[1], target),)
+			elif result[0] == 'error':
+				print ('Error reported: %s' % result[1])
+			elif result[0] == 'choice':
+				self.choice_waiter = target
+			else:
+				raise AssertionError ('invalid return type %s' % result[0])
+		assert self.events != []
+		gobject.timeout_add (self.events[0][0] - self.current_time, self.next_event)
 		return False
 	def play_music (self, music):
 		pass
-	def add_sprite (self, seq, frame, x, y, brain, script = ''):
-		pass
-	def expose (self, event):
-		self.get_window ().draw_drawable (View.gc, self.buffer, event.area[0], event.area[1], event.area[0], event.area[1], event.area[2], event.area[3])
-	def update (self):
-		self.buffer.draw_drawable (self.gc, self.bg, 0, 0, 0, 0)
-		self.sprites.sort (key = lambda x: x[0] - x[1].que)
-		for s in self.sprites:
-			(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
-			if type (s[2].name) == str:
-				pb = self.get_pixbuf (self.pixbufs[s[2].name][s[1].frame])
-			else:
-				pb = self.get_pixbuf (self.cpixbufs[s[2].name[0]][s[2].name[1]][s[1].frame])
-			if box != None:
-				pb = pb.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
-			w = (right - left) * self.scale / 50
-			h = (bottom - top) * self.scale / 50
-			if w > 0 and h > 0:
-				pb = pb.scale_simple (w, h, gtk.gdk.INTERP_NEAREST)
-				self.buffer.draw_pixbuf (None, pb, 0, 0, self.offset + left * self.scale / 50, top * self.scale / 50)
-		self.expose ((0, 0, 0, 0, None, None))
-		# TODO: status bar and lock stuff.
-	def make_bg (self):
-		# Draw tiles
-		# Draw bg sprites
-	def keypress (self, event):
-		self.key = event.keyval
-	def button_on (self, event):
-		if self.pointer == False:
-			return
-		self.pointerbutton = True
-	def button_off (self, event):
-		if self.pointer == False:
-			return
-		self.pointerbutton = False
-	def move (self, event):
-		if self.pointer == False:
-			return
-		ex, ey, emask = self.get_window ().get_pointer ()
-		self.pointerpos = (int (ex) - self.offset) * 50 / self.scale, int (ey) * 50 / self.scale
-	def enter (self, event):
-		self.grab_focus ()
-	def tick (self):
-		for s in self.sprites:
-			if s.brain not in self.brains:
-				continue
-			self.brains[s.brain] (s)
-			if s.seq != None:
-				if s.frame < len (s.seq.frames):
-					++s.frame
-				elif s.brain == 'repeat':
-					s.frame = 1
+	def add_sprite (self, seq, frame, x, y, brain, script = None):
+		ret = Sprite (self, x, y, brain, seq, frame, script)
+		if ret.script and 'main' in self.scripts[ret.script]:
+			# current_time - 1, so it runs before continuing the current script.
+			self.events += ((self.current_time - 1, self.Script (ret.script, 'main', (), ret)),)
+		self.events += ((self.current_time + ret.timing, self.do_brain (ret)),)
+		return ret
+	def do_brain (self, sprite):
+		while True:
+			# Change frame.
+			if sprite.seq != None:
+				if sprite.frame + 1 >= len (sprite.seq.frames):
+					if sprite.brain == 'mark':
+						self.draw_sprite (self.bg, sprite)
+						self.kill_sprite (sprite)
+						yield ('return', 0)
+						return
+					elif sprite.brain in ('play', 'flare'):
+						self.kill_sprite (sprite)
+						yield ('return', 0)
+						return
+					elif sprite.brain in self.brains:
+						sprite.frame = 1
+					else:
+						sprite.seq = None
 				else:
-					s.seq = 0
-					s.frame = 0
-		self.pointerlast = self.pointerpos
-		self.pointerbutton = None
-		self.key = None
-		self.update ()
-		if not self.quit:
-			# TODO: schedule next tick
-			pass
-		return self.quit
+					sprite.frame += 1
+			# Move.
+			if not self.check_hard (sprite.x + sprite.dx, sprite.y + sprite.dy) or sprite.ignore_hard:
+				sprite.x += sprite.dx
+				sprite.y += sprite.dy
+			else:
+				# TODO: pushing, stop walking, warping, etc.
+				pass
+			# TODO: Hit things.
+			# Reschedule callback.
+			yield ('wait', sprite.timing)
+	def check_hard (self, x, y):
+		# TODO: check for hardness.
+		return False
+	def expose (self, widget, event):
+		if type (event) == tuple:
+			a = event
+		else:
+			a = event.area
+		self.window.draw_drawable (self.gc, self.buffer, a[0], a[1], a[0], a[1], a[2], a[3])
+	def update (self):
+		'''This is a generator to periodically update the screen.'''
+		while True:
+			if self.item_selection:
+				# TODO: Item selection screen.
+				return
+			self.buffer.draw_drawable (self.gc, self.bg, 0, 0, 0, 0, self.winw, self.winh)
+			spr = []
+			for s in self.sprites:
+				spr += ((self.sprites[s].y - self.sprites[s].que, self.sprites[s]),)
+			spr.sort (key = lambda x: x[0])
+			for s in spr:
+				self.draw_sprite (self.buffer, s[1])
+			if self.choice != None:
+				# TODO: Choice menu.
+				pass
+			self.expose (self, (0, 0, self.winw, self.winh))
+			# Wait some time before being called again. Use a prime number to minimize undersampling problems.
+			yield ('wait', 47)
+	def kill_sprite (self, sprite):
+		del self.sprites[sprite.num]
+	def draw_sprite (self, target, sprite):
+		if sprite.brain == 'text':
+			# TODO: print text.
+			return
+		if sprite.seq == None:
+			assert sprite.pseq != None
+			seq = (sprite.pseq, sprite.pframe)
+		else:
+			seq = (sprite.seq, sprite.frame)
+		sprite.bbox = self.draw_frame (target, seq, (sprite.x, sprite.y), sprite.size, sprite.cropbox, sprite.clip)
+	def draw_frame (self, target, seqframe, pos, size, cropbox, clip):
+		seq, frame = seqframe
+		(x, y), bbox, box = self.data.get_box (size, pos, seq.frames[frame], cropbox)
+		left, top, right, bottom = bbox
+		pb = self.data.get_seq (seq, frame)
+		if box != None:
+			pb = pb.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
+		w = (right - left) * self.data.scale / 50
+		h = (bottom - top) * self.data.scale / 50
+		if w > 0 and h > 0:
+			if w != pb.get_width () or h != pb.get_height ():
+				pb = pb.scale_simple (w, h, gtk.gdk.INTERP_BILINEAR)
+			target.draw_pixbuf (self.clipgc if clip else None, pb, 0, 0, self.offset + left * self.data.scale / 50, top * self.data.scale / 50)
+		return bbox
+	def make_bg (self):
+		'''Write background to self.bg; return list of non-background sprites (sprite, x, y).'''
+		ret = []
+		# Draw tiles
+		if self.the_globals['player_map'] == None:
+			self.gc.set_foreground (self.data.get_color (0))
+			self.bg.draw_rectangle (self.gc, True, 0, 0, 12 * self.data.scale, 8 * self.data.scale)
+			return
+		screen = self.data.world.room[self.the_globals['player_map']]
+		for y in range (8):
+			for x in range (12):
+				tile = screen.tiles[y][x]
+				self.bg.draw_drawable (self.gc, self.data.get_tiles (tile[0]), self.data.scale * tile[1], self.data.scale * tile[2], self.offset + self.data.scale * x, self.data.scale * y, self.data.scale, self.data.scale)
+		# Draw bg sprites
+		for s in self.get_sprites ():
+			if s[0].type != 0:
+				ret += (s,)
+				continue
+			self.draw_sprite (self.bg, Sprite (self, src = s[0], x = s[1], y = s[2]))
+		return ret
+	def get_sprites (self):
+		ret = []
+		screens = []
+		sy = (self.the_globals['player_map'] - 1) / 32
+		sx = (self.the_globals['player_map'] - 1) % 32
+		for y in (-1, 0, 1):
+			if sy + y < 0:
+				continue
+			for x in (-1, 0, 1):
+				if sx + x < 0 or sx + x >= 32:
+					continue
+				num = (sy + y) * 32 + sx + x + 1
+				if num in self.data.world.room:
+					screens += ((num, x, y),)
+		for s in screens:
+			for spr in self.data.world.room[s[0]].sprite:
+				sp = self.data.world.room[s[0]].sprite[spr]
+				ret += ((sp, sp.x + s[1] * 12 * 50, sp.y + s[2] * 8 * 50),)
+		return ret
+	def load_screen (self):
+		spritelist = self.make_bg ()
+		self.sprites = { 1: self.sprites[1] }
+		self.sprites[1].frozen = False
+		self.next_sprite = 2
+		script = self.data.world.room[self.the_globals['player_map']].script
+		if script and 'main' in self.scripts[script]:
+			self.events += ((self.current_time - 2, self.Script (script, 'main', (), None)),)
+		for s in spritelist:
+			spr = Sprite (self, src = s[0], x = s[1], y = s[2])
+			if spr.script and 'main' in self.scripts[spr.script]:
+				self.events += ((self.current_time - 1, self.Script (spr.script, 'main', (), spr)),)
+	def keypress (self, widget, event):
+		if self.sprites[1].brain not in ('dink', 'pointer') or self.sprites[1].frozen:
+			return
+		if event.keyval in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
+			self.control_down += 1
+			self.attack ()
+		if event.keyval in self.cursorkeys:
+			i = self.cursorkeys.index (event.keyval)
+			self.cursor[i] = True
+			self.compute_dir ()
+	def keyrelease (self, widget, event):
+		if self.sprites[1].brain not in ('dink', 'pointer') or self.sprites[1].frozen:
+			return
+		if event.keyval in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
+			self.control_down -= 1
+			if self.control_down <= 0:
+				self.control_down = 0
+				if self.bow[0]:
+					self.bow[0] = False
+					self.launch ()
+		if event.keyval in self.cursorkeys:
+			i = self.cursorkeys.index (event.keyval)
+			self.cursor[i] = False
+			self.compute_dir ()
+	def compute_dir (self):
+		dx = 1 + self.cursor[2] - self.cursor[0]
+		dy = 1 + self.cursor[1] - self.cursor[3]
+		d = 1 + 3 * dy + dx
+		if d != 5:
+			self.sprites[1].dir = d
+			self.sprites[1].set_state ('walk')
+		else:
+			self.sprites[1].set_state ('idle')
+		self.sprites[1].dx = dx - 1
+		self.sprites[1].dy = 1 - dy
+	def button_on (self, widget, event):
+		if self.pointer == False:
+			return
+		self.control_down += 1
+		self.attack ()
+	def button_off (self, widget, event):
+		if self.pointer == False:
+			return
+		self.control_down -= 1
+		if self.control_down <= 0:
+			self.control_down = 0
+			if self.bow[0]:
+				self.bow[0] = False
+				self.launch ()
+	def launch (self):
+		# TODO: Launch missile with bow.
+		pass
+	def attack (self):
+		for i in self.sprites:
+			if self.sprites[i].brain != 'button' or 'click' not in self.scripts[self.sprites[i].script]:
+				continue
+			if self.in_area ((self.sprites[1].x, self.sprites[1].y), self.sprites[i].bbox):
+				self.events += ((self.current_time - 1, self.Script (self.sprites[i].script, 'click', (), self.sprites[i])),)
+		# Handle dink attacking.
+		if self.current_weapon != None:
+			self.events += ((self.current_time - 1, self.Script (self.items[self.current_weapon][0], 'use', (), None)),)
+		else:
+			self.events += ((self.current_time - 1, self.Script ('dnohit', 'main', (), None)),)
+	def move (self, widget, event):
+		if self.pointer == False or self.sprites[1].brain != 'pointer':
+			return
+		ex, ey, emask = self.window.get_pointer ()
+		oldx, oldy = self.sprites[1].x, self.sprites[1].y
+		self.sprites[1].x, self.sprites[1].y = int (ex) * 50 / self.data.scale, int (ey) * 50 / self.data.scale
+		for i in self.sprites:
+			if self.sprites[i].brain != 'button':
+				continue
+			o = self.in_area ((oldx, oldy), self.sprites[i].bbox)
+			n = self.in_area ((self.sprites[1].x, self.sprites[1].y), self.sprites[i].bbox)
+			if o == n:
+				continue
+			if n == True:
+				if 'buttonon' in self.scripts[self.sprites[i].script]:
+					self.events += ((self.current_time - 1, self.Script (self.sprites[i].script, 'buttonon', (), self.sprites[i])),)
+			else:
+				if 'buttonoff' in self.scripts[self.sprites[i].script]:
+					self.events += ((self.current_time - 1, self.Script (self.sprites[i].script, 'buttonoff', (), self.sprites[i])),)
+	def enter (self, widget, event):
+		self.grab_focus ()
 	def dinkbrain (self, sprite):
-		if e.keyval == gtk.keysyms.Left:
+		if self.key == gtk.keysyms.Left:
 			pass
-		elif e.keyval == gtk.keysyms.Up:
+		elif self.key == gtk.keysyms.Up:
 			pass
-		elif e.keyval == gtk.keysyms.Right:
+		elif self.key == gtk.keysyms.Right:
 			pass
-		elif e.keyval == gtk.keysyms.Down:
+		elif self.key == gtk.keysyms.Down:
 			pass
-		elif e.keyval == gtk.keysyms.Escape:
+		elif self.key == gtk.keysyms.Escape:
 			pass
-		elif e.keyval == gtk.keysyms.m:
+		elif self.key == gtk.keysyms.m:
 			pass
-		elif e.keyval == gtk.keysyms._6:
+		elif self.key == gtk.keysyms._6:
+			pass
+		elif self.key in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
 			pass
 		else:
 			pass
-	def bouncebrain (self, sprite):
-		pass
-	def duckbrain (self, sprite):
-		pass
-	def pigbrain (self, sprite):
-		pass
-	def markbrain (self, sprite):
-		pass
-	def repeatbrain (self, sprite):
-		pass
-	def playbrain (self, sprite):
-		pass
-	def textbrain (self, sprite):
-		pass
-	def bisshopbrain (self, sprite):
-		pass
-	def rookbrain (self, sprite):
-		pass
-	def missilebrain (self, sprite):
-		pass
-	def resizebrain (self, sprite):
-		pass
-	def pointerbrain (self, sprite):
-		if not self.pointer:
+	def in_area (self, pos, area):
+		return area[0] <= pos[0] <= area[2] and area[1] <= pos[1] <= area[3]
+	def Script (self, fname, name, args, sprite):
+		if fname not in self.functions:
+			yield 'error', "script file doesn't exist: %s" % fname
 			return
-		sprite.pos = self.pointerpos
-	def buttonbrain (self, sprite):
-		pass
-	def shadowbrain (self, sprite):
-		pass
-	def personbrain (self, sprite):
-		pass
-	def flarebrain (self, sprite):
-		pass
+		if name not in self.functions[fname]:
+			yield 'error', "script doesn't exist: %s.%s" % (fname, name)
+			return
+		retval, argnames = self.functions[fname][name]
+		stack = [self.scripts[fname][name]]
+		pos = [0]
+		if sprite:
+			the_statics = sprite.the_statics
+			the_statics['current_sprite'] = sprite.num
+		else:
+			the_statics = {}
+		the_locals = {}
+		for i in range (len (argnames)):
+			the_locals[argnames[i]] = self.compute (args[i], the_statics, the_locals)
+		while True:
+			popped = False
+			while len (stack) > 0 and pos[-1] >= len (stack[-1][1]):
+				stack.pop ()
+				pos.pop ()
+				popped = True
+			if len (stack) == 0:
+				yield ('return', 0)
+				return
+			statement = stack[-1][1][pos[-1]]
+			pos[-1] += 1
+			print 'running', statement
+			if statement[0] == '{':
+				stack += (statement,)
+				pos += (0,)
+			elif statement[0] == 'return':
+				if statement[1] == None:
+					yield ('return', 0)
+				else:
+					c = self.compute (statement[1], the_statics, the_locals)
+					r = next (c)
+					while r[0] == 'wait':
+						yield r
+						r = next (c)
+					yield r
+				return
+			elif statement[0] == 'while':
+				c = self.compute (statement[1], the_statics, the_locals)
+				r = next (c)
+				while r[0] == 'wait':
+					yield r
+					r = next (c)
+				if r:
+					pos[-1] -= 1
+					stack += (statement[2],)
+					pos += (0,)
+			elif statement[0] == 'for':
+				if popped:
+					if statement[3] != None:
+						c = self.compute (statement[3][2], the_statics, the_locals)
+						r = next (c)
+						while r[0] == 'wait':
+							yield r
+							r = next (c)
+						self.assign (statement[3][0], statement[3][1], r, the_statics, the_locals)
+				else:
+					if statement[1] != None:
+						c = self.compute (statement[1][2], the_statics, the_locals)
+						r = next (c)
+						while r[0] == 'wait':
+							yield r
+							r = next (c)
+						self.assign (statement[1][0], statement[1][1], r, the_statics, the_locals)
+				c = self.compute (statement[2], the_statics, the_locals)
+				r = next (c)
+				while r[0] == 'wait':
+					yield r
+					r = next (c)
+				if r:
+					pos[-1] -= 1
+					stack += (statement[4],)
+					pos += (0,)
+			elif statement[0] == 'if':
+				c = self.compute (statement[1], the_statics, the_locals)
+				r = next (c)
+				while r[0] == 'wait':
+					yield r
+					r = next (c)
+				if r:
+					stack += (statement[2],)
+					pos += (0,)
+				elif statement[3] != None:
+					stack += (statement[3],)
+					pos += (0,)
+			elif statement[0] == 'int':
+				if statement[2] != None:
+					c = self.compute (statement[2], the_statics, the_locals)
+					r = next (c)
+					while r[0] == 'wait':
+						yield r
+						r = next (c)
+				else:
+					r = 0
+				the_locals[statement[1]] = r
+			elif statement[0] == 'choice':
+				self.choice = []
+				for i in statement[1]:
+					if i[0] == None:
+						self.choice += (i[1],)
+					else:
+						c = self.compute (i[0], the_statics, the_locals)
+						r = next (c)
+						while r[0] == 'wait':
+							yield r
+							r = next (c)
+						if r:
+							self.choice += (i[1],)
+				if len (self.choice) == 0:
+					self.choice = None
+				else:
+					self.choice_title = statement[2]
+					yield 'choice', 0
+			elif statement[0] in ('()', 'internal'):
+				ca = []
+				for a in statement[2]:
+					c = self.compute (a, the_statics, the_locals)
+					r = next (c)
+					while r[0] == 'wait':
+						yield r
+						r = next (c)
+					ca += (r[1],)
+				if statement[0] == '()':
+					f = self.Script (statement[1][0], statement[1][1], ca, None)
+				else:
+					f = self.Internal (statement[1], ca)
+				r = next (f)
+				while r[0] == 'wait':
+					yield r
+					r = next (f)
+			else:
+				c = self.compute (statement[2], the_statics, the_locals)
+				r = next (c)
+				while r[0] == 'wait':
+					yield r
+					r = next (c)
+				self.assign (statement[0], statement[1], r, the_statics, the_locals)
+	def assign (self, op, name, value, the_statics, the_locals):
+		if op == '=':
+			tmp = value
+		else:
+			if name in the_locals:
+				tmp = the_locals[name]
+			elif name in the_statics:
+				tmp = the_statics[name]
+			elif name in self.the_globals:
+				tmp = self.the_globals[name]
+			else:
+				raise AssertionError ('undefined variable %s' % name)
+			tmp = eval ('tmp %s %d' % (op[0], value))
+		if name in the_locals:
+			the_locals[name] = tmp
+		elif name in the_statics:
+			the_statics[name] = tmp
+		elif name in self.the_globals:
+			self.the_globals[name] = tmp
+		else:
+			raise AssertionError ('undefined variable %s' % name)
+	def compute (self, expr, the_statics, the_locals):
+		print 'computing', expr
+		if type (expr) == int:
+			yield ('return', expr)
+			return
+		elif type (expr) == str:
+			if expr[0] == '"':
+				yield ('return', expr[1:-1])
+				return
+			# Look up variable.
+			if expr in the_locals:
+				yield ('return', the_locals[expr])
+			elif expr in the_statics:
+				yield ('return', the_statics[expr])
+			elif expr in self.the_globals:
+				yield ('return', self.the_globals[expr])
+			else:
+				raise AssertionError ('Undefined variable %s' % expr)
+			return
+		elif expr[0] in ('||', '&&'):
+			c = self.compute (expr[1][0], the_statics, the_locals)
+			r = next (c)
+			while r[0] == 'wait':
+				yield r
+				r = next (c)
+			if r ^ expr[0] == '&&':
+				yield ('return', r != 0)
+				return
+			c = self.compute (expr[1][1], the_statics, the_locals)
+			r = next (c)
+			while r[0] == 'wait':
+				yield r
+				r = next (c)
+			if r ^ expr[0] == '&&':
+				yield ('return', r != 0)
+				return
+			yield ('return', expr[0] == '&&')
+			return
+		elif expr[0] == '()':
+			fname, name = expr[1]
+			args = expr[2]
+			s = Script (fname, name, args, None)
+			r = next (s)
+			while r[0] == 'wait':
+				yield r
+				r = next (s)
+			yield r
+			return
+		elif expr[0] == 'internal':
+			name = expr[1]
+			args = expr[2]
+			s = self.Internal (name, args)
+			r = next (s)
+			while r[0] == 'wait':
+				yield r
+				r = next (s)
+			yield r
+			return
+		elif len (expr[1]) == 1:
+			c = self.compute (expr[1][0], the_statics, the_locals)
+			r = next (c)
+			while r[0] == 'wait':
+				yield r
+				r = next (c)
+			if r[0] == 'return':
+				yield ('return', eval ('%s%d' % (expr[0], r[1])))
+			else:
+				yield ('error', 'invalid return value while computing expression')
+			return
+		else:
+			c = self.compute (expr[1][0], the_statics, the_locals)
+			r1 = next (c)
+			while r1[0] == 'wait':
+				yield r
+				r1 = next (c)
+			if r1[0] != 'return':
+				yield ('error', 'invalid return value while computing expression')
+			c = self.compute (expr[1][1], the_statics, the_locals)
+			r2 = next (c)
+			while r2[0] == 'wait':
+				yield r
+				r2 = next (c)
+			if r2[0] != 'return':
+				yield ('error', 'invalid return value while computing expression')
+			yield ('return', eval ('%d %s %d' % (r1[1], expr[0], r2[1])))
+			return
+	def draw_status (self):
+		# Draw status bar and borders.
+		# These coordinates are directly related to the depth dots of the status sprites.
+		self.draw_frame (self.bg, (self.data.seq.find_seq ('status'), 3), (426, 458), 100, (0, 0, 0, 0), False)
+		if self.screenlock:
+			self.draw_frame (self.bg, (self.data.seq.find_seq ('menu'), 9), (13, 287), 100, (0, 0, 0, 0), False)
+			self.draw_frame (self.bg, (self.data.seq.find_seq ('menu'), 10), (633, 287), 100, (0, 0, 0, 0), False)
+		else:
+			self.draw_frame (self.bg, (self.data.seq.find_seq ('status'), 1), (13, 287), 100, (0, 0, 0, 0), False)
+			self.draw_frame (self.bg, (self.data.seq.find_seq ('status'), 2), (633, 287), 100, (0, 0, 0, 0), False)
+		# TODO: other status stuff?
+	def add_text (self, text, owner = None):
+		t = self.add_sprite (brain = 'text')
+		t.text = text
+		t.owner = owner
+		t.killdelay = 1000
+		return t
+	def Internal (self, name, args):
+		if name == 'activate_bow':
+			self.bow = True, 0
+		elif name == 'add_exp':
+			self.the_globals['exp'] += args[0]
+			t = self.add_text (str (args[0]), self.sprites[args[1]])
+			t.dy = -1
+		elif name == 'add_item':
+			try:
+				idx = self.items.index (None)
+			except ValueError:
+				yield ('error', 'no more item slots available')
+				return
+			self.items[idx] = args
+			yield ('return', idx)
+			return
+		elif name == 'add_magic':
+			try:
+				idx = self.magic.index (None)
+			except ValueError:
+				yield ('error', 'no more magic slots available')
+				return
+			self.magic[idx] = args
+			yield ('return', idx)
+			return
+		elif name == 'arm_magic':
+			self.current_magic = self.the_globals['cur_magic']
+		elif name == 'arm_weapon':
+			self.current_weapon = self.the_globals['cur_weapon']
+		elif name == 'busy':
+			if args[0] not in self.sprites:
+				yield ('return', 0)
+			else:
+				sprite = self.sprites[args[0]]
+				yield ('return', sprite.speech if sprite.speech != None else 0)
+			return
+		elif name == 'compare_sprite_script':
+			if args[0] not in self.sprites:
+				yield ('return', 0)
+			else:
+				sprite = self.sprites[args[0]]
+				yield ('return', int (sprite.script == args[0]))
+			return
+		elif name == 'compare_magic':
+			yield ('return', int (self.current_magic == args[0]))
+			return
+		elif name == 'compare_weapon':
+			yield ('return', int (self.current_weapon == args[0]))
+			return
+		elif name == 'copy_bmp_to_screen':
+			# TODO? handle palette stuff... If I want it...
+			self.bg.draw_drawable (self.gc, self.data.get_image (args[0], self.data.scale), 0, 0, 0, 0, self.winw, self.winh)
+		elif name == 'count_item':
+			yield ('return', sum ([i[0] == args[0] for i in self.items if i != None]))
+			return
+		elif name == 'count_magic':
+			yield ('return', sum ([i[0] == args[0] for i in self.magic if i != None]))
+			return
+		elif name == 'create_sprite':
+			s = self.add_sprite (args[0], args[1], args[2], args[3], args[4], args[5])
+			yield ('wait', 0)
+			yield ('return', s.num)
+			return
+		elif name == 'debug':
+			sys.stderr.write ('Debug: %s\n' % str (args[0]))
+		elif name == 'dink_can_walk_off_screen':
+			self.dink_can_walk_off_screen = args[0] != 0
+		elif name == 'disable_all_sprites':
+			self.enable_sprites = False
+		elif name == 'enable_all_sprites':
+			self.enable_sprites = True
+		elif name == 'draw_background':
+			make_bg ()
+		elif name == 'draw_status':
+			self.draw_status ()
+		elif name == 'editor_seq':
+			# TODO
+			pass
+		elif name == 'editor_frame':	#
+			if len (args) == 1:
+				yield ('return', self.sprites[args[0]].editor_num)
+				return
+			# TODO
+		elif name == 'editor_type':	#
+			# TODO
+			pass
+		elif name == 'fade_down':
+			self.fade = 500, False
+		elif name == 'fade_up':
+			self.fade = 500, True
+		elif name == 'fill_screen':
+			self.bg.draw_rectangle (self.gc, True, 0, 0, 640 * self.data.scale / 50, 480 * self.data.scale / 50)
+		elif name == 'free_items':
+			yield ('return', sum ([i == None for i in self.items]))
+			return
+		elif name == 'free_magic':
+			yield ('return', sum ([i == None for i in self.magic]))
+			return
+		elif name == 'freeze':
+			if args[0] not in self.sprites:
+				yield ('error', 'nonexistent sprite')
+			else:
+				sprite = self.sprites[args[0]]
+				sprite.frozen = args[0] != 0
+				yield ('return', 0)
+			return
+		elif name == 'game_exist':
+			# TODO
+			pass
+		elif name == 'get_last_bow_power':
+			yield ('return', self.bow[1])
+			return
+		elif name == 'get_rand_sprite_with_this_brain':
+			pass
+		elif name == 'get_sprite_with_this_brain':
+			pass
+		elif name == 'get_version':
+			pass
+		elif name == 'hurt':
+			pass
+		elif name == 'init':
+			pass
+		elif name == 'initfont':
+			pass
+		elif name == 'inside_box':
+			pass
+		elif name == 'is_script_attached':
+			pass
+		elif name == 'kill_all_sounds':
+			pass
+		elif name == 'kill_cur_item':
+			pass
+		elif name == 'kill_cur_magic':
+			pass
+		elif name == 'kill_game':
+			sys.exit (0)
+		elif name == 'kill_shadow':
+			pass
+		elif name == 'kill_this_item':
+			pass
+		elif name == 'kill_this_magic':
+			pass
+		elif name == 'kill_this_task':
+			pass
+		elif name == 'load_game':
+			pass
+		elif name == 'load_screen':
+			pass
+		elif name == 'move':
+			pass
+		elif name == 'move_stop':
+			pass
+		elif name == 'playmidi':
+			pass
+		elif name == 'playsound':
+			pass
+		elif name == 'preload_seq':
+			pass
+		elif name == 'push_active':
+			pass
+		elif name == 'random':
+			pass
+		elif name == 'reset_timer':
+			pass
+		elif name == 'run_script_by_number':
+			pass
+		elif name == 'save_game':
+			pass
+		elif name == 'say':
+			pass
+		elif name == 'say_stop':
+			pass
+		elif name == 'say_stop_npc':
+			pass
+		elif name == 'say_stop_xy':
+			pass
+		elif name == 'say_xy':
+			pass
+		elif name == 'screenlock':
+			self.screenlock = args[0] != 0
+		elif name == 'script_attach':
+			pass
+		elif name == 'scripts_used':
+			pass
+		elif name == 'set_button':
+			pass
+		elif name == 'set_callback_random':
+			pass
+		elif name == 'set_dink_speed':
+			pass
+		elif name == 'set_keep_mouse':
+			self.keep_mouse = args[0] != 0
+		elif name == 'show_bmp':
+			pass
+		elif name == 'sound_set_kill':
+			pass
+		elif name == 'sound_set_survive':
+			pass
+		elif name == 'sound_set_vol':
+			pass
+		elif name == 'sp':
+			pass
+		elif name == 'sp_active':	#
+			pass
+		elif name == 'sp_attack_hit_sound':
+			pass
+		elif name == 'sp_attack_hit_sound_speed':
+			pass
+		elif name == 'sp_attack_wait':
+			pass
+		elif name == 'sp_base_attack':	#
+			pass
+		elif name == 'sp_base_death':	#
+			pass
+		elif name == 'sp_base_idle':	#
+			pass
+		elif name == 'sp_base_walk':	#
+			pass
+		elif name == 'sp_brain':	#
+			pass
+		elif name == 'sp_brain_parm':	#
+			pass
+		elif name == 'sp_brain_parm2':	#
+			pass
+		elif name == 'sp_defense':	#
+			pass
+		elif name == 'sp_dir':	#
+			pass
+		elif name == 'sp_disabled':	#
+			pass
+		elif name == 'sp_distance':	#
+			pass
+		elif name == 'sp_editor_num':
+			pass
+		elif name == 'sp_exp':	#
+			pass
+		elif name == 'sp_flying':	#
+			pass
+		elif name == 'sp_follow':	#
+			pass
+		elif name == 'sp_frame':	#
+			self.sprites[args[0]].frame = args[1]
+		elif name == 'sp_frame_delay':	#
+			pass
+		elif name == 'sp_gold':	#
+			pass
+		elif name == 'sp_nohard':	#
+			pass
+		elif name == 'sp_hitpoints':	#
+			pass
+		elif name == 'sp_kill':
+			pass
+		elif name == 'sp_move_nohard':	#
+			pass
+		elif name == 'sp_mx':	#
+			pass
+		elif name == 'sp_my':	#
+			pass
+		elif name == 'sp_noclip':	#
+			pass
+		elif name == 'sp_nocontrol':	#
+			pass
+		elif name == 'sp_nodraw':	#
+			pass
+		elif name == 'sp_nohit':	#
+			pass
+		elif name == 'sp_notouch':	#
+			pass
+		elif name == 'sp_pframe':	#
+			self.sprites[args[0]].pframe = args[1]
+		elif name == 'sp_picfreeze':
+			pass
+		elif name == 'sp_pseq':	#
+			pass
+		elif name == 'sp_que':	#
+			pass
+		elif name == 'sp_range':	#
+			pass
+		elif name == 'sp_reverse':	#
+			pass
+		elif name == 'sp_script':
+			pass
+		elif name == 'sp_seq':	#
+			pass
+		elif name == 'sp_size':	#
+			pass
+		elif name == 'sp_sound':
+			pass
+		elif name == 'sp_speed':	#
+			pass
+		elif name == 'sp_strength':	#
+			pass
+		elif name == 'sp_target':	#
+			pass
+		elif name == 'sp_timing':	#
+			self.sprites[args[0]].timing = args[1]
+		elif name == 'sp_touch_damage':
+			pass
+		elif name == 'sp_x':	#
+			pass
+		elif name == 'sp_y':	#
+			pass
+		elif name == 'spawn':
+			self.events += ((self.current_time - 1, self.Script (args[0], 'main', (), None)),)
+			yield ('wait', 0)
+		elif name == 'start_game':
+			# New function, translated as 'spawn ("start-game");' for dink.
+			self.the_globals['player_map'] = self.data.script.start_map
+			self.sprites[1].x = self.data.script.start_x
+			self.sprites[1].y = self.data.script.start_y
+			self.sprites[1].base_idle = 'idle'
+			self.sprites[1].base_walk = 'walk'
+			self.sprites[1].speed = 3
+			if not self.keep_mouse:
+				self.pointer = False
+				# Hmm, this doesn't work on realized widgets...
+				#self.set_events (self.get_events () & ~(gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK | gtk.gdk.POINTER_MOTION_MASK | gtk.gdk.POINTER_MOTION_HINT_MASK))
+			self.sprites[1].dir = 4
+			self.sprites[1].brain = 'dink'
+			self.sprites[1].set_state ('idle')
+			self.sprites[1].que = 0
+			self.sprites[1].clip = True
+			if self.data.script.intro_script:
+				s = self.Script (self.data.script.intro_script, 'main', (), None)
+				r = next (s)
+				while r[0] == 'wait':
+					yield r
+					r = next (s)
+			self.dink_can_walk_off_screen = False
+			self.the_globals['player_map'] = self.data.script.start_map
+			self.sprites[1].x = self.data.script.start_x
+			self.sprites[1].y = self.data.script.start_y
+			self.draw_status ()
+			if self.data.script.start_script:
+				s = self.Script (self.data.script.start_script, 'main', (), None)
+				r = next (s)
+				while r[0] == 'wait':
+					yield r
+					r = next (s)
+			self.load_screen ()
+			if self.fade[1] == False:
+				self.fade = 500, True
+		elif name == 'stop_entire_game':
+			pass
+		elif name == 'stop_wait_for_button':
+			pass
+		elif name == 'stopcd':
+			pass
+		elif name == 'stopmidi':
+			pass
+		elif name == 'turn_midi_off':
+			pass
+		elif name == 'turn_midi_on':
+			pass
+		elif name == 'unfreeze':
+			pass
+		elif name == 'wait':
+			yield ('wait', args[0])
+		elif name == 'wait_for_button':
+			pass
+		yield ('return', 0)
+
+game = Play (gtkdink.GtkDink (sys.argv[1], 50))
+w = gtk.Window ()
+w.set_title ('pyDink')
+w.add (game)
+w.connect ('destroy', gtk.main_quit)
+w.show_all ()
+gtk.main ()

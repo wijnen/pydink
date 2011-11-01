@@ -6,6 +6,7 @@ import re
 import os
 import sys
 import dink
+import gtkdink
 import StringIO
 import math
 import random
@@ -105,7 +106,7 @@ class View (gtk.DrawingArea):
 			if key == gtk.keysyms.a:
 				the_gui.set_baseattack = sel
 			elif key == gtk.keysyms.d:
-				the_gui.set_basedie = sel
+				the_gui.set_basedeath = sel
 			elif key == gtk.keysyms.i:
 				the_gui.set_baseidle = sel
 			elif key == gtk.keysyms.w:
@@ -119,51 +120,13 @@ class View (gtk.DrawingArea):
 		ret.set_foreground (c)
 		ret.set_line_attributes (1, gtk.gdk.LINE_SOLID, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
 		return ret
-	def load_pixbuf (self, cache, black):
-		i = Image.open (dink.filepart (*cache)).convert ('RGB')
-		pb = gtk.gdk.pixbuf_new_from_data (i.tostring (), gtk.gdk.COLORSPACE_RGB, False, 8, i.size[0], i.size[1], i.size[0] * 3)
-		if black:
-			return pb.add_alpha (True, 0, 0, 0)
-		else:
-			return pb.add_alpha (True, 255, 255, 255)
-	def image2pixbuf (self, im):
-		file1 = StringIO.StringIO ()
-		im.save (file1, "png")
-		contents = file1.getvalue ()
-		file1.close ()
-		loader = gtk.gdk.PixbufLoader ("png")
-		loader.write (contents, len (contents))
-		pixbuf = loader.get_pixbuf ()
-		loader.close()
-		return pixbuf
-	def get_pixbuf (self, pb):
-		if View.pixbuf[pb][0] == None:
-			# Throw a pixbuf out of the cache if required.
-			if config.lowmem and len (View.cachedpb) >= config.maxcache:
-				View.pixbuf[View.cachedpb[-1]][0] = None
-				View.cachedpb = View.cachedpb[:-1]
-			# Add pixbuf to cache.
-			View.pixbuf[pb][0] = self.load_pixbuf (*View.pixbuf[pb][1])
-		if pb in View.cachedpb:
-			View.cachedpb.remove (pb)
-		View.cachedpb = [pb] + View.cachedpb
-		return View.pixbuf[pb][0]
-	def makezoom (self):
-		View.zoombmp = []
-		for i in range (len (View.bmp)):
-			w, h = View.bmp[i].get_size ()
-			nw = w * screenzoom / 50
-			nh = h * screenzoom / 50
-			View.zoombmp += (gtk.gdk.Pixmap (self.get_window (), nw, nh),)
-			pb = gtk.gdk.pixbuf_get_from_drawable (None, View.bmp[i], View.bmp[i].get_colormap (), 0, 0, 0, 0, w, h)
-			View.zoombmp[i].draw_pixbuf (View.gc, pb.scale_simple (nw, nh, gtk.gdk.INTERP_NEAREST), 0, 0, 0, 0)
 	def start (self, widget):
 		self.realize ()
 		if View.started != None:
 			View.update (self)
 			return
+		data.set_window (self.get_window ())
 		View.started = False
-		View.cachedpb = []
 		View.gc = self.make_gc ('default-gc')
 		View.gridgc = self.make_gc ('grid-gc')
 		View.bordergc = self.make_gc ('border-gc')
@@ -175,59 +138,8 @@ class View (gtk.DrawingArea):
 		View.pastegc = self.make_gc ('paste-gc')
 		View.emptygc = self.make_gc ('empty-gc')
 		View.whitegc = self.make_gc ('white-gc')
-		View.bmp = [None] * 41
-		View.hard = [None] * 41
-		for i in range (41):
-			size = data.tile.tile[i][0].size
-			pb = gtk.gdk.pixbuf_new_from_data (data.tile.tile[i][0].tostring (), gtk.gdk.COLORSPACE_RGB, False, 8, size[0], size[1], size[0] * 3)
-			View.bmp[i] = gtk.gdk.Pixmap (self.get_window (), pb.get_width (), pb.get_height ())
-			View.bmp[i].draw_pixbuf (View.gc, pb, 0, 0, 0, 0)
-			View.hard[i] = self.image2pixbuf (data.tile.tile[i][1])
-		View.pixbufs = {}
-		View.pixbuf = []
-		for s in data.seq.seq:
-			View.pixbufs[s] = [None]
-			for f in data.seq.seq[s].frames[1:]:
-				if f.source != None:
-					View.pixbufs[s] += (None,)
-					continue
-				View.pixbufs[s] += (len (View.pixbuf),)
-				View.pixbuf += ([None, (f.cache, data.seq.seq[s].type == 'black')],)
-		View.cpixbufs = {}
-		for c in data.seq.collection:
-			View.cpixbufs[c] = [None] * 10
-			for s in (1,2,3,4,6,7,8,9):
-				if s not in data.seq.collection[c]:
-					continue
-				View.cpixbufs[c][s] = [None]
-				for f in data.seq.collection[c][s].frames[1:]:
-					if f.source != None:
-						View.cpixbufs[c][s] += (None,)
-						continue
-					View.cpixbufs[c][s] += (len (View.pixbuf),)
-					View.pixbuf += ([None, (f.cache, data.seq.collection[c][s].type == 'black')],)
-		# Make links for copied frames.
-		for c in data.seq.collection:
-			for s in (1,2,3,4,6,7,8,9):
-				if s not in data.seq.collection[c]:
-					continue
-				for n, f in zip (range (1, len (data.seq.collection[c][s].frames) + 1), data.seq.collection[c][s].frames[1:]):
-					if f.source != None:
-						src = data.seq.find_seq (f.source[0])
-						if type (src.name) == str:
-							View.cpixbufs[c][s][n] = View.pixbufs[src.name][f.source[1]]
-						else:
-							View.cpixbufs[c][s][n] = View.cpixbufs[src.name[0]][src.name[1]][f.source[1]]
-		for s in data.seq.seq:
-			for n, f in zip (range (1, len (data.seq.seq[s].frames) + 1), data.seq.seq[s].frames[1:]):
-				if f.source != None:
-					src = data.seq.find_seq (f.source[0])
-					if type (src.name) == str:
-						View.pixbufs[s][n] = View.pixbufs[src.name][f.source[1]]
-					else:
-						View.pixbufs[s][n] = View.cpixbufs[src.name[0]][src.name[1]][f.source[1]]
 		View.started = True
-		View.makezoom (self)
+		data.set_scale (screenzoom)
 		View.update (self)
 	def __init__ (self):
 		gtk.DrawingArea.__init__ (self)
@@ -236,9 +148,8 @@ class View (gtk.DrawingArea):
 		self.pointer_pos = (0, 0)	# Current position of pointer.
 		self.selecting = False		# Whether tiles are being selected, or a sequence is being moved at this moment.
 		self.panning = False		# Whether the screen is panned at this moment.
-		self.offset = (0, 0)		# Current pan setting, one for each type.
+		self.offset = (0, 0)		# Current pan setting
 		self.screensize = (0, 0)	# Size of the viewport in pixels (updated by configure).
-		gtk.DrawingArea.__init__ (self)
 		self.set_can_focus (True)
 		self.connect_after ('realize', self.start)
 		self.connect ('expose-event', self.expose)
@@ -269,11 +180,12 @@ class View (gtk.DrawingArea):
 	def draw_tile (self, screenpos, worldpos, screen_lines):
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
-			w, h = View.bmp[b[0]].get_size ()
+			tiles = data.get_tiles (b[0])
+			w, h = tiles.get_size ()
 			if b[1] * screenzoom >= w or b[2] * screenzoom >= h:
 				self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0] + 1, screenpos[1] + 1, screenzoom, screenzoom)
 			else:
-				self.buffer.draw_drawable (View.gc, View.zoombmp[b[0]], b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
+				self.buffer.draw_drawable (View.gc, tiles, b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
 		else:
 			self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0], screenpos[1], screenzoom, screenzoom)
 		if worldpos[1] % 8 == 0:
@@ -289,16 +201,19 @@ class View (gtk.DrawingArea):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.room and data.world.room[n].hard != '':
 			h = data.world.room[n].hard
-			if h in View.hardcache:
-				self.buffer.draw_pixbuf (View.gc, View.hardcache[h], (worldpos[0] % 12) * screenzoom, (worldpos[1] % 8) * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
+			if h != '':
+				tiles = data.get_hard (h)
+				if tiles:
+					self.buffer.draw_pixbuf (View.gc, tiles, (worldpos[0] % 12) * screenzoom, (worldpos[1] % 8) * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
 				return
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
-			w, h = View.bmp[b[0]].get_size ()
+			tiles = data.get_hard_tiles (b[0])
+			w, h = tiles.get_size ()
 			if b[1] * screenzoom >= w or b[2] * screenzoom >= h:
 				return
-			self.buffer.draw_pixbuf (View.gc, View.hard[b[0]], b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
-	def make_pixbuf50 (self, pb, newsize):
+			self.buffer.draw_drawable (View.gc, tiles, b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
+	def make_pixbuf50 (self, pb, newsize):	# TODO: scale to fit window.
 		size = [pb.get_width (), pb.get_height ()]
 		if size[0] <= newsize and size[1] <= newsize:
 			pass
@@ -338,9 +253,9 @@ class View (gtk.DrawingArea):
 				check = (worldpos[0], worldpos[1], which)
 				if check in select.data:
 					if check == select.start:
-						self.buffer.draw_rectangle (self.noshowgc, False, screenpos[0] + 1, screenpos[1] + 1, s - 2, s - 2)
+						self.buffer.draw_rectangle (self.noshowgc, False, screenpos[0] + 1, screenpos[1] + 1, screenzoom - 2, screenzoom - 2)
 					else:
-						self.buffer.draw_rectangle (self.selectgc, False, screenpos[0] + 1, screenpos[1] + 1, s - 2, s - 2)
+						self.buffer.draw_rectangle (self.selectgc, False, screenpos[0] + 1, screenpos[1] + 1, screenzoom - 2, screenzoom - 2)
 		return screens
 	def update (self):
 		for c in View.components:
@@ -407,37 +322,6 @@ class View (gtk.DrawingArea):
 			return viewmap.find_tile (pos)
 		else:
 			return viewtiles.find_tile (pos)
-	def get_box (self, size, pos, seq, box):
-		x = pos[0] - 20
-		y = pos[1]
-		bb = seq.boundingbox
-		w = bb[2] - bb[0]
-		h = bb[3] - bb[1]
-		# Blame Seth for the computation below.
-		x_compat = w * (size - 100) / 100 / 2
-		y_compat = h * (size - 100) / 100 / 2
-		l = x - seq.position[0] - x_compat
-		t = y - seq.position[1] - y_compat
-		r = l + w * size / 100
-		b = t + h * size / 100
-		if box[0] != 0 or box[1] != 0 or box[2] != 0:
-			box = list (box)
-			if box[0] > w:
-				box[0] = w
-			if box[1] > h:
-				box[1] = h
-			if box[2] > w:
-				box[2] = w
-			if box[3] > h:
-				box[3] = h
-			l += box[0]
-			t += box[1]
-			r += box[2] - w
-			b += box[3] - h
-			bx = box
-		else:
-			bx = None
-		return (x, y), (l, t, r, b), bx
 	def draw_seq (self, pos, pixbuf):
 		dpos = [pos[t] * self.tilesize - self.offset[t] for t in range (2)]
 		if pixbuf == None:
@@ -465,7 +349,7 @@ class ViewMap (View):
 			screen = data.script.start_map
 			sc = ((screen - 1) % 32, (screen - 1) / 32)
 			s = (12, 8)
-			self.offset = [sc[x] * s[x] * 50 + (s[x] / 2) * 50 - self.screensize[x] / 2 for x in range (2)]
+			self.offset = [sc[x] * s[x] * screenzoom + (s[x] / 2) * screenzoom - self.screensize[x] / 2 for x in range (2)]
 	def find_tile (self, worldpos):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.room:
@@ -475,7 +359,7 @@ class ViewMap (View):
 		View.draw_tile (self, screenpos, worldpos, False)
 		if not self.selecting:
 			if (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
-				self.buffer.draw_rectangle (self.pastegc, False, screenpos[0] + 1, screenpos[1] + 1, 48, 48)
+				self.buffer.draw_rectangle (self.pastegc, False, screenpos[0] + 1, screenpos[1] + 1, screenzoom - 2, screenzoom - 2)
 	def update (self):
 		if self.buffer == None:
 			return
@@ -516,12 +400,9 @@ class ViewMap (View):
 			if s[0][0] == None:
 				# This is a warp target.
 				continue
-			(x, y), (left, top, right, bottom), box = self.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+			(x, y), (left, top, right, bottom), box = data.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 			# Draw the pixbuf.
-			if type (s[2].name) == str:
-				pb = self.get_pixbuf (self.pixbufs[s[2].name][s[1].frame])
-			else:
-				pb = self.get_pixbuf (self.cpixbufs[s[2].name[0]][s[2].name[1]][s[1].frame])
+			pb = data.get_seq (s[2], s[1].frame)
 			if box != None:
 				pb = pb.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
 			w = (right - left) * screenzoom / 50
@@ -544,10 +425,10 @@ class ViewMap (View):
 				continue
 			if not spr[1].hard:
 				if spr[3]:
-					(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 					self.buffer.draw_rectangle (self.noshowgc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
 				continue
-			(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+			(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 			if spr[3]:
 				self.buffer.draw_rectangle (self.hardgc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
 			else:
@@ -558,7 +439,7 @@ class ViewMap (View):
 				continue
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
-				(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+				(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 				# Que: not drawn for not selected sprites.
 				# Hotspot.
 				self.buffer.draw_line (self.noselectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
@@ -577,7 +458,7 @@ class ViewMap (View):
 				continue
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
-				(x, y), (left, top, right, bottom), box = self.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+				(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 				# Que.
 				self.buffer.draw_line (self.noshowgc, (x - 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50, (x + 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50)
 				# Hotspot
@@ -664,8 +545,8 @@ class ViewMap (View):
 			if len (t) == 0:
 				return
 			self.moveinfo = 'crop', t, self.make_cancel ()
-		elif e.keyval == gtk.keysyms.d: # set base die
-			View.collectiontype = 'die'
+		elif e.keyval == gtk.keysyms.d: # set base death
+			View.collectiontype = 'death'
 			viewcollection.direction (None)
 			the_gui.setcollection = True
 		elif e.keyval == gtk.keysyms.e: # edit script(s)
@@ -848,7 +729,7 @@ class ViewMap (View):
 			mid = [self.offset[x] + self.screensize[x] * 25 / screenzoom for x in range (2)]
 			screenzoom = 50
 			self.offset = [mid[x] - self.screensize[x] / 2 for x in range (2)]
-			self.makezoom ()
+			data.set_scale (screenzoom)
 		elif e.keyval == gtk.keysyms.Home: # center screen
 			s = (12, 8)
 			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / 50 * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
@@ -875,7 +756,7 @@ class ViewMap (View):
 			if self.moveinfo != None:
 				self.offset = self.moveinfo[2][0]
 				screenzoom = self.moveinfo[2][2]
-				self.makezoom ()
+				data.set_scale (screenzoom)
 				for s in range (len (spriteselect)):
 					spr = data.world.room[spriteselect[s][0]].sprite[spriteselect[s][1]]
 					if spriteselect[s][2]:
@@ -984,7 +865,7 @@ class ViewMap (View):
 			if screenzoom < 1:
 				screenzoom = 1
 			self.offset = [mid[x] - self.screensize[x] * 25 / screenzoom for x in range (2)]
-			self.makezoom ()
+			data.set_scale (screenzoom)
 			# adjust moveinfo to use new size
 			dist = make_dist (self.moveinfo[1][0], p)
 			self.moveinfo = 'screenzoom', (self.moveinfo[1][0], dist, [screenzoom]), self.moveinfo[2]
@@ -1018,7 +899,7 @@ class ViewMap (View):
 					pos = (sx + sp.x - 20, sy + sp.y) # 20, because sprite positions are relative to screen origin; first tile starts at (20,0).
 					if point:
 						seq = data.seq.find_seq (sp.seq)
-						(hotx, hoty), (left, top, right, bottom), box = self.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
+						(hotx, hoty), (left, top, right, bottom), box = data.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
 						if rx[0] - sx >= left and ry[0] - sy >= top and rx[0] - sx < right and ry[0] - sy < bottom:
 							lst += ((pos[1] - sp.que, (s, spr, False), pos),)
 					else:
@@ -1134,8 +1015,8 @@ class ViewMap (View):
 						sp.base_walk = src.base_walk
 						sp.base_idle = src.base_idle
 						sp.base_attack = src.base_attack
-						sp.base_die = src.base_die
-						sp.timer = src.timer
+						sp.base_death = src.base_death
+						sp.timing = src.timing
 						sp.que = src.que
 						sp.hard = src.hard
 						sp.left = src.left
@@ -1267,7 +1148,8 @@ class ViewMap (View):
 		self.pointer_pos = pos
 		self.pointer_tile = [(self.pointer_pos[t] + self.offset[t]) / screenzoom for t in range (2)]
 		if self.moveinfo == None:
-			#self.update ()
+			if not select.empty ():
+				self.update ()
 			return
 		elif self.moveinfo[0] == 'tileselect':
 			View.select_tiles (self, tile, 0)
@@ -1318,7 +1200,7 @@ class ViewMap (View):
 			if screenzoom < 1:
 				screenzoom = 1
 			self.offset = [mid[x] - self.screensize[x] * 25 / screenzoom for x in range (2)]
-			self.makezoom ()
+			data.set_scale (screenzoom)
 		elif self.moveinfo[0] == 'pan':
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
 		else:
@@ -1348,13 +1230,13 @@ class ViewSeq (View):
 					if y * self.width + x >= len (s):
 						self.draw_seq ((x, y), None)
 						continue
-					pb = self.pixbufs[s[y * self.width + x]][1]
+					pb = data.get_seq (s[y * self.width + x], 1)
 					self.draw_seq ((x, y), pb)
 		else:
 			# Draw clicked sequence.
 			x0, y0 = self.selected_seq
 			pos0 = y0 * self.width + x0
-			pb = self.pixbufs[s[pos0]][1]
+			pb = data.get_seq (s[pos0], 1)
 			self.draw_seq (self.selected_seq, pb)
 			# Draw selectable frames.
 			frames = data.seq.seq[s[pos0]].frames
@@ -1363,7 +1245,7 @@ class ViewSeq (View):
 			else:
 				off = max (0, self.width - (len (frames) - 1))
 			for f in range (1, len (frames)):
-				pb = self.pixbufs[s[pos0]][f]
+				pb = data.get_seq (s[pos0], f)
 				y = y0 + 1 + (f - 1 + off) / self.width
 				x = (f - 1 + off) % self.width
 				self.draw_seq ((x, y), pb)
@@ -1483,14 +1365,14 @@ class ViewCollection (View):
 					if c[y * self.width + x][0] == '':
 						continue
 					seq = c[y * self.width + x]
-					pb = self.cpixbufs[seq[0]][seq[1]][1]
+					pb = data.get_seq (seq[0][seq[1]], 1)
 					self.draw_seq ((x, y), pb)
 		else:
 			# Draw clicked sequence.
 			x0, y0 = self.selected_seq
 			pos0 = y0 * self.width + x0
 			seq = c[pos0]
-			pb = self.cpixbufs[seq[0]][seq[1]][1]
+			pb = data.get_seq (seq[0][seq[1]], 1)
 			self.draw_seq (self.selected_seq, pb)
 			# Draw selectable frames.
 			frames = data.seq.collection[seq[0]][seq[1]].frames
@@ -1499,7 +1381,7 @@ class ViewCollection (View):
 			else:
 				off = max (0, self.width - (len (frames) - 1))
 			for f in range (1, len (frames)):
-				pb = self.cpixbufs[seq[0]][seq[1]][f]
+				pb = data.get_seq (seq[0][seq[1]], f)
 				y = y0 + 1 + (f - 1 + off) / self.width
 				x = (f - 1 + off) % self.width
 				self.draw_seq ((x, y), pb)
@@ -1535,8 +1417,8 @@ class ViewCollection (View):
 			View.collectiontype = 'attack'
 		elif e.keyval == gtk.keysyms.b: # set base walk.
 			View.collectiontype = 'walk'
-		elif e.keyval == gtk.keysyms.d: # set base die.
-			View.collectiontype = 'die'
+		elif e.keyval == gtk.keysyms.d: # set base death.
+			View.collectiontype = 'death'
 		elif e.keyval == gtk.keysyms.i: # set base idle.
 			View.collectiontype = 'idle'
 		else:
@@ -1568,8 +1450,8 @@ class ViewCollection (View):
 				for s in spriteselect:
 					if View.collectiontype == 'idle':
 						data.world.room[s[0]].sprite[s[1]].base_idle = seq
-					elif View.collectiontype == 'die':
-						data.world.room[s[0]].sprite[s[1]].base_die = seq
+					elif View.collectiontype == 'death':
+						data.world.room[s[0]].sprite[s[1]].base_death = seq
 					elif View.collectiontype == 'walk':
 						data.world.room[s[0]].sprite[s[1]].base_walk = seq
 					elif View.collectiontype == 'attack':
@@ -1687,7 +1569,7 @@ class ViewTiles (View):
 		diff = [(pos[x] - self.pointer_pos[x]) * 50 / screenzoom for x in range (2)]
 		self.pointer_pos = pos
 		self.pointer_tile = [(pos[x] + self.offset[x]) / screenzoom for x in range (2)]
-		if not self.panning and not self.selecting:
+		if not self.panning and not self.selecting and select.empty ():
 			return
 		if self.panning:
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
@@ -1832,7 +1714,7 @@ def update_editgui ():
 	the_gui.set_basewalk = sprite.base_walk
 	the_gui.set_baseidle = sprite.base_idle
 	the_gui.set_baseattack = sprite.base_attack
-	the_gui.set_timer = sprite.timer
+	the_gui.set_timing = sprite.timing
 	the_gui.set_que = sprite.que
 	the_gui.set_ishard = sprite.hard
 	the_gui.set_crop = sprite.left != 0 or sprite.right != 0 or sprite.top != 0 or sprite.bottom != 0
@@ -1851,7 +1733,7 @@ def update_editgui ():
 		the_gui.set_touchseq = sprite.touch_seq
 	else:
 		the_gui.set_touchseq = '%s %d' % sprite.touch_seq
-	the_gui.set_basedie = sprite.base_die
+	the_gui.set_basedeath = sprite.base_death
 	the_gui.set_gold = sprite.gold
 	the_gui.set_hitpoints = sprite.hitpoints
 	the_gui.set_strength = sprite.strength
@@ -1935,7 +1817,7 @@ def update_gui (dummy):
 	collection = the_gui.get_baseattack
 	if data.seq.find_collection (collection) != None:
 		sprite.base_attack = collection
-	sprite.timer = int (the_gui.get_timer)
+	sprite.timing = int (the_gui.get_timing)
 	sprite.que = int (the_gui.get_que)
 	sprite.hard = the_gui.get_ishard
 	if the_gui.get_crop:
@@ -1962,9 +1844,9 @@ def update_gui (dummy):
 	else:
 		if data.seq.find_seq (seq) != None:
 			sprite.touch_seq = seq
-	collection = the_gui.get_basedie
+	collection = the_gui.get_basedeath
 	if data.seq.find_collection (collection) != None:
-		sprite.base_die = collection
+		sprite.base_death = collection
 	sprite.gold = int (the_gui.get_gold)
 	sprite.hitpoints = int (the_gui.get_hitpoints)
 	sprite.strength = int (the_gui.get_strength)
@@ -2009,7 +1891,7 @@ def do_edit_hard (h, room):
 	lst.sort (key = lambda x: x[0][1] - x[1].que)
 	for spr in lst:
 		frame = spr[2].frames[spr[1].frame]
-		(x, y), (left, top, right, bottom), box = viewmap.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+		(x, y), (left, top, right, bottom), box = viedata.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 		if right <= left or bottom <= top:
 			continue
 		# Draw the pixbuf.
@@ -2073,15 +1955,15 @@ def edit_script (self, dummy = None):
 def sync ():
 	for s in data.script.data:
 		data.script.data[s] = open (os.path.join (tmpdir, s + os.extsep + 'c')).read ()
-	View.hardcache = {}
 	for h in data.tile.hard:
 		p = os.path.join (tmpdir, h + os.extsep + 'png')
 		if os.path.exists (p):
 			data.tile.hard[h] = dink.make_hard_image (p)
-		View.hardcache[h] = viewmap.image2pixbuf (data.tile.hard[h])
+		#View.hardcache[h] = viewmap.image2pixbuf (data.tile.hard[h])
+		#TODO
 
 root = sys.argv[1]
-data = dink.Dink (root)
+data = gtkdink.GtkDink (root, screenzoom)
 # initialize warp targets.
 for n in data.world.room.keys ():
 	for s in data.world.room[n].sprite:
