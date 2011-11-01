@@ -12,7 +12,10 @@ import math
 import random
 import Image
 import tempfile
-import config
+import glib
+
+sys.path += (os.path.join (glib.get_user_config_dir (), 'pydink'),)
+import dinkconfig
 
 def keylist (x, keyfun):
 	l = x.keys ()
@@ -165,7 +168,7 @@ class View (gtk.DrawingArea):
 	def configure (self, widget, e):
 		x, y, width, height = widget.get_allocation()
 		self.screensize = (width, height)
-		if config.lowmem and config.nobackingstore:
+		if dinkconfig.lowmem and dinkconfig.nobackingstore:
 			self.buffer = self.get_window ()
 		else:
 			self.buffer = gtk.gdk.Pixmap (self.get_window (), width, height)
@@ -173,7 +176,7 @@ class View (gtk.DrawingArea):
 			self.move (None, None)
 			View.update (self)
 	def expose (self, widget, e):
-		if config.lowmem and config.nobackingstore:
+		if dinkconfig.lowmem and dinkconfig.nobackingstore:
 			self.update ()
 		else:
 			self.get_window ().draw_drawable (View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
@@ -328,7 +331,7 @@ class View (gtk.DrawingArea):
 			self.buffer.draw_rectangle (self.invalidgc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 		else:
 			self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
-			self.buffer.draw_pixbuf (None, self.make_pixbuf50 (self.get_pixbuf (pixbuf), self.tilesize), 0, 0, dpos[0], dpos[1])
+			self.buffer.draw_pixbuf (None, self.make_pixbuf50 (pixbuf, self.tilesize), 0, 0, dpos[0], dpos[1])
 
 class ViewMap (View):
 	def __init__ (self):
@@ -488,7 +491,7 @@ class ViewMap (View):
 			x.sort ()
 			y.sort ()
 			self.buffer.draw_rectangle (self.selectgc, False, x[0], y[0], x[1] - x[0], y[1] - y[0])
-		if not (config.lowmem and config.nobackingstore):
+		if not (dinkconfig.lowmem and dinkconfig.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def make_global (self, screen, pos):
 		s = (12, 8)
@@ -1211,8 +1214,8 @@ class ViewMap (View):
 class ViewSeq (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = config.seqwidth
-		self.tilesize = config.tilesize
+		self.width = dinkconfig.seqwidth
+		self.tilesize = dinkconfig.tilesize
 		s = seqlist ()
 		ns = (len (s) + self.width - 1) / self.width
 		self.set_size_request (self.width * self.tilesize, ns * self.tilesize)
@@ -1230,13 +1233,13 @@ class ViewSeq (View):
 					if y * self.width + x >= len (s):
 						self.draw_seq ((x, y), None)
 						continue
-					pb = data.get_seq (s[y * self.width + x], 1)
+					pb = data.get_seq (data.seq.seq[s[y * self.width + x]], 1)
 					self.draw_seq ((x, y), pb)
 		else:
 			# Draw clicked sequence.
 			x0, y0 = self.selected_seq
 			pos0 = y0 * self.width + x0
-			pb = data.get_seq (s[pos0], 1)
+			pb = data.get_seq (data.seq.seq[s[pos0]], 1)
 			self.draw_seq (self.selected_seq, pb)
 			# Draw selectable frames.
 			frames = data.seq.seq[s[pos0]].frames
@@ -1245,11 +1248,11 @@ class ViewSeq (View):
 			else:
 				off = max (0, self.width - (len (frames) - 1))
 			for f in range (1, len (frames)):
-				pb = data.get_seq (s[pos0], f)
+				pb = data.get_seq (data.seq.seq[s[pos0]], f)
 				y = y0 + 1 + (f - 1 + off) / self.width
 				x = (f - 1 + off) % self.width
 				self.draw_seq ((x, y), pb)
-		if not (config.lowmem and config.nobackingstore):
+		if not (dinkconfig.lowmem and dinkconfig.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		if e.keyval == gtk.keysyms.Escape: # Cancel operation.
@@ -1342,8 +1345,8 @@ class ViewSeq (View):
 class ViewCollection (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = config.seqwidth - 3
-		self.tilesize = config.tilesize
+		self.width = dinkconfig.seqwidth
+		self.tilesize = dinkconfig.tilesize
 		c = collectionlist ()
 		nc = (len (c) + self.width - 1) / self.width
 		self.set_size_request (self.width * self.tilesize, nc * self.tilesize)
@@ -1365,14 +1368,14 @@ class ViewCollection (View):
 					if c[y * self.width + x][0] == '':
 						continue
 					seq = c[y * self.width + x]
-					pb = data.get_seq (seq[0][seq[1]], 1)
+					pb = data.get_seq (data.seq.collection[seq[0]][seq[1]], 1)
 					self.draw_seq ((x, y), pb)
 		else:
 			# Draw clicked sequence.
 			x0, y0 = self.selected_seq
 			pos0 = y0 * self.width + x0
 			seq = c[pos0]
-			pb = data.get_seq (seq[0][seq[1]], 1)
+			pb = data.get_seq (data.seq.collection[seq[0]][seq[1]], 1)
 			self.draw_seq (self.selected_seq, pb)
 			# Draw selectable frames.
 			frames = data.seq.collection[seq[0]][seq[1]].frames
@@ -1381,11 +1384,11 @@ class ViewCollection (View):
 			else:
 				off = max (0, self.width - (len (frames) - 1))
 			for f in range (1, len (frames)):
-				pb = data.get_seq (seq[0][seq[1]], f)
+				pb = data.get_seq (data.seq.collection[seq[0]][seq[1]], f)
 				y = y0 + 1 + (f - 1 + off) / self.width
 				x = (f - 1 + off) % self.width
 				self.draw_seq ((x, y), pb)
-		if not (config.lowmem and config.nobackingstore):
+		if not (dinkconfig.lowmem and dinkconfig.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def direction (self, d):
 		self.thedirection = d
@@ -1517,9 +1520,9 @@ class ViewCollection (View):
 class ViewTiles (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.pointer_tile = (0, 0)	# Tile that the pointer is currently pointing it, in world coordinates. That is: pointer_pos / 50.
+		self.pointer_tile = (0, 0)	# Tile that the pointer is currently pointing it, in world coordinates. That is: pointer_pos / screenzoom.
 		self.tiles = (12 * 6, 8 * 7)	# Total number of tiles
-		self.set_size_request (50 * 12, 50 * 8)
+		self.set_size_request (screenzoom * 12, screenzoom * 8)
 	def find_tile (self, worldpos):
 		if worldpos[0] >= 0 and worldpos[0] < 6 * 12 and worldpos[1] >= 0 and worldpos[1] < 7 * 8:
 			n = (worldpos[1] / 8) * 6 + worldpos[0] / 12
@@ -1532,7 +1535,7 @@ class ViewTiles (View):
 		if self.buffer == None:
 			return
 		View.draw_tiles (self, 1)
-		if not (config.lowmem and config.nobackingstore):
+		if not (dinkconfig.lowmem and dinkconfig.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		global copystart
@@ -1579,7 +1582,7 @@ class ViewTiles (View):
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / 50 for x in range (2)]
+		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / screenzoom for x in range (2)]
 		if e.type != gtk.gdk.BUTTON_PRESS:
 			return
 		if e.button == 1:
@@ -1619,11 +1622,11 @@ class ViewWorld (View):
 					self.buffer.draw_rectangle (self.invalidgc, True, off[0] + tsize[0] * x + 1, off[1] + tsize[1] * y + 1, tsize[0] - 1, tsize[1] - 1)
 		self.buffer.draw_line (self.bordergc, off[0], off[1] + s[1] * tsize[1], off[0] + s[0] * tsize[0] - 1, off[1] + s[1] * tsize[1])
 		self.buffer.draw_line (self.bordergc, off[0] + s[0] * tsize[0], off[1], off[0] + s[0] * tsize[0], off[1] + s[1] * tsize[1] - 1)
-		targetsize = [max (2, viewmap.screensize[x] * tsize[x] / 50 / scrsize[x]) for x in range (2)]
-		current = [viewmap.offset[t] * tsize[t] / scrsize[t] / 50 + off[t] for t in range (2)]
+		targetsize = [max (2, viewmap.screensize[x] * tsize[x] / screenzoom / scrsize[x]) for x in range (2)]
+		current = [viewmap.offset[t] * tsize[t] / scrsize[t] / screenzoom + off[t] for t in range (2)]
 		self.buffer.draw_rectangle (self.selectgc, False, current[0], current[1], targetsize[0] - 1, targetsize[1] - 1)
 		self.buffer.draw_rectangle (self.pastegc, False, self.pointer_pos[0] - targetsize[0] / 2, self.pointer_pos[1] - targetsize[1] / 2, targetsize[0] - 1, targetsize[1] - 1)
-		if not (config.lowmem and config.nobackingstore):
+		if not (dinkconfig.lowmem and dinkconfig.nobackingstore):
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		if e.keyval == gtk.keysyms.Escape:	# abort current action
@@ -1643,7 +1646,7 @@ class ViewWorld (View):
 		scrsize = (12, 8)
 		tsize = [self.screensize[x] / s[x] for x in range (2)]
 		off = [(self.screensize[x] - s[x] * tsize[x]) / 2 for x in range (2)]
-		viewmap.offset = [(self.pointer_pos[x] - off[x]) * 50 * scrsize[x] / tsize[x] - viewmap.screensize[x] / 2 for x in range (2)]
+		viewmap.offset = [(self.pointer_pos[x] - off[x]) * screenzoom * scrsize[x] / tsize[x] - viewmap.screensize[x] / 2 for x in range (2)]
 		viewmap.update ()
 		self.update ()
 	def button_on (self, widget, e):

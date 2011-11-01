@@ -9,12 +9,30 @@ import tempfile
 import shutil
 import StringIO
 import pickle
-from config import Sequence
-from config import Frame
-from config import cachedir
-from config import dinkdir
+import glib
 
-savedir = os.path.expanduser (cachedir)
+p = os.path.join (glib.get_user_config_dir (), 'pydink')
+if not os.path.exists (p):
+	os.makedirs (p)
+name = os.path.join (p, 'dinkconfig.py')
+if not os.path.exists (name):
+	f = open (name, 'w')
+	f.write ('''lowmem = False
+nobackingstore = False
+dinkdir = '/usr/share/games/dink'
+tilesize = 30
+seqwidth = 20
+dinkprog = '/usr/games/freedink'
+class Sequence:
+	pass
+class Frame:
+	pass
+''')
+	f.close ()
+sys.path += (p,)
+import dinkconfig
+
+savedir = os.path.join (glib.get_user_cache_dir (), 'pydink')
 if not os.path.isdir (savedir):
 	os.makedirs (savedir)
 
@@ -261,11 +279,11 @@ def buildtree (d):
 		else:
 			ret[l.lower ()] = (l,)
 	return ret
-dinktree = buildtree (dinkdir)
+dinktree = buildtree (dinkconfig.dinkdir)
 # Load a file from dinkdir.
 def loaddinkfile (f):
 	f = f.replace ('\\', os.sep).split (os.sep)
-	p = dinkdir
+	p = dinkconfig.dinkdir
 	walk = dinktree
 	for i in f[:-1]:
 		branch = walk[i]
@@ -356,7 +374,7 @@ def use (seq, f):
 	if len (seq.frames) == 0:
 		seq.frames += (None,)
 	while len (seq.frames) <= f:
-		seq.frames += (Frame (),)
+		seq.frames += (dinkconfig.Frame (),)
 
 sequence_codes = {}
 
@@ -374,11 +392,11 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 			if 'filepath' in dir (sequence_codes[s]):
 				assert 'preload' not in dir (sequence_codes[s])
 				preload = sequence_codes[s].filepath
-				sequence_codes[s] = Sequence ()
+				sequence_codes[s] = dinkconfig.Sequence ()
 				sequence_codes[s].frames = []
 				sequence_codes[s].preload = preload
 		else:
-			sequence_codes[s] = Sequence ()
+			sequence_codes[s] = dinkconfig.Sequence ()
 			sequence_codes[s].frames = []
 		sequence_codes[s].filepath = l[1]
 		sequence_codes[s].now = l[0] == 'load_sequence_now'
@@ -416,7 +434,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
-			sequence_codes[s] = Sequence ()
+			sequence_codes[s] = dinkconfig.Sequence ()
 			sequence_codes[s].frames = []
 		use (sequence_codes[s], f)
 		sequence_codes[s].frames[f].position = [int (x) for x in l[3:5]]
@@ -426,7 +444,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
-			sequence_codes[s] = Sequence ()
+			sequence_codes[s] = dinkconfig.Sequence ()
 			sequence_codes[s].frames = []
 		#use (sequence_codes[s], f)
 		if len (sequence_codes[s].frames) <= f:
@@ -437,7 +455,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
-			sequence_codes[s] = Sequence ()
+			sequence_codes[s] = dinkconfig.Sequence ()
 			sequence_codes[s].frames = []
 		if len (l) == 5:
 			use (sequence_codes[s], f)
@@ -457,7 +475,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		s = int (l[1])
 		f = int (l[2])
 		if s not in sequence_codes:
-			sequence_codes[s] = Sequence ()
+			sequence_codes[s] = dinkconfig.Sequence ()
 			sequence_codes[s].frames = []
 		use (sequence_codes[s], f)
 		sequence_codes[s].special = f

@@ -25,13 +25,12 @@ import tempfile
 import shutil
 import StringIO
 import pickle
-from config import Sequence
-from config import Frame
-from config import cachedir
-from config import dinkdir
-from config import dinkprog
+import glib
 
-cachedir = os.path.expanduser (cachedir)
+sys.path += (os.path.join (glib.get_user_config_dir (), 'pydink'),)
+import dinkconfig
+
+cachedir = os.path.join (glib.get_user_cache_dir (), 'pydink')
 tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cachedir, 'data')))
 filename = ''
 
@@ -1735,13 +1734,13 @@ class Seq:
 					self.current_collection = None
 					info, base = get (info, 'name')
 					nice_assert (base not in self.seq, 'sequence %s already exists' % base)
-					self.seq[base] = Sequence ()
+					self.seq[base] = dinkconfig.Sequence ()
 					is_new = True
 				else:
 					# This block is part of a collection.
 					nice_assert (self.current_collection != None, 'collection definition required')
 					base = None
-					self.seq[None] = Sequence ()
+					self.seq[None] = dinkconfig.Sequence ()
 					info, self.direction = get (info, 'direction', int)
 					nice_assert (self.direction >= 1 and self.direction <= 9 and self.direction != 5, 'invalid direction %d' % self.direction)
 					info, is_new = get (info, 'new', True)
@@ -1780,7 +1779,7 @@ class Seq:
 				info, seq = get (info, 'seq-%d', '')
 				if seq != '':
 					if self.seq[base].frames[f] == None:
-						self.seq[base].frames[f] = Frame ()
+						self.seq[base].frames[f] = dinkconfig.Frame ()
 					info, frame = get (info, 'frame-%d', int)
 					self.seq[base].frames[f].source = (seq, frame)
 				else:
@@ -2400,7 +2399,7 @@ class Dink:
 		builddir = tempfile.mkdtemp ()
 		try:
 			self.build (builddir)
-			os.spawnl (os.P_WAIT, dinkprog, dinkprog, '-g', builddir, '-r', dinkdir, '-w')
+			os.spawnl (os.P_WAIT, dinkconfig.dinkprog, dinkconfig.dinkprog, '-g', builddir, '-r', dinkconfig.dinkdir, '-w')
 		finally:
 			shutil.rmtree (builddir)
 			if y != None:
