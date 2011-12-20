@@ -323,7 +323,7 @@ tilefiles = [None] * 41
 for n in range (41):
 	tilef, tilefiles[n] = loaddinkfile ('dink\\tiles\\ts%02d.bmp' % (n + 1))
 	tilef = Image.open (tilef).convert ('RGBA')
-	orig = tilef.load ()
+	#orig = tilef.load ()
 	for ty in range (8):
 		for tx in range (12):
 			t = defaults[n][ty * 12 + tx]
@@ -351,9 +351,9 @@ for n in range (41):
 							sys.stderr.write ('Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (n, x, y, ord (p)))
 							pixels[x, y] = (0, 0, 0, 0)
 	image = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[1] / 50 * 50))
-	mask = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[1] / 50 * 50), (0, 0, 0, 128))
-	image.paste ((0, 0, 0, 128))
-	image.paste (tilef, None, mask)
+	#mask = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[1] / 50 * 50), (0, 0, 0, 128))
+	image.paste ((0, 0, 0, 0))
+	#image.paste (tilef, None, mask)
 	for y in range (8):
 		for x in range (12):
 			if tilef.size[0] < (x + 1) * 50 or tilef.size[1] < (y + 1) * 50:

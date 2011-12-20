@@ -508,7 +508,7 @@ def build_expr (dink, fname, expr, indent, invert = False):
 	elif expr[0] == '!':
 		return build_expr (dink, fname, ['==', 0, expr[1][0]], indent, invert)
 	elif type (expr[0]) == str:	# internal function call
-		return build_internal_function (expr[0], expr[1], indent, dink, fname, True)
+		return build_internal_function (expr[1], expr[2], indent, dink, fname, True)
 	elif len (expr[0]) == 1:	# function call in same file
 		return build_function (expr[0][0], expr[1], indent, fname)
 	else:				# remote function call
@@ -990,7 +990,7 @@ def tokenize_statement (script, dink, fname, own_name):
 							ret = 'internal', name, args
 				else:
 					nice_assert (name[0] in functions and name[1] in functions[name[0]], 'function %s not found in file %s' % (name[1], name[0]))
-					nice_assert (len (a) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (a), len (functions[name[0]][name[1]][1])))
+					nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1])))
 					ret = '()', name, args
 	nice_assert (choice_title[1] == False or choice_title[0] == None, 'unused choice_title')
 	if need_semicolon:
@@ -1017,6 +1017,9 @@ def build_function_def (data, fname, dink):
 def build_function (name, args, indent, fname):
 	global current_tmp
 	if type (name) == str:
+		if name == 'start_game':
+			# Special case: start_game is a generated function when a dmod is built.
+			return indent + "spawn ('start_game')\r\n"
 		f = functions[fname][name]
 	else:
 		f = functions[name[0]][name[1]]
@@ -1158,7 +1161,7 @@ class Room:
 		self.parent = parent
 		self.sprite = {}
 		if root == None:
-			self.tiles = [[[0, 0, 0] for x in range (12)] for y in range (8)]
+			self.tiles = [[[1, 0, 0] for x in range (12)] for y in range (8)]
 			self.hard = ''
 			self.script = ''
 			self.music = ''
@@ -1194,8 +1197,11 @@ class Room:
 			self.sprite[s] = Sprite ()
 			if r.group (3) != None:
 				self.sprite[s].num = int (r.group (3))
-				nice_assert (self.sprite[s].num not in self.codes, 'duplicate definition of sprite code %d' % self.sprite[s].num)
-				self.codes += (self.sprite[s].num,)
+				if self.sprite[s].num in self.codes:
+					error ('duplicate definition of sprite code %d' % self.sprite[s].num)
+					self.sprite[s].num = None
+				else:
+					self.codes += (self.sprite[s].num,)
 			else:
 				self.sprite[s].num = None
 			info, self.sprite[s].x = get (info, 'x', int)
@@ -1494,7 +1500,7 @@ class World:
 			for y in range (8):
 				for x in range (12):
 					bmp, tx, ty = self.room[s].tiles[y][x]
-					mdat.write (make_lsb (bmp * 128 + ty * 12 + tx, 4))
+					mdat.write (make_lsb ((bmp - 1) * 128 + ty * 12 + tx, 4))
 					mdat.write ('\0' * 4)
 					mdat.write (make_lsb (self.parent.tile.find_hard (self.room[s].hard, x, y, bmp, tx, ty), 4))
 					mdat.write ('\0' * 68)
@@ -1545,34 +1551,40 @@ class Tile:
 		self.parent = parent
 		self.hard = {}
 		self.tile = {}
-		d = os.path.join (parent.root, "tile")
+		ext = os.extsep + 'png'
+		d = os.path.join (parent.root, 'hard')
 		if os.path.exists (d):
-			ext = os.extsep + 'png'
+			for t in os.listdir (d):
+				if not t.endswith (ext):
+					continue
+				base = t[:-len (ext)]
+				f = os.path.join (d, t)
+				self.hard[base] = (f, 0, os.stat (f).st_size)
+		d = os.path.join (parent.root, 'tile')
+		if os.path.exists (d):
 			for t in os.listdir (d):
 				h = '-hard' + ext
 				if not t.endswith (h):
 					continue
 				base = t[:-len (h)]
+				nice_assert (re.match ('^\d+$', base), 'tile hardness must have a numeric filename with -hard appended')
 				f = os.path.join (d, t)
 				hardfile = (f, 0, os.stat (f).st_size)
-				if re.match ('^\d+$', base):
-					n = int (base)
-					t = os.path.join (d, base + ext)
-					if os.path.exists (t):
-						self.tile[n] = ((t, 0, os.stat (t).st_size), hardfile, 3)
-					else:
-						self.tile[n] = (tilefiles[n], hardfile, 2)
+				n = int (base)
+				t = os.path.join (d, base + ext)
+				if os.path.exists (t):
+					self.tile[n] = ((t, 0, os.stat (t).st_size), hardfile, 3)
 				else:
-					self.hard[base] = hardfile
+					self.tile[n] = (tilefiles[n - 1], hardfile, 2)
 		ext = os.extsep + 'bmp'
-		for n in range (41):
+		for n in range (1, 41):
 			if n not in self.tile:
 				t = os.path.join (d, str (n) + ext)
 				if os.path.exists (t):
 					tilefile = ((t, 0, os.stat (t).st_size), 1)
 				else:
-					tilefile = (tilefiles[n], 0)
-				hardfile = os.path.join (cachedir, 'hard-%02d' % (n + 1) + os.extsep + 'png')
+					tilefile = (tilefiles[n - 1], 0)
+				hardfile = os.path.join (cachedir, 'hard-%02d' % n + os.extsep + 'png')
 				self.tile[n] = (tilefile[0], (hardfile, 0, os.stat (hardfile).st_size), tilefile[1])
 	def find_hard (self, hard, x, y, bmp, tx, ty):
 		if hard != '':
@@ -1582,21 +1594,41 @@ class Tile:
 				return ret
 		return 0
 	def save (self):
-		if len (self.hard) == 0:
-			for i in range (41):
-				if self.tile[i] != 0:
-					break
-			else:
-				return
+		hfiles = []
+		for n in self.parent.world.room:
+			h = self.parent.world.room[n].hard
+			if h:
+				nice_assert (h in self.hard, "room %d references hardness %s which isn't defined" % (n, h))
+				hfiles += (h,)
+		for h in self.hard:
+			nice_assert (h in hfiles, 'not saving unused hardness %s' % h)
+		if len (hfiles) > 0:
+			d = os.path.join (self.parent.root, 'hard')
+			os.mkdir (d)
+			for h in hfiles:
+				Image.open (filepart (*self.hard[h])).save (os.path.join (d, h + os.extsep + 'png'))
+		# Check if any tiles need to be written.
+		for i in self.tile:
+			if self.tile[i] != 0:
+				break
+		else:
+			return
 		d = os.path.join (self.parent.root, 'tile')
 		os.mkdir (d)
-		for h in self.hard:
-			Image.open (filepart (*self.hard[h])).save (os.path.join (d, h + '-hard' + os.extsep + 'png'))
-		for n in range (41):
+		for n in self.tile:
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
 				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, '%02d' % n + os.extsep + 'png'))
 			if self.tile[n][2] == 2 or self.tile[n][2] == 3:
 				convert_image (Image.open (filepart (*self.tile[n][1]))).save (os.path.join (d, '%02d-hard' % n + os.extsep + 'png'))
+	def rename (self, old, new):
+		for i in self.hard:
+			if self.hard[i][0].startswith (old):
+				self.hard[i] = (new + self.hard[i][0][len (old):], self.hard[i][1], self.hard[i][2])
+		for i in self.tile:
+			if self.tile[i][0][0].startswith (old):
+				self.tile[i] = ((new + self.tile[i][0][0][len (old):], self.tile[i][0][1], self.tile[i][0][2]), self.tile[i][1], self.tile[i][2])
+			if self.tile[i][1][0].startswith (old):
+				self.tile[i] = (self.tile[i][0], (new + self.tile[i][1][0][len (old):], self.tile[i][1][1], self.tile[i][1][2]), self.tile[i][2])
 	def write_hard (self, image, h):
 		'''Write hardness of all tiles in a given screen to hard.dat (opened as h). Return map of indices used.'''
 		ret = [None] * 8
@@ -1619,14 +1651,12 @@ class Tile:
 					for tx in range (50):
 						for ty in range (50):
 							p = tile.getpixel ((tx, ty))
-							if p == (0, 0, 0, 0):
+							if p[2] < 150:
 								h.write ('\0')
-							elif p == (255, 255, 255, 128):
+							elif p[1] >= 150:
 								h.write ('\1')
-							elif p == (0, 0, 255, 128):
-								h.write ('\2')
 							else:
-								error ('invalid pixel in hard tile: %s' % str (p))
+								h.write ('\2')
 						h.write ('\0')	# junk
 					h.write ('\0' * 58)	# junk
 					self.hmap += (s,)
@@ -1636,7 +1666,7 @@ class Tile:
 		# Write tiles/*
 		# Write hard.dat
 		for i in self.tile:
-			nice_assert (1 <= int (i) <= 41, 'invalid tile number %s for building dmod')
+			nice_assert (1 <= int (i) <= 41, 'invalid tile number %s for building dmod' % i)
 		d = os.path.join (root, 'tiles')
 		if not os.path.exists (d):
 			os.mkdir (d)
@@ -1648,7 +1678,7 @@ class Tile:
 		for t in self.hard:
 			# Write hardness for custom hard screens.
 			self.hardmap[t] = self.write_hard (Image.open (filepart (*self.hard[t])), h)
-		for n in range (41):
+		for n in range (1, 41):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
 				# Write custom tile screens.
 				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, str (t) + os.extsep + 'bmp'))
@@ -1657,7 +1687,7 @@ class Tile:
 		nice_assert (len (self.hmap) <= 800, 'More than 800 hardness tiles defined (%d)' % len (self.hmap))
 		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
 		# Write hardness index for tile screens.
-		for t in range (41):
+		for t in range (1, 41):
 			m = self.tilemap[t]
 			for y in range (8):
 				for x in range (12):
@@ -1671,11 +1701,17 @@ class Tile:
 		# Fill the rest with junk.
 		h.write ('\0' * (8000 - len (self.tile) * 8 * 12 * 4))
 	def get_file (self, num):
+		if num not in self.tile:
+			return None
 		return self.tile[num][0] + (None,)
 	def get_hard_file (self, name):
 		if type (name) == int:
+			if name not in self.tile:
+				return None
 			return self.tile[name][1] + ((0, 0, 0),)
 		else:
+			if name not in self.hard:
+				return None
 			return self.hard[name] + ((0, 0, 0),)
 
 # A sequence has members:
@@ -1711,6 +1747,8 @@ class Seq:
 		# Read info specific to this dmod.
 		global filename
 		filename = os.path.join (d, 'info' + os.extsep + 'txt')
+		if not os.path.exists (filename):
+			return
 		infofile = open (filename)
 		while True:
 			info = readlines (infofile)
@@ -1872,6 +1910,8 @@ class Seq:
 			return -1
 		return coll['code']
 	def save (self):
+		if True:	# TODO: This should be a check if anything is added to the defaults.
+			return
 		d = os.path.join (self.parent.root, 'seq')
 		os.mkdir (d)
 		f = open (os.path.join (d, 'info' + os.extsep + 'txt'), 'w')
@@ -1928,43 +1968,46 @@ class Seq:
 
 class Sound:
 	def __init__ (self, parent):
+		global filename
 		self.parent = parent
-		ext = os.extsep + 'wav'
 		self.sound = {}
 		self.music = {}
-		other = []
-		codes = []
 		if self.parent.root == None:
 			return
 		d = os.path.join (parent.root, "sound")
-		for s in os.listdir (d):
-			global filename
-			filename = os.path.join (d, s)
-			data = open (filename).read ()
-			if not s.endswith (ext):
-				continue
-			r = re.match ('(\d+)-', s)
-			if not r:
-				other += ((s[:-len (ext)], data),)
-			else:
-				code = int (r.group (1))
-				self.sound[s[len (r.group (0)):]] = (code, data)
-				nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
-				codes += (code,)
-		i = 1
-		for s in other:
-			while i in codes:
+		if os.path.exists (d):
+			ext = os.extsep + 'wav'
+			other = []
+			codes = []
+			for s in os.listdir (d):
+				if not s.endswith (ext):
+					continue
+				filename = os.path.join (d, s)
+				data = (filename, 0, os.stat (filename).st_size)
+				r = re.match ('(\d+)-', s)
+				if not r:
+					other += ((s[:-len (ext)], data),)
+				else:
+					code = int (r.group (1))
+					self.sound[s[len (r.group (0)):]] = (code, data)
+					nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
+					codes += (code,)
+			i = 1
+			for s in other:
+				while i in codes:
+					i += 1
+				self.sound[s[0]] = (i, s[1])
 				i += 1
-			self.sound[s[0]] = (i, s[1])
-			i += 1
-		ext = os.extsep + 'mid'
 		d = os.path.join (parent.root, "music")
-		code = 1
-		for s in os.listdir (d):
-			if not s.endswith (ext):
-				continue
-			self.music[s[:-len (ext)]] = (code, data)
-			code += 1
+		if os.path.exists (d):
+			code = 1
+			ext = os.extsep + 'mid'
+			for s in os.listdir (d):
+				if not s.endswith (ext):
+					continue
+				filename = os.path.join (d, s)
+				self.music[s[:-len (ext)]] = (code, (filename, 0, os.stat (filename).st_size))
+				code += 1
 	def find_sound (self, name):
 		"""Find wav file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
@@ -1977,14 +2020,25 @@ class Sound:
 		nice_assert (name in self.music, 'reference to undefined music %s' % name)
 		return self.music[name][0]
 	def save (self):
-		d = os.path.join (self.parent.root, "sound")
-		os.mkdir (d)
+		if len (self.sound) > 0:
+			d = os.path.join (self.parent.root, "sound")
+			os.mkdir (d)
+			for i in self.sound:
+				data = filepart (*self.sound[i][1]).read ()
+				open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + 'wav'), 'w').write (data)
+		if len (self.music) > 0:
+			d = os.path.join (self.parent.root, "music")
+			os.mkdir (d)
+			for i in self.music:
+				data = filepart (*self.music[i][1]).read ()
+				open (os.path.join (d, i + os.extsep + 'mid'), 'w').write (data)
+	def rename (self, old, new):
 		for i in self.sound:
-			open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + 'wav'), 'w').write (self.sound[i][1])
-		d = os.path.join (self.parent.root, "music")
-		os.mkdir (d)
+			if self.sound[i][1][0].startswith (old):
+				self.sound[i] = (self.sound[i][0], (new + self.sound[i][1][len (old):], self.sound[i][1][1], self.sound[i][1][2]))
 		for i in self.music:
-			open (os.path.join (d, '%d' % self.music[i][0] + os.extsep + 'mid'), 'w').write (self.music[i][1])
+			if self.music[i][1][0].startswith (old):
+				self.music[i] = (self.music[i][0], (new + self.music[i][1][len (old):], self.music[i][1][1], self.music[i][1][2]))
 	def build (self, root):
 		# Write sound/*
 		dst = os.path.join (root, 'sound')
@@ -2266,11 +2320,12 @@ class Script:
 		for a in range (max_args):
 			s.write ('\tmake_global_int ("&args%d", 0);\r\n' % a)
 		s.write ('\tkill_this_task ();\r\n}\r\n')
-		# Write start-game.c
-		s = open (os.path.join (d, 'start-game' + os.extsep + 'c'), 'wb')
+		# Write start_game.c
+		s = open (os.path.join (d, 'start_game' + os.extsep + 'c'), 'wb')
 		s.write ('''\
 void main ()\r
 {\r
+	script_attach (1000);\r
 	wait (1);\r
 	&player_map = %d;\r
 	sp_x (1, %d);\r
@@ -2297,7 +2352,7 @@ void main ()\r
 }\r
 ''' % (self.start_map, self.start_x, self.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink'), ('\texternal ("' + self.intro_script + '", "main");\r\n' if self.intro_script != '' else ''), self.start_map, self.start_x, self.start_y, ('\texternal ("' + self.start_script + '", "main");\r\n' if self.start_script != '' else '')))
 
-class Image:
+class Images:
 	def __init__ (self, parent):
 		self.parent = parent
 		im = os.path.join (self.parent.root, 'image')
@@ -2311,17 +2366,21 @@ class Image:
 		if self.images != {}:
 			os.mkdir (im)
 			for i in self.images:
-				convert_image (Image.open (filepart (*i))).save (os.path.join (im, i + os.extsep + 'png'))
+				convert_image (Image.open (filepart (*self.images[i]))).save (os.path.join (im, i + os.extsep + 'png'))
 	def build (self, root):
 		for i in self.images:
 			if self.preview != i and self.splash != i:
-				convert_image (Image.open (filepart (*i))).save (os.path.join (root, 'graphics', i + os.extsep + 'bmp'))
+				convert_image (Image.open (filepart (*self.images[i]))).save (os.path.join (root, 'graphics', i + os.extsep + 'bmp'))
 		if self.preview != '':
 			convert_image (Image.open (filepart (*self.images[self.preview]))).save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
 		if self.splash != '':
 			convert_image (Image.open (filepart (*self.images[self.splash]))).save (os.path.join (root, 'tiles', 'splash' + os.extsep + 'bmp'))
 	def get_file (self, name):
 		return self.images[name] + (None,)
+	def rename (self, old, new):
+		for i in self.images:
+			if self.images[i][0].startswith (old):
+				self.images[i] = (new + self.images[i][0][len (old):], self.images[i][1], self.images[i][2])
 
 class Dink:
 	def __init__ (self, root):
@@ -2329,7 +2388,7 @@ class Dink:
 			self.root = None
 		else:
 			self.root = os.path.abspath (os.path.normpath (root))
-		self.image = Image (self)
+		self.image = Images (self)
 		self.tile = Tile (self)
 		self.world = World (self)
 		self.seq = Seq (self)
@@ -2344,6 +2403,7 @@ class Dink:
 	def save (self, root = None):
 		if root != None:
 			self.root = os.path.abspath (os.path.normpath (root))
+		backup = None
 		if os.path.exists (self.root):
 			d = os.path.dirname (self.root)
 			b = os.path.basename (self.root)
@@ -2358,6 +2418,7 @@ class Dink:
 			for f in os.listdir (self.root):
 				if not f.startswith ('.'):
 					os.rename (os.path.join (self.root, f), os.path.join (backup, f))
+			self.rename (self.root, backup)
 		else:
 			os.mkdir (self.root)
 		self.image.save ()
@@ -2367,15 +2428,21 @@ class Dink:
 		self.sound.save ()
 		self.script.save ()
 		open (os.path.join (self.root, 'info' + os.extsep + 'txt'), 'w').write (self.info)
+		if backup != None:
+			self.rename (backup, self.root)
+	def rename (self, old, new):
+		self.image.rename (old, new)
+		self.tile.rename (old, new)
+		self.sound.rename (old, new)
 	def build (self, root):
 		if not os.path.exists (root):
 			os.mkdir (root)
 		# Assign sprite codes
 		self.world.set_codes (True)
-		# Write images.
-		self.image.build (root)
 		# Write tiles/*
 		self.tile.build (root)
+		# Write images.
+		self.image.build (root)
 		# Write dink.dat
 		# Write hard.dat
 		# Write map.dat
@@ -2395,7 +2462,7 @@ class Dink:
 			self.script.start_map = map
 			self.script.start_x = x
 			self.script.start_y = y
-			self.script.title_script = 'start-game'
+			self.script.title_script = 'start_game'
 		builddir = tempfile.mkdtemp ()
 		try:
 			self.build (builddir)

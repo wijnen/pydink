@@ -202,20 +202,21 @@ class View (gtk.DrawingArea):
 				self.buffer.draw_line (View.gridgc, screenpos[0], screenpos[1] + 1, screenpos[0], screenpos[1] + screenzoom - 1)
 	def draw_tile_hard (self, screenpos, worldpos):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
-		if n in data.world.room and data.world.room[n].hard != '':
-			h = data.world.room[n].hard
-			if h != '':
-				tiles = data.get_hard (h)
-				if tiles:
-					self.buffer.draw_pixbuf (View.gc, tiles, (worldpos[0] % 12) * screenzoom, (worldpos[1] % 8) * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
-				return
+		if n not in data.world.room:
+			return
+		h = data.world.room[n].hard
+		if h != '':
+			tiles = data.get_hard_tiles (h)
+			if tiles:
+				self.buffer.draw_pixbuf (View.gc, tiles, (worldpos[0] % 12) * screenzoom, (worldpos[1] % 8) * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
+			return
 		b = self.find_tile (worldpos)
 		if b[0] >= 0:
 			tiles = data.get_hard_tiles (b[0])
-			w, h = tiles.get_size ()
+			w, h = tiles.get_width (), tiles.get_height ()
 			if b[1] * screenzoom >= w or b[2] * screenzoom >= h:
 				return
-			self.buffer.draw_drawable (View.gc, tiles, b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
+			self.buffer.draw_pixbuf (None, tiles, b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
 	def make_pixbuf50 (self, pb, newsize):	# TODO: scale to fit window.
 		size = [pb.get_width (), pb.get_height ()]
 		if size[0] <= newsize and size[1] <= newsize:
@@ -416,8 +417,8 @@ class ViewMap (View):
 		# Tile hardness.
 		origin = [x / 50 for x in self.offset]
 		offset = [(x % 50) * screenzoom / 50 for x in self.offset]
-		for y in range (offset[1], (self.screensize[1] + offset[1] + screenzoom) / screenzoom):
-			for x in range (offset[0], (self.screensize[0] + offset[0] + screenzoom) / screenzoom):
+		for y in range (offset[1] / screenzoom, (self.screensize[1] + offset[1] + screenzoom) / screenzoom):
+			for x in range (offset[0] / screenzoom, (self.screensize[0] + offset[0] + screenzoom) / screenzoom):
 				if (origin[0] + x < 0 or origin[0] + x >= self.tiles[0]) or (origin[1] + y < 0 or origin[1] + y >= self.tiles[1]):
 					continue
 				self.draw_tile_hard (((x * 50 - offset[0]) * 50 / screenzoom, (y * 50 - offset[1]) * 50 / screenzoom), (origin[0] + x, origin[1] + y))

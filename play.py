@@ -24,6 +24,7 @@ import gtkdink
 import gtk
 import gobject
 import sys
+import datetime
 
 class Sprite:
 	def __init__ (self, data, x = None, y = None, brain = None, seq = None, frame = None, script = None, src = None):
@@ -105,8 +106,8 @@ class Sprite:
 		self.dir = 2
 		self.clip = True
 		self.frozen = False
-		self.dx = 0
-		self.dy = 0
+		self.mx = 0
+		self.my = 0
 		self.ignore_hard = False
 		self.bbox = (0, 0, 0, 0)	# This will be updated when it is drawn.
 		self.the_statics = {}
@@ -118,8 +119,8 @@ class Sprite:
 		data.next_sprite += 1
 		data.sprites[self.num] = self
 	def set_state (self, state = None):
-		if state == self.state:
-			return
+		if state != self.state:
+			self.frame = 1
 		if state != None:
 			self.state = state
 		# Set seq according to state.
@@ -139,7 +140,6 @@ class Sprite:
 				self.seq = self.data.data.seq.get_dir_seq (self.base_death, self.dir)
 		else:
 			raise AssertionError ('invalid state %s' % state)
-		self.frame = 1
 
 class Play (gtk.DrawingArea):
 	"Widget for playing dink."
@@ -148,7 +148,7 @@ class Play (gtk.DrawingArea):
 		gtk.DrawingArea.__init__ (self)
 		self.data = data
 		self.offset = 20 * self.data.scale / 50
-		self.current_time = 0
+		self.current_time = datetime.datetime.utcnow ()
 		self.set_can_focus (True)
 		self.connect_after ('realize', self.start)
 		self.pointer = True
@@ -207,6 +207,7 @@ class Play (gtk.DrawingArea):
 		p = self.add_sprite (self.data.script.title_pointer_seq, self.data.script.title_pointer_frame, 320, 240, 'pointer')
 		p.clip = False
 		p.que = -100000
+		p.timing = 50
 		for spr in self.data.script.title_sprite:
 			s = self.add_sprite (*spr)
 			s.clip = False
@@ -214,35 +215,41 @@ class Play (gtk.DrawingArea):
 			self.play_music (self.data.script.title_music)
 		self.expose (widget, (0, 0, self.winw, self.winh));
 		# Schedule first event immediately.
-		self.events += ((0, self.update ()),)
+		self.events += ((self.current_time, self.update ()),)
 		gobject.idle_add (self.next_event)
 	def next_event (self):
 		self.events.sort (key = lambda x: x[0])
-		self.current_time = self.events[0][0]
+		self.current_time = datetime.datetime.utcnow ()
 		while self.current_time >= self.events[0][0]:
+			now = self.events[0][0]
 			target = self.events.pop (0)[1]
 			result = next (target)
 			if result[0] == 'return':
 				pass
 			elif result[0] == 'wait':
-				self.events += ((self.current_time + result[1], target),)
+				if result[1] > 0:
+					self.events += ((now + datetime.timedelta (milliseconds = result[1]), target),)
+				else:
+					self.events += ((self.current_time + datetime.timedelta (milliseconds = -result[1]), target),)
 			elif result[0] == 'error':
 				print ('Error reported: %s' % result[1])
 			elif result[0] == 'choice':
 				self.choice_waiter = target
 			else:
 				raise AssertionError ('invalid return type %s' % result[0])
+			self.events.sort (key = lambda x: x[0])
 		assert self.events != []
-		gobject.timeout_add (self.events[0][0] - self.current_time, self.next_event)
+		t = self.events[0][0] - self.current_time
+		gobject.timeout_add ((t.days * 24 * 3600 + t.seconds) * 1000 + t.microseconds / 1000, self.next_event)
 		return False
 	def play_music (self, music):
 		pass
 	def add_sprite (self, seq, frame, x, y, brain, script = None):
 		ret = Sprite (self, x, y, brain, seq, frame, script)
 		if ret.script and 'main' in self.scripts[ret.script]:
-			# current_time - 1, so it runs before continuing the current script.
-			self.events += ((self.current_time - 1, self.Script (ret.script, 'main', (), ret)),)
-		self.events += ((self.current_time + ret.timing, self.do_brain (ret)),)
+			# current_time - datetime.timedelta (seconds = 1), so it runs before continuing the current script.
+			self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (ret.script, 'main', (), ret)),)
+		self.events += ((self.current_time + datetime.timedelta (milliseconds = ret.timing), self.do_brain (ret)),)
 		return ret
 	def do_brain (self, sprite):
 		while True:
@@ -265,9 +272,9 @@ class Play (gtk.DrawingArea):
 				else:
 					sprite.frame += 1
 			# Move.
-			if not self.check_hard (sprite.x + sprite.dx, sprite.y + sprite.dy) or sprite.ignore_hard:
-				sprite.x += sprite.dx
-				sprite.y += sprite.dy
+			if not self.check_hard (sprite.x + sprite.mx, sprite.y + sprite.my) or sprite.ignore_hard:
+				sprite.x += sprite.mx
+				sprite.y += sprite.my
 			else:
 				# TODO: pushing, stop walking, warping, etc.
 				pass
@@ -300,8 +307,8 @@ class Play (gtk.DrawingArea):
 				# TODO: Choice menu.
 				pass
 			self.expose (self, (0, 0, self.winw, self.winh))
-			# Wait some time before being called again. Use a prime number to minimize undersampling problems.
-			yield ('wait', 47)
+			# Wait some time before being called again.
+			yield ('wait', -50)
 	def kill_sprite (self, sprite):
 		del self.sprites[sprite.num]
 	def draw_sprite (self, target, sprite):
@@ -374,13 +381,14 @@ class Play (gtk.DrawingArea):
 		self.next_sprite = 2
 		script = self.data.world.room[self.the_globals['player_map']].script
 		if script and 'main' in self.scripts[script]:
-			self.events += ((self.current_time - 2, self.Script (script, 'main', (), None)),)
+			self.events += ((self.current_time - datetime.timedelta (seconds = 2), self.Script (script, 'main', (), None)),)
 		for s in spritelist:
 			spr = Sprite (self, src = s[0], x = s[1], y = s[2])
 			if spr.script and 'main' in self.scripts[spr.script]:
-				self.events += ((self.current_time - 1, self.Script (spr.script, 'main', (), spr)),)
+				self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (spr.script, 'main', (), spr)),)
 	def keypress (self, widget, event):
 		if self.sprites[1].brain not in ('dink', 'pointer') or self.sprites[1].frozen:
+			# TODO: unfreeze in case of waiting for text.
 			return
 		if event.keyval in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
 			self.control_down += 1
@@ -404,16 +412,16 @@ class Play (gtk.DrawingArea):
 			self.cursor[i] = False
 			self.compute_dir ()
 	def compute_dir (self):
-		dx = 1 + self.cursor[2] - self.cursor[0]
-		dy = 1 + self.cursor[1] - self.cursor[3]
-		d = 1 + 3 * dy + dx
+		mx = 1 + self.cursor[2] - self.cursor[0]
+		my = 1 + self.cursor[1] - self.cursor[3]
+		d = 1 + 3 * my + mx
 		if d != 5:
 			self.sprites[1].dir = d
 			self.sprites[1].set_state ('walk')
 		else:
 			self.sprites[1].set_state ('idle')
-		self.sprites[1].dx = dx - 1
-		self.sprites[1].dy = 1 - dy
+		self.sprites[1].mx = mx - 1
+		self.sprites[1].my = 1 - my
 	def button_on (self, widget, event):
 		if self.pointer == False:
 			return
@@ -436,12 +444,12 @@ class Play (gtk.DrawingArea):
 			if self.sprites[i].brain != 'button' or 'click' not in self.scripts[self.sprites[i].script]:
 				continue
 			if self.in_area ((self.sprites[1].x, self.sprites[1].y), self.sprites[i].bbox):
-				self.events += ((self.current_time - 1, self.Script (self.sprites[i].script, 'click', (), self.sprites[i])),)
+				self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (self.sprites[i].script, 'click', (), self.sprites[i])),)
 		# Handle dink attacking.
 		if self.current_weapon != None:
-			self.events += ((self.current_time - 1, self.Script (self.items[self.current_weapon][0], 'use', (), None)),)
+			self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (self.items[self.current_weapon][0], 'use', (), None)),)
 		else:
-			self.events += ((self.current_time - 1, self.Script ('dnohit', 'main', (), None)),)
+			self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script ('dnohit', 'main', (), None)),)
 	def move (self, widget, event):
 		if self.pointer == False or self.sprites[1].brain != 'pointer':
 			return
@@ -457,31 +465,12 @@ class Play (gtk.DrawingArea):
 				continue
 			if n == True:
 				if 'buttonon' in self.scripts[self.sprites[i].script]:
-					self.events += ((self.current_time - 1, self.Script (self.sprites[i].script, 'buttonon', (), self.sprites[i])),)
+					self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (self.sprites[i].script, 'buttonon', (), self.sprites[i])),)
 			else:
 				if 'buttonoff' in self.scripts[self.sprites[i].script]:
-					self.events += ((self.current_time - 1, self.Script (self.sprites[i].script, 'buttonoff', (), self.sprites[i])),)
+					self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (self.sprites[i].script, 'buttonoff', (), self.sprites[i])),)
 	def enter (self, widget, event):
 		self.grab_focus ()
-	def dinkbrain (self, sprite):
-		if self.key == gtk.keysyms.Left:
-			pass
-		elif self.key == gtk.keysyms.Up:
-			pass
-		elif self.key == gtk.keysyms.Right:
-			pass
-		elif self.key == gtk.keysyms.Down:
-			pass
-		elif self.key == gtk.keysyms.Escape:
-			pass
-		elif self.key == gtk.keysyms.m:
-			pass
-		elif self.key == gtk.keysyms._6:
-			pass
-		elif self.key in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
-			pass
-		else:
-			pass
 	def in_area (self, pos, area):
 		return area[0] <= pos[0] <= area[2] and area[1] <= pos[1] <= area[3]
 	def Script (self, fname, name, args, sprite):
@@ -758,7 +747,7 @@ class Play (gtk.DrawingArea):
 		elif name == 'add_exp':
 			self.the_globals['exp'] += args[0]
 			t = self.add_text (str (args[0]), self.sprites[args[1]])
-			t.dy = -1
+			t.my = -1
 		elif name == 'add_item':
 			try:
 				idx = self.items.index (None)
@@ -1055,7 +1044,7 @@ class Play (gtk.DrawingArea):
 		elif name == 'sp_y':	#
 			pass
 		elif name == 'spawn':
-			self.events += ((self.current_time - 1, self.Script (args[0], 'main', (), None)),)
+			self.events += ((self.current_time - datetime.timedelta (seconds = 1), self.Script (args[0], 'main', (), None)),)
 			yield ('wait', 0)
 		elif name == 'start_game':
 			# New function, translated as 'spawn ("start-game");' for dink.

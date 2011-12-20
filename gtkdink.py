@@ -10,6 +10,20 @@ class GtkDink (dink.Dink):
 		for c in range (len (self.colors)):
 			self.colors[c] = gtk.gdk.colormap_get_system ().alloc_color (self.colors[c])
 		self.scale = scale
+		self.time = 0
+	def cache_get (self, type, name):
+		try:
+			ret = self.cache[(type, name)]
+		except KeyError:
+			return None
+		ret[0] = self.time
+		self.time += 1
+		return ret[1]
+	def cache_add (self, type, name, value):
+		self.cache[(type, name)] = [self.time, value]
+		self.time += 1
+	def cache_flush (self):
+		self.cache = {}
 	def set_window (self, window):
 		self.window = window
 		self.gc = gtk.gdk.GC (self.window)
@@ -19,50 +33,40 @@ class GtkDink (dink.Dink):
 			return
 		self.scale = scale
 		# Flush cache.
-		self.cache = []
-		self.cache_data = []
+		self.cache_flush ()
 	def get_image (self, name):
 		# Images are never cached.
 		return self.load_pixbuf (self.image.get_file (name))
 	def get_tiles (self, num):
-		if ('t', num) in self.cache:
-			idx = self.cache.index (('t', num))
-			self.cache += (self.cache.pop (idx),)
-			self.cache_data += (self.cache_data.pop (idx),)
-		else:
-			# TODO: Throw something out if required.
-			self.cache += (('t', num),)
-			pb = self.load_pixbuf (self.tile.get_file (num))
-			ret = gtk.gdk.Pixmap (self.window, pb.get_width (), pb.get_height ())
-			ret.draw_pixbuf (self.gc, pb, 0, 0, 0, 0)
-			self.cache_data += (ret,)
-		return self.cache_data[-1]
+		tile = self.cache_get ('t', num)
+		if tile == None:
+			t = self.tile.get_file (num)
+			if t == None:
+				self.cache_add ('t', num, None)
+				return None
+			pb = self.load_pixbuf (t)
+			tile = gtk.gdk.Pixmap (self.window, pb.get_width (), pb.get_height ())
+			tile.draw_pixbuf (self.gc, pb, 0, 0, 0, 0)
+			self.cache_add ('t', num, tile)
+		return tile
 	def get_hard_tiles (self, name):
-		if ('h', name) in self.cache:
-			idx = self.cache.index (('h', name))
-			self.cache += (self.cache.pop (idx),)
-			self.cache_data += (self.cache_data.pop (idx),)
-		else:
-			# TODO: Throw something out if required.
-			self.cache += (('h', name),)
-			pb = self.load_pixbuf (self.tile.get_hard_file (name))
-			ret = gtk.gdk.Pixmap (self.window, pb.get_width (), pb.get_height ())
-			ret.draw_pixbuf (self.gc, pb, 0, 0, 0, 0)
-			self.cache_data += (ret,)
-		return self.cache_data[-1]
+		tile = self.cache_get ('h', name)
+		if tile == None:
+			t = self.tile.get_hard_file (name)
+			if t == None:
+				self.cache_add ('h', name, None)
+				return None
+			tile = self.load_pixbuf (t)
+			self.cache_add ('h', name, tile)
+		return tile
 	def get_color (self, c):
 		return self.colors[c if 0 <= c < len (self.colors) else 0]
 	def get_seq (self, seq, frame):
-		target = ('s', seq.name, frame)
-		if target in self.cache:
-			idx = self.cache.index (target)
-			self.cache += (self.cache.pop (idx),)
-			self.cache_data += (self.cache_data.pop (idx),)
-		else:
-			# TODO: Throw something out if required.
-			self.cache += (target,)
-			self.cache_data += (self.load_pixbuf (self.seq.get_file (seq, frame)),)
-		return self.cache_data[-1]
+		ret = self.cache_get ('s', (seq.name, frame))
+		if ret == None:
+			ret = self.load_pixbuf (self.seq.get_file (seq, frame))
+			self.cache_add ('s', (seq.name, frame), ret)
+		return ret
 	def get_box (self, size, pos, seq, box):
 		x = pos[0] - 20
 		y = pos[1]
