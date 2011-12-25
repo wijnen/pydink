@@ -36,8 +36,6 @@ if not os.path.exists (name):
 	f.write ('''lowmem = False
 nobackingstore = False
 dinkdir = '/usr/share/games/dink'
-tilesize = 30
-seqwidth = 20
 dinkprog = '/usr/games/freedink'
 class Sequence:
 	pass

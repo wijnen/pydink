@@ -93,7 +93,7 @@ gtk
 								'Size
 								SpinButton range=:0,1000 value-changed=update set=set_size:100 value=get_size
 								'Que
-								SpinButton range=:0,10000 value-changed=update set=set_que value=get_que
+								SpinButton range=:-10000,10000 value-changed=update set=set_que value=get_que
 								'Walk
 								Entry changed=update set=set_basewalk value=get_basewalk
 								'Idle

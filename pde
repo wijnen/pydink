@@ -1231,11 +1231,6 @@ class ViewMap (View):
 class ViewSeq (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = dinkconfig.seqwidth
-		self.tilesize = dinkconfig.tilesize
-		s = seqlist ()
-		ns = (len (s) + self.width - 1) / self.width
-		self.set_size_request (self.width * self.tilesize, ns * self.tilesize)
 		self.selected_seq = None
 	def update (self):
 		if self.buffer == None:
@@ -1243,7 +1238,15 @@ class ViewSeq (View):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		s = seqlist ()
-		ns = (len (s) + self.width - 1) / self.width
+		# Compute tile size.
+		self.tilesize = int (math.sqrt (self.screensize[0] * self.screensize[1] / len (s)))
+		while True:
+			self.width = self.screensize[0] / self.tilesize
+			if self.width > 0:
+				ns = (len (s) + self.width - 1) / self.width
+				if ns * self.tilesize <= self.screensize[1]:
+					break
+			self.tilesize -= 1
 		if self.selected_seq == None:
 			for y in range (ns):
 				for x in range (self.width):
@@ -1362,11 +1365,6 @@ class ViewSeq (View):
 class ViewCollection (View):
 	def __init__ (self):
 		View.__init__ (self)
-		self.width = dinkconfig.seqwidth
-		self.tilesize = dinkconfig.tilesize
-		c = collectionlist ()
-		nc = (len (c) + self.width - 1) / self.width
-		self.set_size_request (self.width * self.tilesize, nc * self.tilesize)
 		self.available = []
 		self.selected_seq = None
 	def update (self):
@@ -1375,7 +1373,15 @@ class ViewCollection (View):
 		# TODO: clear only what is not going to be cleared
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		c = self.available
-		nc = (len (c) + self.width - 1) / self.width
+		# Compute tile size.
+		self.tilesize = int (math.sqrt (self.screensize[0] * self.screensize[1] / len (s)))
+		while True:
+			self.width = self.screensize[0] / self.tilesize
+			if self.width > 0:
+				nc = (len (c) + self.width - 1) / self.width
+				if nc * self.tilesize <= self.screensize[1]:
+					break
+			self.tilesize -= 1
 		if self.selected_seq == None:
 			for y in range (nc):
 				for x in range (self.width):
