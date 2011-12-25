@@ -1,5 +1,21 @@
 # gtk stuff for dink, used by editor and player.
 
+# gtkdink.py - library for gtk parts of using pydink games.
+# Copyright 2011 Bas Wijnen
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+# 
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import dink
 import gtk
 
@@ -24,6 +40,9 @@ class GtkDink (dink.Dink):
 		self.time += 1
 	def cache_flush (self):
 		self.cache = {}
+	def cache_flush_hard (self, name):
+		if ('h', name) in self.cache:
+			del self.cache[('h', name)]
 	def set_window (self, window):
 		self.window = window
 		self.gc = gtk.gdk.GC (self.window)

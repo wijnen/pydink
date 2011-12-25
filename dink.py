@@ -1,6 +1,22 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 :
 
+# dink.py - library for using pydink games.
+# Copyright 2011 Bas Wijnen
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+# 
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 #world
 #	nnn-xx-yy
 #		info.txt		script, tiles, hardness
@@ -1008,7 +1024,7 @@ def build_function_def (data, fname, dink):
 	name, ra, impl = data
 	ret = 'void %s (void)\r\n{\r\n' % name
 	for a in range (len (ra[1])):
-		ret += '\tint %s = &arg%d;\r\n' % (mangle (ra[1][i]), i)
+		ret += '\tint %s = &arg%d;\r\n' % (mangle (ra[1][a]), a)
 	assert impl[0] == '{'
 	for s in impl[1]:
 		ret += build_statement (s, ra[0], '\t', fname, dink)
@@ -1215,6 +1231,7 @@ class Room:
 			else:
 				print 'Warning: strange seq:', seq
 				self.sprite[s].seq = None
+			self.sprite[s].name = base
 			info, self.sprite[s].frame = get (info, 'frame', 1)
 			info, self.sprite[s].type = get (info, 'type', 1)	# 0 for background, 1 for person or sprite, 3 for invisible
 			info, self.sprite[s].size = get (info, 'size', 100)
@@ -2357,6 +2374,8 @@ class Images:
 		self.parent = parent
 		im = os.path.join (self.parent.root, 'image')
 		self.images = {}
+		if not os.path.exists (im):
+			return
 		for i in os.listdir (im):
 			if i.endswith (os.extsep + 'png'):
 				name = os.path.join (im, i)

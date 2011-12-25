@@ -1,4 +1,21 @@
 #!/usr/bin/env python
+
+# build - turn pydink game into old-style dmod.
+# Copyright 2011 Bas Wijnen
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+# 
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import sys
 import dink
 import os
@@ -23,12 +40,7 @@ if base == '':
 
 check (root)
 check (os.path.join (root, 'world'))
-check (os.path.join (root, 'tile'))
-check (os.path.join (root, 'seq'))
-check (os.path.join (root, 'music'))
-check (os.path.join (root, 'sound'))
 check (os.path.join (root, 'script'))
-check (os.path.join (root, 'image'))
 check (os.path.join (root, 'info' + os.extsep + 'txt'), '%s\n\nThis file should claim copyright and describe the dmod.' % base)
 title = os.path.join (root, 'title' + os.extsep + 'txt')
 check (title, '''\
@@ -47,7 +59,7 @@ button-4 = button-ordering 1	104 440	game-credits
 #start-script = custom-start
 pointer = special 8
 ''')
-check (os.path.join (root, os.path.join ('seq', 'info' + os.extsep + 'txt')), '''\
+#check (os.path.join (root, os.path.join ('seq', 'info' + os.extsep + 'txt')), '''\
 #collection = walk
 #append = name_of_defined_sequence
 #name = name_of_sequence
@@ -63,7 +75,7 @@ check (os.path.join (root, os.path.join ('seq', 'info' + os.extsep + 'txt')), ''
 #code = 900
 #preload = sequence
 #type = normal
-''')
+#''')
 sprite_scripts = []
 button_scripts = []
 other_scripts = []

@@ -1,5 +1,21 @@
 #!/usr/bin/env python
 
+# pde - pydink editor: editor for pydink games.
+# Copyright 2011 Bas Wijnen
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+# 
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import gtk
 import gui
 import re
@@ -1878,13 +1894,14 @@ def do_edit_hard (h, room):
 	name = os.path.join (tmpdir, h + os.extsep + 'png')
 	if os.path.exists (name):
 		# Update hardness.
-		data.tile.hard[h] = dink.make_hard_image (name)
+		dink.make_hard_image (name).save (name)
+		data.tile.hard[h] = (name, 0, os.stat (name).st_size)
 	image = Image.new ('RGB', (50 * 12, 50 * 8), (0, 0, 0))
 	# Write all tiles
 	for y in range (8):
 		for x in range (12):
 			n, tx, ty = data.world.room[room].tiles[y][x]
-			image.paste (data.tile.tile[n][0].crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50)), (x * 50, y * 50))
+			image.paste (Image.open (dink.filepart (*(data.tile.get_file (n)[:-1]))).crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50)), (x * 50, y * 50))
 	# Write all sprites. Ignore sprites from other screens.
 	lst = []
 	for spr in data.world.room[room].sprite:
@@ -1895,7 +1912,7 @@ def do_edit_hard (h, room):
 	lst.sort (key = lambda x: x[0][1] - x[1].que)
 	for spr in lst:
 		frame = spr[2].frames[spr[1].frame]
-		(x, y), (left, top, right, bottom), box = viedata.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+		(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 		if right <= left or bottom <= top:
 			continue
 		# Draw the pixbuf.
@@ -1915,35 +1932,51 @@ def do_edit_hard (h, room):
 		if spr[1].hard:
 			frame = spr[2].frames[spr[1].frame]
 			for x in range (frame.hardbox[2] - frame.hardbox[0]):
-				p = spr[0][0] - 20 + frame.hardbox[0] + x, spr[0][1] + frame.hardbox[1]
-				pixels[p] = tuple ([255] + list (pixels[p])[1:])
-				p = spr[0][0] - 20 + frame.hardbox[0] + x, spr[0][1] + frame.hardbox[3]
-				pixels[p] = tuple ([255] + list (pixels[p])[1:])
+				px = spr[0][0] - 20 + frame.hardbox[0] + x
+				if not 0 <= px < 600:
+					continue
+				y = spr[0][1] + frame.hardbox[1]
+				if 0 <= y < 400:
+					p = px, y
+					pixels[p] = tuple ([255] + list (pixels[p])[1:])
+				y = spr[0][1] + frame.hardbox[3]
+				if 0 <= y < 400:
+					p = px, y
+					pixels[p] = tuple ([255] + list (pixels[p])[1:])
 			for y in range (frame.hardbox[3] - frame.hardbox[1]):
-				p = spr[0][0] - 20 + frame.hardbox[0], spr[0][1] + frame.hardbox[1] + y
-				pixels[p] = tuple ([255] + list (pixels[p])[1:])
-				p = spr[0][0] - 20 + frame.hardbox[2], spr[0][1] + frame.hardbox[1] + y
-				pixels[p] = tuple ([255] + list (pixels[p])[1:])
+				py = spr[0][1] + frame.hardbox[1] + y
+				if not 0 <= py < 400:
+					continue
+				x = spr[0][0] + frame.hardbox[0] - 20
+				if 0 <= x < 600:
+					p = x, py
+					pixels[p] = tuple ([255] + list (pixels[p])[1:])
+				x = spr[0][0] + frame.hardbox[2] - 20
+				if 0 <= x < 600:
+					p = x, py
+					pixels[p] = tuple ([255] + list (pixels[p])[1:])
 	# Make dark
 	image = Image.eval (image, lambda v: v / 2)
 	# Add hardness
-	if h not in data.tile.hard:
+	f = data.tile.get_hard_file (h)
+	if f == None:
 		# Fill with default hardness for tiles.
 		for y in range (8):
 			for x in range (12):
 				n, tx, ty = data.world.room[room].tiles[y][x]
-				hard = data.tile.tile[n][1].crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50))
+				hard = Image.open (dink.filepart (*(data.tile.get_hard_file (n)[:-1]))).crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50))
 				# Paste twice for extra intensity (190 minimum)
 				image.paste (hard, (x * 50, y * 50), hard)
 				image.paste (hard, (x * 50, y * 50), hard)
-		# Make sure it is checked when playing or saving.
-		data.tile.hard[h] = image
 	else:
+		im = Image.open (dink.filepart (*(f[:-1])))
 		# Paste twice for extra intensity (190 minimum)
-		image.paste (data.tile.hard[h], None, data.tile.hard[h])
-		image.paste (data.tile.hard[h], None, data.tile.hard[h])
+		image.paste (im, None, im)
+		image.paste (im, None, im)
 	image.save (name)
 	os.system (the_gui['edit-hardness'].replace ('$IMAGE', name))
+	data.cache_flush_hard (h)
+	data.tile.hard[h] = (name, 0, os.stat (name).st_size)
 	sync ()
 	viewmap.update ()
 
@@ -1962,9 +1995,8 @@ def sync ():
 	for h in data.tile.hard:
 		p = os.path.join (tmpdir, h + os.extsep + 'png')
 		if os.path.exists (p):
-			data.tile.hard[h] = dink.make_hard_image (p)
-		#View.hardcache[h] = viewmap.image2pixbuf (data.tile.hard[h])
-		#TODO
+			dink.make_hard_image (p).save (p)
+			data.tile.hard[h] = (p, 0, os.stat (p).st_size)
 
 root = sys.argv[1]
 data = gtkdink.GtkDink (root, screenzoom)
