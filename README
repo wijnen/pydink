@@ -1,0 +1,96 @@
+This is pydink, an alternative engine and editor for Dink Smallwood. It
+requires the (free) artwork of the original game (or new artwork, but that
+isn't provided).
+
+It is not entirely bug-compatible. Several choices have been made which make
+things work differently from the original game. Games that are not too complex
+should work on both systems, though.
+
+*** Setting up ***
+Also make sure you have Python and PyGtk installed.
+
+In the pydink directory, do
+ln -s ../libgui-py/gui.py
+
+Then run
+./makecache
+
+Then edit pydink/config.py in your configuration directory (~/.config on unix).
+Also edit the first lines of pde.gui.in to make it start you editors instead of mine.
+
+Then prepare the gui:
+../xmlgen/xmlgen < pde.gui.in > pde.gui
+
+To create an empty dmod, run
+./build directory
+
+After that, running this command again will (try to) build a dmod from the files in the directory.
+
+The files can be edited by hand, but more easily with the editor:
+./pde directory
+
+
+Every command is a single key. Undo is not implemented, nor is auto-save, so be careful. Auto-backup is implemented, so if you want an undo-option, just save a lot.
+
+The controls are:
+Left mouse button: select sprite, select multiple when dragging. Keep old selection when holding control while clicking. During an operation: confirm and finish the operation (move, resize, etc).
+
+Middle mouse button: paste selected sprites or tiles.
+
+Right mouse button: select tiles. Similar to left button.
+
+Keys (TODO are not implemented yet):
+a set attack
+b set walk
+c start cropping TODO
+d set die
+e edit script
+f fill tiles
+g make group TODO
+h toggle is_hard
+i set idle
+j jump to selected
+k kill sprite
+l start resizing (largeness)
+m start moving
+n jump to next TODO
+o open group TODO
+p play
+q start que change
+r random fill tiles
+s save
+t toggle show tilescreen
+u undo TODO
+v set visual? TODO
+w enable warp and toggle select warp target or sprite
+x exit (without saving!)
+y yank (copy) tiles
+z start screen zoom
+
+0-9 run script TODO
+/ search sprites TODO
+' toggle nohit
+` enter command TODO
+- unselect all
+= view world map
+backspace restore 100% zoom
+home center screen
+ins insert screen
+del delete screen
+escape cancel current operation
+enter finish current operation
+space start screen panning
+numpad 12346789 new sprite from collection with given direction
+numpad 5 new sprite from collection with any direction
+numpad 0 new sprite from non-collection sequence
+
+In the sequence selection screens, the mouse buttons mean:
+Left: change selected sprite's sequence and frame to selected frame.
+Middle: add new sprite with selected frame.
+Right: unused.
+
+For many commands the pointer position when the key is pressed is important.
+
+Screen zoom is so slow that you should only use it by pressing cursor keys, not by moving the mouse.
+
+Feedback is very welcome.
