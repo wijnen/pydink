@@ -2091,13 +2091,14 @@ class Script:
 			self.title_button = []
 			return
 		d = os.path.join (parent.root, "script")
-		for s in os.listdir (d):
-			ext = os.extsep + 'c'
-			if not s.endswith (ext):
-				continue
-			base = s[:-len (ext)]
-			nice_assert (base not in self.data, 'duplicate definition of script %s' % base)
-			self.data[base] = open (os.path.join (d, s)).read ()
+		if os.path.exists (d):
+			for s in os.listdir (d):
+				ext = os.extsep + 'c'
+				if not s.endswith (ext):
+					continue
+				base = s[:-len (ext)]
+				nice_assert (base not in self.data, 'duplicate definition of script %s' % base)
+				self.data[base] = open (os.path.join (d, s)).read ()
 		global filename
 		filename = os.path.join (parent.root, "title" + os.extsep + "txt")
 		f = open (filename)
@@ -2136,9 +2137,10 @@ class Script:
 		nice_assert (info == {}, 'unused data in title definition')
 	def save (self):
 		d = os.path.join (self.parent.root, "script")
-		os.mkdir (d)
-		for s in self.data:
-			open (os.path.join (d, s + os.extsep + 'c'), 'w').write (self.data[s])
+		if len (self.data) > 0:
+			os.mkdir (d)
+			for s in self.data:
+				open (os.path.join (d, s + os.extsep + 'c'), 'w').write (self.data[s])
 		f = open (os.path.join (self.parent.root, "title" + os.extsep + "txt"), 'w')
 		put (f, 'music', self.title_music, '')
 		put (f, 'color', self.title_color, 0)
@@ -2407,6 +2409,30 @@ class Dink:
 			self.root = None
 		else:
 			self.root = os.path.abspath (os.path.normpath (root))
+			if not os.path.exists (self.root):
+				os.mkdirs (self.root)
+			p = os.path.join (self.root, 'world')
+			if not os.path.exists (p):
+				os.mkdir (p)
+			p = os.path.join (self.root, 'title' + os.extsep + 'txt')
+			if not os.path.exists (p):
+				open (p, 'w').write ('''\
+start = 400 320 200
+buttons = 3
+button-1 = button-start 1 76 40 game-start
+button-2 = button-continue 1 524 40 game-continue
+button-3 = button-quit 1 560 440 game-quit
+sprites = 0
+''')
+			p = os.path.join (self.root, 'info' + os.extsep + 'txt')
+			if not os.path.exists (p):
+				open (p, 'w').write ('''\
+Name
+
+This file should describe the game. If this text is still here and you are not
+the author of the game, please inform the author that they should update this
+file (info.txt).
+''')
 		self.image = Images (self)
 		self.tile = Tile (self)
 		self.world = World (self)

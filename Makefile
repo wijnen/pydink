@@ -14,7 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-test.dmod:
+all: pde.gui
+	./pde
 
 %.dmod: pde pde.gui
 	./pde $(subst .dmod,,$@)

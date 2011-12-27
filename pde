@@ -2004,7 +2004,22 @@ def sync ():
 			dink.make_hard_image (p).save (p)
 			data.tile.hard[h] = (p, 0, os.stat (p).st_size)
 
-root = sys.argv[1]
+if len (sys.argv) == 2:
+	root = sys.argv[1]
+elif len (sys.argv) > 2:
+	sys.stderr.write ('Give no arguments or only a game directory.\n')
+	sys.exit (1)
+else:
+	w = gtk.FileChooserDialog ('Select game directory to edit', action = gtk.FILE_CHOOSER_ACTION_CREATE_FOLDER)
+	w.add_button (gtk.STOCK_OPEN, gtk.RESPONSE_OK)
+	w.add_button (gtk.STOCK_CANCEL, gtk.RESPONSE_NONE)
+	w.set_do_overwrite_confirmation (False)
+	w.show ()
+	if w.run () != gtk.RESPONSE_OK:
+		sys.exit (0)
+	root = w.get_filename ()
+	w.destroy ()
+
 data = gtkdink.GtkDink (root, screenzoom)
 # initialize warp targets.
 for n in data.world.room.keys ():
