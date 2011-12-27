@@ -1457,7 +1457,7 @@ class World:
 		mdat.write (make_lsb (coll (spr.base_attack), 4))
 		mdat.write (make_lsb (0, 4))	# hit
 		mdat.write (make_lsb (spr.timing, 4))
-		mdat.write (make_lsb (spr.que, 4))
+		mdat.write (make_lsb (0 if spr.que == 0 else max (0, y - spr.que), 4))
 		mdat.write (make_lsb (not spr.hard, 4))
 		mdat.write (make_lsb (spr.left, 4))
 		mdat.write (make_lsb (spr.top, 4))
@@ -1471,7 +1471,7 @@ class World:
 		else:
 			mdat.write ('\0' * 16)
 		if spr.touch_seq == '':
-			mdat.write (make_lsb (-1, 4))
+			mdat.write (make_lsb (0, 4))
 		else:
 			mdat.write (make_lsb (self.parent.seq.find_seq (spr.touch_seq).code, 4))
 		mdat.write (make_lsb (coll (spr.base_death), 4))
@@ -2477,11 +2477,12 @@ class Dink:
 		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)
 	def play (self, map = None, x = None, y = None):
 		if y != None:
-			tmp = self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script
+			tmp = self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script, self.script.intro_script
 			self.script.start_map = map
 			self.script.start_x = x
 			self.script.start_y = y
 			self.script.title_script = 'start_game'
+			self.script.intro_script = ''
 		builddir = tempfile.mkdtemp ()
 		try:
 			self.build (builddir)
@@ -2489,4 +2490,4 @@ class Dink:
 		finally:
 			shutil.rmtree (builddir)
 			if y != None:
-				self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script = tmp
+				self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script, self.script.intro_script = tmp

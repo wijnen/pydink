@@ -1374,7 +1374,7 @@ class ViewCollection (View):
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		c = self.available
 		# Compute tile size.
-		self.tilesize = int (math.sqrt (self.screensize[0] * self.screensize[1] / len (s)))
+		self.tilesize = int (math.sqrt (self.screensize[0] * self.screensize[1] / len (c)))
 		while True:
 			self.width = self.screensize[0] / self.tilesize
 			if self.width > 0:

@@ -119,7 +119,7 @@ class GtkDink (dink.Dink):
 		return (x, y), (l, t, r, b), bx
 	def load_pixbuf (self, file):
 		pbl = gtk.gdk.PixbufLoader ()
-		pbl.write (open (file[0]).read (file[1] + file[2])[file[1]:])
+		pbl.write (open (file[0], 'rb').read (file[1] + file[2])[file[1]:])
 		pbl.close ()
 		pb = pbl.get_pixbuf ()
 		if self.scale != 50:
