@@ -47,7 +47,7 @@ sys.path += (os.path.join (glib.get_user_config_dir (), 'pydink'),)
 import dinkconfig
 
 cachedir = os.path.join (glib.get_user_cache_dir (), 'pydink')
-tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cachedir, 'data')))
+tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cachedir, 'data'), 'rb'))
 filename = ''
 
 def error (message):
@@ -99,7 +99,7 @@ def make_hard_image (path):
 #		nice_assert (p <= self.length, 'seek beyond end of file')
 #		self.file.seek (self.offset + p)
 def filepart (name, offset, length):
-	f = open (name)
+	f = open (name, 'rb')
 	f.seek (offset)
 	return StringIO.StringIO (f.read (length))
 
@@ -2042,13 +2042,13 @@ class Sound:
 			os.mkdir (d)
 			for i in self.sound:
 				data = filepart (*self.sound[i][1]).read ()
-				open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + 'wav'), 'w').write (data)
+				open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + 'wav'), 'wb').write (data)
 		if len (self.music) > 0:
 			d = os.path.join (self.parent.root, "music")
 			os.mkdir (d)
 			for i in self.music:
 				data = filepart (*self.music[i][1]).read ()
-				open (os.path.join (d, i + os.extsep + 'mid'), 'w').write (data)
+				open (os.path.join (d, i + os.extsep + 'mid'), 'wb').write (data)
 	def rename (self, old, new):
 		for i in self.sound:
 			if self.sound[i][1][0].startswith (old):
@@ -2065,11 +2065,11 @@ class Sound:
 		for s in self.sound:
 			if self.sound[s][1] == '':
 				continue
-			open (os.join (dst, s + os.extsep + 'wav'), 'w').write (self.sound[s][1])
+			open (os.join (dst, s + os.extsep + 'wav'), 'wb').write (self.sound[s][1])
 		for s in self.music:
 			if self.music[s][1] == '':
 				continue
-			open (os.join (dst, str (self.music[s][0]) + os.extsep + 'mid'), 'w').write (self.music[s][1])
+			open (os.join (dst, str (self.music[s][0]) + os.extsep + 'mid'), 'wb').write (self.music[s][1])
 
 class Script:
 	def __init__ (self, parent):
