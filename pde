@@ -198,8 +198,8 @@ class View (gtk.DrawingArea):
 			self.get_window ().draw_drawable (View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
 	def draw_tile (self, screenpos, worldpos, screen_lines):
 		b = self.find_tile (worldpos)
-		if b[0] >= 0:
-			tiles = data.get_tiles (b[0])
+		tiles = data.get_tiles (b[0])
+		if tiles != None:
 			w, h = tiles.get_size ()
 			if b[1] * screenzoom >= w or b[2] * screenzoom >= h:
 				self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0] + 1, screenpos[1] + 1, screenzoom, screenzoom)
@@ -1548,8 +1548,8 @@ class ViewTiles (View):
 		self.set_size_request (screenzoom * 12, screenzoom * 8)
 	def find_tile (self, worldpos):
 		if worldpos[0] >= 0 and worldpos[0] < 6 * 12 and worldpos[1] >= 0 and worldpos[1] < 7 * 8:
-			n = (worldpos[1] / 8) * 6 + worldpos[0] / 12
-			if n < 41:
+			n = (worldpos[1] / 8) * 6 + worldpos[0] / 12 + 1
+			if 1 <= n <= 41:
 				return [n, worldpos[0] % 12, worldpos[1] % 8]
 		return [-1, -1, -1]
 	def draw_tile (self, screenpos, worldpos):

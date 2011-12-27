@@ -2425,14 +2425,17 @@ class Dink:
 		backup = None
 		if os.path.exists (self.root):
 			d = os.path.dirname (self.root)
+			backupdir = os.path.join (d, 'backup')
+			if not os.path.exists (backupdir):
+				os.mkdir (backupdir)
 			b = os.path.basename (self.root)
-			l = os.listdir (d)
+			l = os.listdir (backupdir)
 			src = [x for x in l if x.startswith (b + '.') and re.match ('^\d+$', x[len (b) + 1:])]
 			if src == []:
-				backup = self.root + '.0'
+				backup = os.path.join (backupdir, b + '.0')
 			else:
 				src.sort (key = lambda x: int (x[len (b) + 1:]))
-				backup = self.root + ('.%d' % (int (src[-1][len (b) + 1:]) + 1))
+				backup = os.path.join (backupdir, b + ('.%d' % (int (src[-1][len (b) + 1:]) + 1)))
 			os.mkdir (backup)
 			for f in os.listdir (self.root):
 				if not f.startswith ('.'):
