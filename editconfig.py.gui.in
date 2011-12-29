@@ -1,0 +1,13 @@
+gtk
+	Window title="Pydink configuration editor"
+		Table columns=2
+			CheckButton right=:2 value=lowmem set=set_lowmem
+				'Low memory
+			CheckButton right=:2 value=nobackingstore set=set_nobackingstore
+				'Disable backing store
+			'Dink data
+			FileChooserButton value=dinkdir action=:select_folder set=set_dinkdir
+			'(Free)dink executable
+			FileChooserButton value=dinkprog action=:open set=set_dinkprog
+			Button right=:2 clicked=done
+				'Save and exit
