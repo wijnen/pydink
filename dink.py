@@ -582,7 +582,7 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 	elif expr[0] == 'choice':
 		tmp = current_tmp
 		current_tmp += 1
-		return build_choice (dink, fname, expr[1], expr[2], indent) + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
+		return build_choice (dink, fname, expr[1], expr[2], indent) + indent + 'int &tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
 	elif expr[0] == 'internal':	# internal function call
 		b, e = build_internal_function (expr[1], expr[2], indent, dink, fname, True)
 		if as_bool:
