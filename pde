@@ -1113,7 +1113,6 @@ class ViewMap (View):
 				sp.x, sp.y = p
 				rm = (s[1] / (8 * 50)) * 32 + (s[0] / (12 * 50)) + 1
 				if rm != room:
-					print 'new room', rm, room
 					if rm in data.world.room:
 						# Move the sprite to a different room.
 						name = spriteselect[mover][1]
@@ -1128,7 +1127,6 @@ class ViewMap (View):
 						spriteselect[mover] = (room, nm, False)
 					else:
 						# New room doesn't exist; use old one.
-						print 'old room after all', op
 						sp.x, sp.y = op
 						sp.x += 20
 				else:

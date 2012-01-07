@@ -122,7 +122,7 @@ def filepart (name, offset, length):
 # brain 16: Smart People brain.  They can walk around, stop and look.
 # brain 17: Missile brain, [like 11] but kills itself when SEQ is done.
 
-brains = ['none', 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'bisshop', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare']
+brains = ['none', 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'monster', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare']
 
 def make_brain (name):
 	if name in brains:
@@ -372,11 +372,22 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	nice_assert (len (a) == 0 or a[-1] != -1 or internal_functions[name][-1] not in 'SI', 'last argument of %s may be omitted, but must not be -1' % name)
 	if len (a) < len (internal_functions[name]):
 		a += (-1,)
-	if name == 'add_item' or name == 'add_magic':
+	if name == 'start_game':
+		# Start_game is a generated function (not internal) when a dmod is built.
+		name = 'spawn'
+		a = ['"start_game"']
+	elif name == 'load_game':
+		# Set up everything for loading a game.
+		tmp = current_tmp
+		current_tmp = tmp + 1
+		b, e = build_expr (dink, fname, a[0], indent, as_bool = False)
+		return b + indent + 'int &tmp%d = game_exist(%s);\r\n' % (tmp, e) + indent + 'if (&tmp%d != 0)\r\n' % tmp + indent + '{\r\n' + indent + '\tstopmidi();\r\n' + indent + '\tstopcd();\r\n' + indent + '\tsp_brain(1, 1);\r\n' + indent + '\tsp_que(1, 0);\r\n' + indent + '\tsp_noclip(1, 0);\r\n' + indent + '\tset_mode(2);\r\n' + indent + '\tload_game(%s);\r\n' % e + indent + '}\r\n', ''
+	elif name == 'add_item' or name == 'add_magic':
 		a[1] = dink.seq.find_seq (a[1][1:-1]).code
 	elif name == 'create_sprite':
 		a[2] = make_brain (a[2][1:-1])
-		a[3] = dink.seq.find_seq (a[3][1:-1]).code
+		if type (a[3]) == str and a[3][0] == '"':
+			a[3] = dink.seq.find_seq (a[3][1:-1]).code
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
 		a[0] = make_brain (a[0][1:-1])
 	elif name == 'playmidi':
@@ -408,6 +419,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 			a[1] = 0
 		elif type (a[1]) == str and a[1][0] == '"':
 			s = dink.seq.find_seq (a[1][1:-1])
+			nice_assert (s != None, 'sequence %s not found' % a[1])
 			a[1] = s.code
 	elif name == 'sp_nohard':
 		name = 'sp_hard'
@@ -417,7 +429,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		if type (i) == str and i[0] == '"':
 			at += (i,)
 		else:
-			b, e = build_expr (dink, fname, i, indent)
+			b, e = build_expr (dink, fname, i, indent, as_bool = False)
 			bt += b
 			at += (e,)
 	if use_retval:
@@ -461,7 +473,7 @@ def read_args (dink, script):
 				args += (sp,)
 				script = script[p + 1:]
 			else:
-				script, a = tokenize_expr (dink, script, as_bool = False)
+				script, a = tokenize_expr (dink, script)
 				args += (a,)
 			t, script, isname = token (script)
 			if t != ',':
@@ -469,66 +481,144 @@ def read_args (dink, script):
 	nice_assert (t == ')', 'unterminated argument list')
 	return script, args
 
-def build_expr (dink, fname, expr, indent, invert = False):
+def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
+	assert as_bool in (False, True)
 	global current_tmp
 	eq = ('>', '<=', '>=', '<', '==', '!=')
 	if type (expr) == int:
-		return '', str (expr)
+		if as_bool:
+			if invert:
+				return '', '%d == 0' % expr
+			else:
+				return '', '%d != 0' % expr
+		else:
+			if invert:
+				tmp = current_tmp
+				current_tmp = tmp + 1
+				return indent + 'if (%d == 0)\r\n' % expr + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
+			else:
+				return '', str (expr)
 	elif type (expr) == str:
-		return '', mangle (expr)
+		if expr[0] == '"':
+			nice_assert (not as_bool and not invert, 'string (%s) cannot be inverted or used as boolean expression' % expr)
+			return '', mangle (expr)
+		else:
+			if as_bool:
+				if invert:
+					return '', '%s == 0' % mangle (expr)
+				else:
+					return '', '%s != 0' % mangle (expr)
+			else:
+				if invert:
+					tmp = current_tmp
+					current_tmp = tmp + 1
+					return indent + 'if (%s != 0)\r\n' % mangle (expr) + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
+				else:
+					return '', mangle (expr)
 	elif expr[0] in eq:
 		if invert:
 			op = eq[eq.index (expr[0]) ^ 1]
 		else:
 			op = expr[0]
-		b1, e1 = build_expr (dink, fname, expr[1][0], indent)
-		b2, e2 = build_expr (dink, fname, expr[1][1], indent)
-		return b1 + b2, e1 + ' ' + op + ' ' + e2
+		b1, e1 = build_expr (dink, fname, expr[1][0], indent, as_bool = False)
+		b2, e2 = build_expr (dink, fname, expr[1][1], indent, as_bool = False)
+		e = e1 + ' ' + op + ' ' + e2
+		if as_bool:
+			return b1 + b2, e
+		else:
+			tmp = current_tmp
+			current_tmp = tmp + 1
+			return b1 + b2 + indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (%s)\r\n' % e + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
 	elif expr[0] in ('+', '-', '*', '/'):
 		if len (expr[1]) == 1:
 			if invert:
-				return build_expr (dink, fname, ['==', 0, expr[1][0]], indent)
-			return build_expr (dink, fname, [expr[0], 0, expr[1][0]], indent)
+				return build_expr (dink, fname, ['==', expr[1][0], 0], indent, as_bool = as_bool)
+			return build_expr (dink, fname, [expr[0], 0, expr[1][0]], indent, as_bool = as_bool)
 		else:
 			if invert:
-				return build_expr (dink, fname, ['==', 0, expr], indent)
+				return build_expr (dink, fname, ['==', expr, 0], indent, as_bool = as_bool)
 			tmp = current_tmp
-			b1, e1 = build_expr (dink, fname, expr[1][0], indent)
+			b1, e1 = build_expr (dink, fname, expr[1][0], indent, as_bool = False)
 			current_tmp = tmp + 1
 			if e1 == '&tmp%d' % tmp:
 				b = b1
 			else:
 				b = b1 + indent + 'int &tmp%d = ' % tmp + e1 + ';\r\n'
-			b2, e2 = build_expr (dink, fname, expr[1][1], indent)
+			b2, e2 = build_expr (dink, fname, expr[1][1], indent, as_bool = False)
 			current_tmp = tmp + 1
 			extra = '' if expr[0] in ('*', '/') else '='
 			b += b2 + indent + '&tmp%d ' % tmp + expr[0] + extra + ' ' + e2 + ';\r\n'
-			return b, '&tmp%d' % tmp
+			if as_bool:
+				return b, '&tmp%d != 0' % tmp
+			else:
+				return b, '&tmp%d' % tmp
 	elif expr[0] in ('&&', '||'):
 		# Turn everything into &&.
 		# a && b == a && b
 		# a || b == !(!a && !b)
 		# !(a && b) == !(a && b)
 		# !(a || b) == !a && !b
+		b1, e1 = build_expr (dink, fname, expr[1][0], indent, expr[0] == '||', as_bool = True)
+		b2, e2 = build_expr (dink, fname, expr[1][1], indent + '\t', expr[0] == '||', as_bool = True)
 		tmp = current_tmp
-		b1, e1 = build_expr (dink, fname, expr[1][0], indent, expr[0] == '||')
 		current_tmp = tmp + 1
-		b = b1 + indent + 'int &tmp%d = 0;\r\n' % tmp + indent + 'if (' + e1 + ')\r\n' + indent + '{\r\n'
-		b2, e2 = build_expr (dink, fname, expr[1][1], indent + '\t', expr[0] == '||')
-		current_tmp = tmp + 1
-		b += b2 + indent + '\tif (' + e2 + ')\r\n' + indent + '\t{\r\n' + indent + '\t\t&tmp%d = 1;\r\n' % tmp + indent + '\t}\r\n' + indent + '}\r\n'
-		if invert ^ (expr[0] == '||'):
-			return b, '&tmp%d == 0' % tmp
+		if as_bool:
+			b = b1 + indent + 'int &tmp%d = 0;\r\n' % tmp + indent + 'if (' + e1 + ')\r\n' + indent + '{\r\n'
+			b += b2 + indent + '\tif (' + e2 + ')\r\n' + indent + '\t{\r\n' + indent + '\t\t&tmp%d = 1;\r\n' % tmp + indent + '\t}\r\n' + indent + '}\r\n'
+			if invert ^ (expr[0] == '||'):
+				return b, '&tmp%d == 0' % tmp
+			else:
+				return b, '&tmp%d != 0' % tmp
 		else:
-			return b, '&tmp%d != 0' % tmp
+			if invert ^ (expr[0] == '||'):
+				b = b1 + indent + 'int &tmp%d = 1;\r\n' % tmp + indent + 'if (' + e1 + ')\r\n' + indent + '{\r\n'
+				b += b2 + indent + '\tif (' + e2 + ')\r\n' + indent + '\t{\r\n' + indent + '\t\t&tmp%d = 0;\r\n' % tmp + indent + '\t}\r\n' + indent + '}\r\n'
+			else:
+				b = b1 + indent + 'int &tmp%d = 0;\r\n' % tmp + indent + 'if (' + e1 + ')\r\n' + indent + '{\r\n'
+				b += b2 + indent + '\tif (' + e2 + ')\r\n' + indent + '\t{\r\n' + indent + '\t\t&tmp%d = 1;\r\n' % tmp + indent + '\t}\r\n' + indent + '}\r\n'
+			return b, '&tmp%d' % tmp
 	elif expr[0] == '!':
-		return build_expr (dink, fname, ['==', 0, expr[1][0]], indent, invert)
-	elif type (expr[0]) == str:	# internal function call
-		return build_internal_function (expr[1], expr[2], indent, dink, fname, True)
-	elif len (expr[0]) == 1:	# function call in same file
-		return build_function (expr[0][0], expr[1], indent, fname)
+		return build_expr (dink, fname, ['==', [0, expr[1][0]]], indent, invert, as_bool = as_bool)
+	elif expr[0] == 'choice':
+		tmp = current_tmp
+		current_tmp += 1
+		return build_choice (dink, fname, expr[1], expr[2], indent) + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
+	elif expr[0] == 'internal':	# internal function call
+		b, e = build_internal_function (expr[1], expr[2], indent, dink, fname, True)
+		if as_bool:
+			tmp = current_tmp
+			current_tmp = tmp + 1
+			b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (%s != 0)\r\n' % e + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
+			if invert:
+				return b, '&tmp%d == 0' % tmp
+			else:
+				return b, '&tmp%d != 0' % tmp
+		else:
+			return b, e
+	elif len (expr[1]) == 1:	# function call in same file
+		tmp = current_tmp
+		current_tmp = tmp + 1
+		b = build_function (expr[1][0], expr[2], indent, dink, fname)
+		if as_bool:
+			b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' % e + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
+			if invert:
+				return b, '&tmp%d == 0' % tmp
+			else:
+				return b, '&tmp%d != 0' % tmp
+		else:
+			return b + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
 	else:				# remote function call
-		return build_function (expr[0][1], expr[1], indent, expr[0][0])
+		tmp = current_tmp
+		current_tmp = tmp + 1
+		b = build_function (expr[1][1], expr[2], indent, dink, expr[1][0])
+		if as_bool:
+			b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
+			if invert:
+				return b, '&tmp%d == 0' % tmp
+			else:
+				return b, '&tmp%d != 0' % tmp
+		else:
+			return b + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
 
 internal_functions = {
 		'activate_bow': '',
@@ -590,6 +680,7 @@ internal_functions = {
 		'push_active': 'i',
 		'random': 'ii',
 		'reset_timer': '',
+		'restart_game': '',
 		'run_script_by_number': 'is',
 		'save_game': 'i',
 		'say': 'si',
@@ -697,9 +788,13 @@ def make_direct (dink, name, args):
 	if name == 'brain_code':
 		return make_brain (args[0][1:-1])
 	elif name == 'seq_code':
-		return dink.seq.find_seq (args[0][1:-1]).code
+		seq = dink.seq.find_seq (args[0][1:-1])
+		nice_assert (seq is not None, 'invalid sequence name %s' % args[0][1:-1])
+		return seq.code
 	elif name == 'collection_code':
-		return dink.seq.find_collection (args[0][1:-1])['code']
+		coll = dink.seq.find_collection (args[0][1:-1])
+		nice_assert (coll is not None, 'invalid collection name %s' % args[0][1:-1])
+		return coll['code']
 	elif name == 'sp_code':
 		nm = args[0][1:-1]
 		sprite = None
@@ -713,8 +808,22 @@ def make_direct (dink, name, args):
 		# Nothing special.
 		return None
 
-def tokenize_expr (parent, script, as_bool = None):
-	assert as_bool in (True, False)
+def choice_args (args):
+	i = 0
+	ret = []
+	while i < len (args):
+		if type (args[i]) != str or args[i][0] != '"':
+			expr = args[i]
+			i += 1
+			nice_assert (type (args[i]) == str and args[i][0] == '"', 'Only one expression is allowed per choice option (got %s)' % str (args[i]))
+		else:
+			expr = None
+		ret += ((expr, args[i][1:-1]),)
+		i += 1
+	nice_assert (ret != [], 'A choice must have at least one option.')
+	return ret
+
+def tokenize_expr (parent, script):
 	need_operator = False
 	ret = []
 	operators = []
@@ -783,13 +892,14 @@ def tokenize_expr (parent, script, as_bool = None):
 							else:
 								# internal function.
 								if name == 'choice':
-									ret += (['choice', args, choice_title[0]])
+									ret += (['choice', choice_args (args), choice_title[0]],)
 									choice_title[:] = [None, False]
-								direct = make_direct (parent, name, args)
-								if direct is not None:
-									ret += (direct,)
 								else:
-									ret += (['internal', name, args],)
+									direct = make_direct (parent, name, args)
+									if direct is not None:
+										ret += (direct,)
+									else:
+										ret += (['internal', name, args],)
 						else:
 							# function in other file.
 							nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1])))
@@ -868,14 +978,14 @@ def tokenize_statement (script, dink, fname, own_name):
 		need_semicolon = False
 	elif t == 'return':
 		if functions[fname][own_name][0] == 'int':
-			script, e = tokenize_expr (dink, script, as_bool = False)
+			script, e = tokenize_expr (dink, script)
 			ret = 'return', e
 		else:
 			ret = 'return', None
 	elif t == 'while':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after while')
-		script, e = tokenize_expr (dink, script, as_bool = True)
+		script, e = tokenize_expr (dink, script)
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for while not closed')
 		script, s = tokenize_statement (script, dink, fname, own_name)
@@ -889,14 +999,14 @@ def tokenize_statement (script, dink, fname, own_name):
 			nice_assert (isname, 'first for-expression must be empty or assignment (not %s)' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'first for-expression must be empty or assignment (not %s)' % a)
-			script, e = tokenize_expr (dink, script, as_bool = False)
+			script, e = tokenize_expr (dink, script)
 			f1 = (a, n, e)
 			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
 		else:
 			f1 = None
 		t, script, isname = token (script)
 		nice_assert (t == ';', 'two semicolons required in for argument')
-		script, f2 = tokenize_expr (dink, script, as_bool = True)
+		script, f2 = tokenize_expr (dink, script)
 		t, script, isname = token (script)
 		nice_assert (t == ';', 'two semicolons required in for argument')
 		if script[0] != ')':
@@ -904,7 +1014,7 @@ def tokenize_statement (script, dink, fname, own_name):
 			nice_assert (isname, 'third for-expression must be empty or assignment (not %s)' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'third for-expression must be empty or assignment (not %s)' % a)
-			script, e = tokenize_expr (dink, script, as_bool = False)
+			script, e = tokenize_expr (dink, script)
 			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
 			f3 = (a, n, e)
 		else:
@@ -917,7 +1027,7 @@ def tokenize_statement (script, dink, fname, own_name):
 	elif t == 'if':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after if')
-		script, e = tokenize_expr (dink, script, as_bool = True)
+		script, e = tokenize_expr (dink, script)
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis not closed for if')
 		script, s1 = tokenize_statement (script, dink, fname, own_name)
@@ -937,7 +1047,7 @@ def tokenize_statement (script, dink, fname, own_name):
 			the_locals += (name,)
 		t, script, isname = token (script)
 		if t == '=':
-			script, e = tokenize_expr (dink, script, as_bool = False)
+			script, e = tokenize_expr (dink, script)
 		else:
 			e = None
 			script = t + ' ' + script
@@ -957,7 +1067,7 @@ def tokenize_statement (script, dink, fname, own_name):
 		elif t in ['=', '+=', '-=', '*=', '/=']:
 			nice_assert (check_exists (the_locals, name), 'use of undefined variable %s' % name)
 			op = t
-			script, e = tokenize_expr (dink, script, as_bool = False)
+			script, e = tokenize_expr (dink, script)
 			ret = op, name, e
 		else:
 			if t == '.':
@@ -976,21 +1086,9 @@ def tokenize_statement (script, dink, fname, own_name):
 				ret = None
 			elif name == 'choice':
 				choices = []
-				while True:
-					t, script, isname = token (script)
-					if t[0] != '"':
-						script, e = tokenize_expr (dink, t + ' ' + script, as_bool = True)
-						t, script, isname = token (script)
-						nice_assert (t[0] == '"', 'choice requires a string')
-					else:
-						e = None
-					choices += ((e, t),)
-					t, script, isname = token (script)
-					if t == ')':
-						break
-					nice_assert (t == ',', 'choice requires a comma')
-				nice_assert (choices != [], 'choice requires at least one option')
-				ret = 'choice', choices, choice_title[0]
+				script, args = read_args (dink, script)
+				choices = choice_args (args)
+				ret = 'choice', choice_args (args), choice_title[0]
 				choice_title[:] = [None, False]
 			else:
 				script, args = read_args (dink, script)
@@ -1030,19 +1128,16 @@ def build_function_def (data, fname, dink):
 		ret += build_statement (s, ra[0], '\t', fname, dink)
 	return ret + '}\r\n'
 
-def build_function (name, args, indent, fname):
+def build_function (name, args, indent, dink, fname):
 	global current_tmp
 	if type (name) == str:
-		if name == 'start_game':
-			# Special case: start_game is a generated function when a dmod is built.
-			return indent + "spawn ('start_game')\r\n"
 		f = functions[fname][name]
 	else:
 		f = functions[name[0]][name[1]]
 	tb = ''
 	old_current_tmp = current_tmp
 	for i in range (len (f[1])):
-		b, e = build_expr (dink, fname, args[i], indent)
+		b, e = build_expr (dink, fname, args[i], indent, as_bool = False)
 		tb += b + indent + '&arg%d = ' % i + e + ';\r\n'
 		current_tmp = old_current_tmp
 	if type (name) == str:
@@ -1050,28 +1145,29 @@ def build_function (name, args, indent, fname):
 	else:
 		return tb + indent + 'external("%s", "%s");\r\n' % name
 
-def build_choice (choices, title):
-	# data[1] = sequence of choices (expr or None, string)
-	# data[2] = None or title (sequence of 1, 2 or 3 arguments)
+def build_choice (dink, fname, choices, title, indent):
+	# choices[i][0] = expr or None
+	# choices[i][1] = Choice string
+	# title = None or title (sequence of 1, 2 or 3 arguments)
 	tb = ''
 	ret = indent + 'choice_start()\r\n'
 	if title != None:
 		if len (title) == 3:
-			b, e = build_expr (dink, fname, title[2])
+			b, e = build_expr (dink, fname, title[2], as_bool = False)
 			tb += b
 			ret += indent + 'set_y %d\r\n' % e
 		if len (title) >= 2:
-			b, e = build_expr (dink, fname, title[1])
+			b, e = build_expr (dink, fname, title[1], as_bool = False)
 			tb += b
 			ret += indent + 'set_title_color %d\r\n' % e
 		ret += indent + 'title_start()\r\n' + title[0] + indent + 'title_end()\r\n'
-	for i in len (choices):
+	for i in choices:
 		ret += indent
-		if choices[i][0] != None:
-			b, e = build_expr (dink, fname, choices[i][0], indent)
+		if i[0] != None:
+			b, e = build_expr (dink, fname, i[0], indent, as_bool = True)
 			tb += b
 			ret += '(%s) ' % e
-		ret += choices[i][1] + '\r\n'
+		ret += '"' + i[1] + '"\r\n'
 	return tb + ret + indent + 'choice_end()\r\n'
 
 def build_statement (data, retval, indent, fname, dink):
@@ -1087,14 +1183,14 @@ def build_statement (data, retval, indent, fname, dink):
 		if data[1] == None:
 			return indent + 'return;\r\n'
 		else:
-			b, e = build_expr (dink, fname, data[1], indent)
+			b, e = build_expr (dink, fname, data[1], indent, as_bool = False)
 			return b + indent + '&result = ' + e + ';\r\n' + indent + 'return;\r\n'
 	elif data[0] == 'while':
 		start = 'while%d' % numlabels
 		numlabels += 1
 		end = 'while%d' % numlabels
 		numlabels += 1
-		b, e = build_expr (dink, fname, data[1], indent)
+		b, e = build_expr (dink, fname, data[1], indent, as_bool = True)
 		ret = indent + start + ':\r\n'
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
 		ret += build_statement (data[2], retval, indent + '\t', fname, dink)
@@ -1119,45 +1215,46 @@ def build_statement (data, retval, indent, fname, dink):
 			a, n, te = data[1]
 			if a[0] in ('*', '/'):
 				a = a[0]
-			b, e = build_expr (dink, fname, te, indent)
+			b, e = build_expr (dink, fname, te, indent, as_bool = False)
 			ret += b + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
 		ret += indent + start + ':\r\n'
-		b, e = build_expr (dink, fname, data[2], invert = True)
+		b, e = build_expr (dink, fname, data[2], invert = True, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
 		ret += build_statement (data[4], retval, indent, fname, dink)
 		if data[3] != None:
 			a, n, te = data[3]
 			if a[0] in ('*', '/'):
 				a = a[0]
-			b, e = build_expr (dink, fname, te, indent)
+			b, e = build_expr (dink, fname, te, indent, as_bool = False)
 			ret += b + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
 		ret += indent + 'goto ' + start + ';\r\n'
 		return ret
 	elif data[0] == 'if':
 		ret = ''
-		b, e = build_expr (dink, fname, data[1], indent)
+		b, e = build_expr (dink, fname, data[1], indent, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n'
 		ret += build_statement (data[2], retval, indent + '\t', fname, dink)
-		ret += indent + '}\r\n'
-		if data[3] != None:
-			ret += indent + 'else\r\n' + indent + '{\r\n'
+		if data[3] == None:
+			ret += indent + '}\r\n'
+		else:
+			ret += indent + '} else\r\n' + indent + '{\r\n'
 			ret += build_statement (data[3], retval, indent + '\t', fname, dink)
 			ret += indent + '}\r\n'
 		return ret
 	elif data[0] == 'int':
 		if data[2] != None:
-			b, e = build_expr (dink, fname, data[2], indent)
+			b, e = build_expr (dink, fname, data[2], indent, as_bool = False)
 			return b + indent + 'int ' + mangle (data[1]) + ' = ' + e + ';\r\n'
 		else:
 			return indent + 'int ' + mangle (data[1]) + ';\r\n'
 	elif data[0] == 'goto':
 		return indent + 'goto ' + data[1] + ';\r\n'
 	elif data[0] == 'choice':
-		b, e = build_choice (data[1], data[2], indent)
+		b, e = build_choice (dink, fname, data[1], data[2], indent)
 		# discard return value
 		return b
 	elif data[0] == '()':
-		return build_function (data[1], data[2], indent, fname)
+		return build_function (data[1], data[2], indent, dink, fname)
 	elif data[0] == 'internal':
 		b, e = build_internal_function (data[1], data[2], indent, dink, fname, False)
 		# discard return value.
@@ -1166,7 +1263,7 @@ def build_statement (data, retval, indent, fname, dink):
 		a, n, te = data
 		if a[0] in ('*', '/'):
 			a = a[0]
-		b, e = build_expr (dink, fname, te, indent)
+		b, e = build_expr (dink, fname, te, indent, as_bool = False)
 		return b + indent + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
 
 class Sprite:
@@ -1450,14 +1547,14 @@ class World:
 		mdat.write (make_lsb (spr.speed, 4))
 		def coll (which):
 			if which == '':
-				return 0
+				return -1
 			return self.parent.seq.collection_code (which)
 		mdat.write (make_lsb (coll (spr.base_walk), 4))
 		mdat.write (make_lsb (coll (spr.base_idle), 4))
 		mdat.write (make_lsb (coll (spr.base_attack), 4))
 		mdat.write (make_lsb (0, 4))	# hit
 		mdat.write (make_lsb (spr.timing, 4))
-		mdat.write (make_lsb (0 if spr.que == 0 else max (0, y - spr.que), 4))
+		mdat.write (make_lsb (0 if spr.que == 0 else max (1, y - spr.que), 4))
 		mdat.write (make_lsb (not spr.hard, 4))
 		mdat.write (make_lsb (spr.left, 4))
 		mdat.write (make_lsb (spr.top, 4))
@@ -1896,8 +1993,7 @@ class Seq:
 						continue
 					if self.collection[c][i].code == name:
 						return self.collection[c][i]
-			print (name)
-			raise AssertionError ('undefined numerical code for find_seq')
+			raise AssertionError ('undefined numerical code %d for find_seq' % name)
 		elif type (name) == str:
 			parts = name.split ()
 			if len (parts) == 1:
@@ -2204,6 +2300,8 @@ class Script:
 				args += (t,)
 				t, script, isname = token (script)
 				nice_assert (t in (')', ','), 'syntax error in argument list')
+				if t == ',':
+					t, script, isname = token (script)
 			t, script, isname = token (script)
 			nice_assert (t == '{', 'missing function body')
 			depth = 1
@@ -2337,7 +2435,7 @@ class Script:
 		for v in the_globals:
 			s.write ('\tmake_global_int ("%s", %d);\r\n' % (mangle (v), the_globals[v]))
 		for a in range (max_args):
-			s.write ('\tmake_global_int ("&args%d", 0);\r\n' % a)
+			s.write ('\tmake_global_int ("&arg%d", 0);\r\n' % a)
 		s.write ('\tkill_this_task ();\r\n}\r\n')
 		# Write start_game.c
 		s = open (os.path.join (d, 'start_game' + os.extsep + 'c'), 'wb')

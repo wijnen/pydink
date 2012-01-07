@@ -178,7 +178,7 @@ class Play (gtk.DrawingArea):
 		self.screenlock = False
 		self.cursorkeys = (gtk.keysyms.Left, gtk.keysyms.Up, gtk.keysyms.Right, gtk.keysyms.Down)
 		self.cursor = [False, False, False, False]
-		self.brains = [ 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'bisshop', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare' ]
+		self.brains = [ 'dink', 'bounce', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'monster', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare' ]
 		self.the_globals = {}
 		for v in gtkdink.dink.the_globals:
 			self.the_globals[v] = gtkdink.dink.the_globals[v]
@@ -314,10 +314,10 @@ class Play (gtk.DrawingArea):
 				# Stop walking.
 				sprite.mx = 0
 				sprite.my = 0
-			elif sprite.brain in ('bisshop', 'rook'):
+			elif sprite.brain in ('monster', 'rook'):
 				# Choose new direction.
 				need_new_dir = True
-			if sprite.brain in ('duck', 'pig', 'bisshop', 'rook', 'person') and (need_new_dir or random.random () < (.01 if sprite.mx != 0 or sprite.my != 0 else .05)):
+			if sprite.brain in ('duck', 'pig', 'monster', 'rook', 'person') and (need_new_dir or random.random () < (.01 if sprite.mx != 0 or sprite.my != 0 else .05)):
 				if sprite.brain == 'rook':
 					sprite.mx, sprite.my = random.choice ((-1, 0), (1, 0), (0, -1), (0, 1))
 				else:

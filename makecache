@@ -54,11 +54,11 @@ collection_names = [(x.split ()[0], int (x.split ()[1]), x.split ()[2], x.split 
 idle 10 repeat none none none
 duck 20 duck none none none
 pig 40 pig none none none
-walk 70 bisshop none hit none
+walk 70 monster none hit none
 hit 100 play none none none
-duckbloody 110 bisshop none none none
+duckbloody 110 monster none none none
 duckhead 120 mark none none none
-pillbug 130 bisshop en-pill none pillbugdie
+pillbug 130 monster en-pill none pillbugdie
 pillbugdie 140 mark none none none
 dragon 200 rook en-drag none dragondie
 dragondie 210 mark none none none
@@ -85,23 +85,23 @@ peasant 410 person none none none
 comet 500 missile none none none
 fireball 510 missile none none none
 seeding 520 mark none none none
-bonca 530 bisshop en-bonc boncaattack boncadie
+bonca 530 monster en-bonc boncaattack boncadie
 boncaattack 540 repeat none none none
 boncadie 550 mark none none none
 purplegnome 560 person none none none
 bluegnome 570 person none none none
 greengnome 580 person none none none
 grayboncaattack 590 repeat none none none
-graybonca 600 bisshop en-bong grayboncaattack boncadie
-purplebonca 610 bisshop en-bonc1 purpleboncaattack boncadie
+graybonca 600 monster en-bong grayboncaattack boncadie
+purplebonca 610 monster en-bonc1 purpleboncaattack boncadie
 purpleboncaattack 620 repeat none none none
 slayerattack 630 repeat none none none
-slayer 640 bisshop en-slay slayerattack none
-bluepuddle 650 bisshop en-slimb none bluepuddledie
+slayer 640 monster en-slay slayerattack none
+bluepuddle 650 monster en-slimb none bluepuddledie
 bluepuddledie 660 mark none none none
-greenpuddle 670 bisshop en-slimg none greenpuddledie
+greenpuddle 670 monster en-slimg none greenpuddledie
 greenpuddledie 680 mark none none none
-redpuddle 690 bisshop en-slim none redpuddledie
+redpuddle 690 monster en-slim none redpuddledie
 redpuddledie 700 mark none none none
 redknightattack 710 repeat none none none
 silverknightattack 720 repeat none none none
@@ -114,9 +114,9 @@ horngoblin 780 person none horngoblinattack none
 goblinattack 790 repeat none none none
 goblin 800 person none goblinattack none
 giantattack 810 repeat none none none
-giant 820 bisshop en-gh giantattack none
-spikeidle 830 bisshop en-bonc none none
-spike 840 bisshop en-bonc none none'''.split ('\n')]
+giant 820 monster en-gh giantattack none
+spikeidle 830 monster en-bonc none none
+spike 840 monster en-bonc none none'''.split ('\n')]
 
 sequence_names = [(x.split ()[0], int (x.split ()[1]), x.split ()[2], x.split ()[3], (x.split ()[4] == 'hard')) for x in '''\
 special 10 none none nohard
