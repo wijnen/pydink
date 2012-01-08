@@ -1785,8 +1785,10 @@ class Tile:
 		if not os.path.exists (d):
 			os.mkdir (d)
 		h = open (os.path.join (root, 'hard.dat'), "wb")
-		# TODO: fill first hardness tile with junk.
-		self.hmap = []
+		# First hardness tile cannot be used (because 0 means "use default"), so skip it.
+		self.hmap = [None]
+		# Write it in the file as well.
+		h.write ('\0' * (51 * 50 + 58))
 		self.hardmap = {}
 		self.tilemap = [None] * 41
 		for t in self.hard:
