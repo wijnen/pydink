@@ -982,6 +982,10 @@ def tokenize_statement (script, dink, fname, own_name):
 			ret = 'return', e
 		else:
 			ret = 'return', None
+	elif t == 'break':
+		ret = ('break',)
+	elif t == 'continue':
+		ret = ('continue',)
 	elif t == 'while':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after while')
@@ -1125,7 +1129,7 @@ def build_function_def (data, fname, dink):
 		ret += '\tint %s = &arg%d;\r\n' % (mangle (ra[1][a]), a)
 	assert impl[0] == '{'
 	for s in impl[1]:
-		ret += build_statement (s, ra[0], '\t', fname, dink)
+		ret += build_statement (s, ra[0], '\t', fname, dink, None, None)
 	return ret + '}\r\n'
 
 def build_function (name, args, indent, dink, fname):
@@ -1170,15 +1174,21 @@ def build_choice (dink, fname, choices, title, indent):
 		ret += '"' + i[1] + '"\r\n'
 	return tb + ret + indent + 'choice_end()\r\n'
 
-def build_statement (data, retval, indent, fname, dink):
+def build_statement (data, retval, indent, fname, dink, continue_label, break_label):
 	global numlabels
 	global current_tmp
 	current_tmp = 0
 	if data[0] == '{':
 		ret = ''
 		for s in data[1]:
-			ret += build_statement (s, retval, indent + '\t', fname, dink)
+			ret += build_statement (s, retval, indent + '\t', fname, dink, continue_label, break_label)
 		return ret
+	elif data[0] == 'break':
+		nice_assert (break_label != None, 'break not inside loop')
+		return indent + 'goto ' + break_label + ';\r\n'
+	elif data[0] == 'continue':
+		nice_assert (continue_label != None, 'continue not inside loop')
+		return indent + 'goto ' + continue_label + ';\r\n'
 	elif data[0] == 'return':
 		if data[1] == None:
 			return indent + 'return;\r\n'
@@ -1187,14 +1197,13 @@ def build_statement (data, retval, indent, fname, dink):
 			return b + indent + '&result = ' + e + ';\r\n' + indent + 'return;\r\n'
 	elif data[0] == 'while':
 		start = 'while%d' % numlabels
+		end = 'endwhile%d' % numlabels
 		numlabels += 1
-		end = 'while%d' % numlabels
-		numlabels += 1
-		b, e = build_expr (dink, fname, data[1], indent, as_bool = True)
-		ret = indent + start + ':\r\n'
+		b, e = build_expr (dink, fname, data[1], indent, invert = True, as_bool = True)
+		ret = start + ':\r\n'
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
-		ret += build_statement (data[2], retval, indent + '\t', fname, dink)
-		ret += indent + 'goto ' + start + ';\r\n' + i + end + ':\r\n'
+		ret += build_statement (data[2], retval, indent, fname, dink, start, end)
+		ret += indent + 'goto ' + start + ';\r\n' + end + ':\r\n'
 		return ret
 	elif data[0] == 'for':
 		# for (i = 0; i < 4; ++i) foo;
@@ -1207,8 +1216,8 @@ def build_statement (data, retval, indent, fname, dink):
 		# 	goto loop
 		# end:
 		start = 'for%d' % numlabels
-		numlabels += 1
-		end = 'for%d' % numlabels
+		continueend = 'continuefor%d' % numlabels
+		end = 'endfor%d' % numlabels
 		numlabels += 1
 		ret = ''
 		if data[1] != None:
@@ -1216,29 +1225,30 @@ def build_statement (data, retval, indent, fname, dink):
 			if a[0] in ('*', '/'):
 				a = a[0]
 			b, e = build_expr (dink, fname, te, indent, as_bool = False)
-			ret += b + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
-		ret += indent + start + ':\r\n'
-		b, e = build_expr (dink, fname, data[2], invert = True, as_bool = True)
+			ret += b + indent + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
+		ret += start + ':\r\n'
+		b, e = build_expr (dink, fname, data[2], indent, invert = True, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
-		ret += build_statement (data[4], retval, indent, fname, dink)
+		ret += build_statement (data[4], retval, indent, fname, dink, start, continueend)
+		ret += continueend + ':\r\n'
 		if data[3] != None:
 			a, n, te = data[3]
 			if a[0] in ('*', '/'):
 				a = a[0]
 			b, e = build_expr (dink, fname, te, indent, as_bool = False)
-			ret += b + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
-		ret += indent + 'goto ' + start + ';\r\n'
+			ret += b + indent + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
+		ret += indent + 'goto ' + start + ';\r\n' + end + ':\r\n'
 		return ret
 	elif data[0] == 'if':
 		ret = ''
 		b, e = build_expr (dink, fname, data[1], indent, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n'
-		ret += build_statement (data[2], retval, indent + '\t', fname, dink)
+		ret += build_statement (data[2], retval, indent + '\t', fname, dink, continue_label, break_label)
 		if data[3] == None:
 			ret += indent + '}\r\n'
 		else:
 			ret += indent + '} else\r\n' + indent + '{\r\n'
-			ret += build_statement (data[3], retval, indent + '\t', fname, dink)
+			ret += build_statement (data[3], retval, indent + '\t', fname, dink, continue_label, break_label)
 			ret += indent + '}\r\n'
 		return ret
 	elif data[0] == 'int':
