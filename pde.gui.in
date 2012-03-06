@@ -141,7 +141,7 @@ gtk
 							Button clicked=edit_screen_script
 								'Edit
 						'Music
-						Entry changed=update value=get_screen_music set=set_screen_music
+						ComboBoxText changed=update value=get_screen_music set=set_screen_music content=set_music_list
 						CheckButton right=:4 value=get_indoor set=set_indoor toggled=update
 							'Indoor
 						'Sprite

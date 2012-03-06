@@ -21,17 +21,30 @@
 #	nnn-xx-yy
 #		info.txt		script, tiles, hardness
 #		sprite
-#			id.txt		script, x, y, etc.
+#			name-code.txt	script, x, y, etc.
 #tile
-#	name-tile.png			tile map (01-41)
-#	name-hard.png			hardness for tile map, or for screen
+#	nn.png				tile map
+#	nn-hard.png			hardness for tile map
+#hard
+#	name.png			hardness for screen
+#image
+#	name.png			splash, map, or similar image
 #seq
-#	name.gif			sequence
-#	name.txt			info about name.gif if it exists, generated sequence otherwise
-#sound.txt				list of name filename (number)?
-#music.txt				list of name filename (number)?
+#	name-code
+#		nn.png			frame
+#		info.txt		delay settings, etc.
+#collection
+#	name-code
+#		dir
+#			nn.png		frame
+#			info.txt	delay settings, etc.
+#sound
+#	name-code.wav			sound file
+#music
+#	name-code.mid			music file
 #script
 #	name.c				script to be preprocessed (sound and music names, possibly spacing)
+#info.txt				info about this dmod
 
 import sys
 import os
@@ -47,7 +60,7 @@ sys.path += (os.path.join (glib.get_user_config_dir (), 'pydink'),)
 import dinkconfig
 
 cachedir = os.path.join (glib.get_user_cache_dir (), 'pydink')
-tilefiles, collections, sequences, codes = pickle.load (open (os.path.join (cachedir, 'data'), 'rb'))
+tilefiles, collections, sequences, codes, musics, sounds = pickle.load (open (os.path.join (cachedir, 'data'), 'rb'))
 filename = ''
 
 def error (message):
@@ -1117,6 +1130,8 @@ def tokenize_statement (script, dink, fname, own_name):
 	return script, ret
 
 def preprocess (script, dink, fname):
+	if script.split ('\n', 1)[0].strip () == '#no preprocessing':
+		return data.split ('\n', 1)[1]
 	global numlabels
 	numlabels = 0
 	fs = tokenize (script, dink, fname)
@@ -1310,7 +1325,8 @@ class Room:
 		for s in os.listdir (sdir):
 			filename = os.path.join (sdir, s)
 			info = readlines (open (filename))
-			r = re.match ('(.+?)(-(\d*?))?(\..*)?$', s)
+			r = re.match ('([^.].+?)(-(\d*?))?\.txt$', s)
+			nice_assert (r, 'sprite has incorrect filename')
 			base = r.group (1)
 			s = base
 			i = 0
@@ -1470,7 +1486,7 @@ class Room:
 		for s in self.sprite:
 			r = re.match ('(.+?)(-\d*?)?(\..*)?$', s)
 			base = r.group (1)
-			f = open (os.path.join (sd, '%s-%d' % (base, self.sprite[s].num)), 'w')
+			f = open (os.path.join (sd, '%s-%d' % (base, self.sprite[s].num) + os.extsep + 'txt'), 'w')
 			put (f, 'x', self.sprite[s].x)
 			put (f, 'y', self.sprite[s].y)
 			if type (self.sprite[s].seq) == str:
@@ -1592,7 +1608,63 @@ class World:
 		mdat.write (make_lsb (int (spr.nohit), 4))
 		mdat.write (make_lsb (spr.touch_damage, 4))
 		mdat.write ('\0' * 20)
+	def find_used_sprites (self):
+		# Initial values are all which are used by the engine.
+		cols = set ()
+		seqs = set (('status', 'nums', 'numr', 'numb', 'nump', 'numy', 'special', 'textbox', 'spurt', 'spurtl', 'spurtr', 'health-w', 'health-g', 'arrow-l', 'arrow-r', 'shiny', 'menu'))
+		for r in self.room:
+			for s in self.room[r].sprite:
+				spr = self.room[r].sprite[s]
+				c = self.parent.seq.as_collection (spr.seq)
+				if c:
+					cols.add (c)
+				else:
+					seqs.add (spr.seq)
+				for i in (spr.base_idle, spr.base_walk, spr.base_attack, spr.base_death):
+					if i:
+						cols.add (i)
+		# TODO: Fill with values from scripts.
+		cols.update (('idle', 'walk', 'pig', 'duck', 'hit', 'duckbloody', 'duckhead', 'push', 'shoot', 'comet', 'fireball', 'seeding'))
+		seqs.update (('treefire', 'explode', 'smallheart', 'heart', 'spray', 'blast', 'coin', 'button-ordering', 'button-quit', 'button-start', 'button-continue', 'startme1', 'startme3', 'startme7', 'startme9', 'food', 'seed4', 'seed6', 'shadow', 'die', 'item-m', 'item-w', 'fishx', 'crawl', 'horngoblinattackswing'))
+		return cols, seqs
 	def build (self, root):
+		used_cols, used_seqs = self.find_used_sprites ()
+		used_codes = set ()
+		remove = set ()
+		for i in used_cols:
+			collection = self.parent.seq.find_collection (i)
+			if collection['code'] is not None:
+				for c in (1,2,3,4,5,6,7,8,9):
+					used_codes.add (collection['code'] + c)
+				remove.add (i)
+		used_cols.difference_update (remove)
+		remove.clear ()
+		for i in used_seqs:
+			seq = self.parent.seq.find_seq (i)
+			if seq.code:
+				used_codes.add (seq.code)
+				remove.add (i)
+		used_seqs.difference_update (remove)
+		next_code = 0
+		for i in used_cols:
+			collection = self.parent.seq.find_collection (i)
+			while True:
+				for d in (1,2,3,4,5,6,7,8,9):
+					if (next_code + d) in used_codes:
+						break
+				else:
+					collection['code'] = next_code
+					for d in collection:
+						if d == 'die' or d in (1,2,3,4,6,7,8,9):
+							collection[d].code = next_code + (5 if d == 'die' else d)
+					break
+				next_code += 10
+		next_code = 1
+		for i in used_seqs:
+			seq = self.parent.seq.find_seq (i)
+			while next_code in used_codes:
+				next_code += 1
+			seq.code = next_code
 		# Write dink.dat
 		ddat = open (os.path.join (root, 'dink' + os.extsep + 'dat'), "wb")
 		ddat.write ('Smallwood' + '\0' * 15)
@@ -1862,120 +1934,197 @@ class Tile:
 class Seq:
 	def __init__ (self, parent):
 		"""Load all sequence and collection declarations from dink.ini, seq-names.txt (both internal) and seq/info.txt"""
+		global filename
+		global codes
 		# General setup
 		self.parent = parent
 		self.seq = sequences
 		self.collection = collections
 		self.current_collection = None
+		self.custom_seqs = []
+		self.custom_collections = []
 		if self.parent.root == None:
 			return
 		d = os.path.join (parent.root, "seq")
-		# Read info specific to this dmod.
+		if os.path.isdir (d):
+			for s in os.listdir (d):
+				filename = os.path.join (d, s)
+				if not os.path.isdir (filename):
+					continue
+				r = re.match (r'([^.].*?)(?:-(\d+))?$', s)
+				if not r:
+					continue
+				nice_assert (r, "seq filename doesn't have expected format")
+				base = r.group (1)
+				if base not in self.seq:
+					self.seq[base] = self.makeseq (base)
+				if r.group (2):
+					self.seq[base].code = int (r.group (2))
+				else:
+					self.seq[base].code = None
+				self.fill_seq (self.seq[base], filename)
+				self.custom_seqs += (self.seq[base],)
+		d = os.path.join (parent.root, "collection")
+		if os.path.isdir (d):
+			for s in os.listdir (d):
+				filename = os.path.join (d, s)
+				if not os.path.isdir (filename):
+					continue
+				r = re.match (r'([^.].*?)(?:-(\d+))?$', s)
+				if not r:
+					continue
+				nice_assert (r, "collection filename doesn't have expected format")
+				base = r.group (1)
+				if base not in self.collection:
+					self.collection[base] = self.makecollection (base)
+				if r.group (2):
+					self.collection[base]['code'] = int (r.group (2))
+				else:
+					self.collection[base]['code'] = None
+				fname = filename
+				for direction in (1, 2, 3, 4, 'die', 6, 7, 8, 9):
+					filename = os.path.join (fname, str (direction))
+					if not os.path.isdir (filename):
+						continue
+					self.collection[base][direction] = self.makeseq (base + str (direction))
+					self.fill_seq (self.collection[base][direction], filename, self.collection[base])
+				self.custom_collections += (self.collection[base],)
+	def makecollection (self, base):
+		ret = {}
+		ret['name'] = base
+		ret['code'] = None
+		ret['brain'] = ''
+		ret['script'] = ''
+		ret['attack'] = ''
+		ret['death'] = ''
+		return ret
+	def makeseq (self, base):
+		ret = dinkconfig.Sequence ()
+		ret.name = base
+		ret.brain = ''
+		ret.script = ''
+		ret.hard = True
+		ret.frames = []
+		ret.repeat = False
+		ret.filepath = 'graphics\\custom\\%s-' % base
+		ret.type = 'foreign'
+		ret.special = 0
+		ret.preload = ''
+		ret.delay = -1
+		ret.hardbox = None
+		ret.position = None
+		ret.now = False
+		ret.code = None
+		return ret
+	def makeframe (self):
+		ret = dinkconfig.Frame ()
+		ret.position = None
+		ret.hardbox = None
+		ret.boundingbox = None
+		ret.delay = -1
+		ret.source = None
+		ret.cache = None
+		return ret
+	def fill_seq (self, seq, sd, collection = None):
 		global filename
-		filename = os.path.join (d, 'info' + os.extsep + 'txt')
-		if not os.path.exists (filename):
-			return
-		infofile = open (filename)
-		while True:
-			info = readlines (infofile)
-			if info == {}:
-				break
-			if 'collection' in info:
-				# The next blocks with a direction are a collection.
-				info, self.current_collection = get (info, "collection")
-				nice_assert (info == {}, 'unused data in %s' % infofile)
-				if self.current_collection not in self.collection:
-					self.collection[self.current_collection] = {code: -1}
+		imgext = os.extsep + 'png'
+		for f in os.listdir (sd):
+			filename = os.path.join (sd, f)
+			if not f.endswith (imgext):
 				continue
-			elif 'append' in info:
-				# This block is about a sequence which was declared in dink.ini.
-				self.current_collection = None
-				info, base = get (info, 'append')
-				nice_assert (base in self.seq, 'append to undefined sequence %s' % base)
+			r = re.match (r'\d+$', f[:-len (imgext)])
+			nice_assert (r, 'unexpected filename for frame image')
+			frame = int (r.group (0))
+			if frame >= len (seq.frames):
+				seq.frames += [None] * (frame + 1 - len (seq.frames))
+			if seq.frames[frame] == None:
+				seq.frames[frame] = self.makeframe ()
+			seq.frames[frame].cache = (filename, 0, os.stat (filename).st_size)
+			seq.frames[frame].size = Image.open (filename).size
+		filename = os.path.join (sd, 'info' + os.extsep + 'txt')
+		if os.path.exists (filename):
+			infofile = open (filename)
+			info = readlines (infofile)
+		else:
+			infofile = None
+			info = {}
+		if collection != None:
+			info, collection['brain'] = get (info, 'brain', collection['brain'])
+			info, collection['script'] = get (info, 'script', collection['script'])
+			info, collection['attack'] = get (info, 'attack', collection['attack'])
+			info, collection['death'] = get (info, 'death', collection['death'])
+		else:
+			info, seq.brain = get (info, 'brain', seq.brain)
+			info, seq.script = get (info, 'script', seq.script)
+			info, seq.hard = get (info, 'hard', seq.hard)
+		info, seq.repeat = get (info, 'repeat', seq.repeat)
+		info, seq.special = get (info, 'special', seq.special)
+		info, seq.now = get (info, 'load-now', seq.now)
+		info, seq.preload = get (info, 'preload', seq.preload)
+		info, seq.type = get (info, 'type', seq.type)
+		if seq.special == 0:
+			seq.special = None
+		info, seq.delay = get (info, 'delay', seq.delay)
+		if seq.delay == -1:
+			seq.delay = None
+		info, pos = get (info, 'position', '')
+		if pos != '':
+			pos = [int (x) for x in pos.split ()]
+			nice_assert (len (pos) == 2, 'position must have 2 members')
+			seq.position = pos
+		info, box = get (info, 'hardbox', '')
+		if box != '':
+			box = [int (x) for x in box.split ()]
+			nice_assert (len (box) == 4, 'hardbox must have 4 members')
+			seq.hardbox = box
+		info, frames = get (info, 'frames', 0)
+		if frames == 0:
+			frames = len (seq.frames)
+		elif frames < len (seq.frames):
+			seq,frames[frames:] = []
+		else:
+			seq.frames += [None] * (frames - len (seq.frames))
+		seq.boundingbox = [0, 0, 0, 0]
+		for f in range (1, frames):
+			if seq.frames[f] == None:
+				seq.frames[f] = self.makeframe ()
+			info, pos = get (info, 'position-%d' % f, '')
+			if pos != '':
+				seq.frames[f].position = [int (x) for x in pos.split ()]
+				nice_assert (len (seq.frames[f].position) == 2, 'position must be two numbers')
+			info, hardbox = get (info, 'position-%d' % f, '')
+			if hardbox != '':
+				seq.frames[f].hardbox = [int (x) for x in hardbox.split ()]
+				nice_assert (len (seq.frames[f].hardbox) == 4, 'hardbox must be four numbers')
+			info, seq.frames[f].delay = get (info, 'delay-%d' % f, -1)
+			if seq.frames[f].delay == -1:
+				seq.frames[f].delay = None
+			if seq.frames[f].cache == None:
+				info, source = get (info, 'source-%d' % f, str)
+				source = source.split ()
+				seq.frames[f].source = [source[0], int (source[1])]
+				nice_assert (len (seq.frames[f].hardbox) == 4, 'hardbox must be four numbers')
+			# Fill in the gaps, if any.
+			w, h = seq.frames[f].size
+			del seq.frames[f].size
+			if seq.frames[f].position is None:
+				seq.frames[f].position = w / 2, h / 2
+			x, y = seq.frames[f].position
+			seq.frames[f].boundingbox = -x, -y, w - x, h - y
+			if seq.frames[f].hardbox is None:
+				seq.frames[f].hardbox = -x / 2, -y / 2, (w - x) / 2, (h - y) / 2
+			if seq.boundingbox is None:
+				seq.boundingbox = list (seq.frames[f].boundingbox)
 			else:
-				if 'name' in info:
-					# This block defines a new sequence.
-					self.current_collection = None
-					info, base = get (info, 'name')
-					nice_assert (base not in self.seq, 'sequence %s already exists' % base)
-					self.seq[base] = dinkconfig.Sequence ()
-					is_new = True
-				else:
-					# This block is part of a collection.
-					nice_assert (self.current_collection != None, 'collection definition required')
-					base = None
-					self.seq[None] = dinkconfig.Sequence ()
-					info, self.direction = get (info, 'direction', int)
-					nice_assert (self.direction >= 1 and self.direction <= 9 and self.direction != 5, 'invalid direction %d' % self.direction)
-					info, is_new = get (info, 'new', True)
-				if is_new:
-					self.seq[base].code = -1
-					self.seq[base].frames = []
-					self.seq[base].repeat = False
-					if base == None:
-						name = '%s-%d' % (self.current_collection, self.seq[None].direction)
-					else:
-						name = base
-					self.seq[base].filepath = 'graphics\\custom\\%s-' % name
-					self.seq[base].type = 'normal'
-					self.seq[base].special = None
-					self.seq[base].preload = ''
-					self.seq[base].delay = 1
-					self.seq[base].hardbox = (0, 0, 0, 0)
-					self.seq[base].position = (0, 0)
-					self.seq[base].now = False
-				else:
-					# The collection part should be changed. Remove it now, reinsert it at the end.
-					self.seq[base] = self.collections[self.current_collection].seq[self.seq[base].direction]
-					del self.collections[self.current_collection].seq[self.seq[base].direction]
-			info, self.seq[base].repeat = get (info, 'repeat', self.seq[base].repeat)
-			info, self.seq[base].special = get (info, 'special', self.seq[base].special)
-			info, self.seq[base].now = get (info, 'load-now', self.seq[base].now)
-			info, self.seq[base].preload = get (info, 'preload', self.seq[base].preload)
-			info, self.seq[base].type = get (info, 'type', self.seq[base].type)
-			nice_assert (self.seq[base].type in ('normal', 'black', 'leftalign', 'notanim'), 'invalid special type %s' % self.seq[base].type)
-			info, num = get (info, 'frames', len (self.seq[base].frames))
-			if len (self.seq[base].frames) < num:
-				self.seq[base].frames += [None] * (num - len (self.seq[base].frames))
-			else:
-				self.seq[base].frames = self.seq[base].frames[:num]
-			for f in range (num):
-				info, seq = get (info, 'seq-%d', '')
-				if seq != '':
-					if self.seq[base].frames[f] == None:
-						self.seq[base].frames[f] = dinkconfig.Frame ()
-					info, frame = get (info, 'frame-%d', int)
-					self.seq[base].frames[f].source = (seq, frame)
-				else:
-					nice_assert (self.seq[base].frames[f] != None, 'frame %d of sequence %s not defined' % (f, base))
-				# TODO: fill frame members.
-			info, box = get (info, 'hardbox', '')
-			if box != '':
-				box = [int (x) for x in box.split ()]
-				nice_assert (len (box) == 4, 'hardbox must have 4 members')
-				self.seq[base].hardbox = box
-				for f in range (1, len (self.seq[base].frames)):
-					self.seq[base].frames[f].hardbox = box
-			info, delay = get (info, 'delay', 0)
-			if delay > 0:
-				self.seq[base].delay = delay
-				for f in range (1, len (self.seq[base].frames)):
-					self.seq[base].frames[f].delay = delay
-			nice_assert (info == {}, 'unused data in %s' % infofile)
-			if self.current_collection != None:
-				nice_assert (base == None, 'cannot define name (%s) for collection member (%s)' % (base, self.current_collection))
-				nice_assert (self.direction not in self.collection[self.current_collection], 'duplicate definition of direction %d for collection %s' % (self.direction, self.current_collection))
-				self.collection[self.current_collection].seq[self.direction] = self.seq[base]
-				del self.seq[base]
-		# Give codes to all unassigned collections and sequences.
-		nextseq = 1
-		for s in self.seq:
-			if self.seq[s].code == -1:
-				while nextseq in codes:
-					nextseq += 1
-				self.seq[s].code = nextseq
-				codes += (nextseq,)
-				nextseq += 1
+				if seq.frames[f].boundingbox[0] < seq.boundingbox[0]:
+					seq.boundingbox[0] = seq.frames[f].boundingbox[0]
+				if seq.frames[f].boundingbox[1] < seq.boundingbox[1]:
+					seq.boundingbox[1] = seq.frames[f].boundingbox[1]
+				if seq.frames[f].boundingbox[2] > seq.boundingbox[2]:
+					seq.boundingbox[2] = seq.frames[f].boundingbox[2]
+				if seq.frames[f].boundingbox[3] > seq.boundingbox[3]:
+					seq.boundingbox[3] = seq.frames[f].boundingbox[3]
+		nice_assert (info == {}, 'unused data in %s' % infofile)
 	def get_dir_seq (self, collection, dir):
 		c = self.find_collection (collection)
 		order = {	1: (1, 4, 2, 9),
@@ -1992,6 +2141,32 @@ class Seq:
 				return c[option]
 		# There's nothing usable. Get whatever exists.
 		return c[[x for x in c if type (x) == int][0]]
+	def as_collection (self, name):
+		if not name:
+			return None
+		if type (name) == int:
+			for i in self.seq:
+				if self.seq[i].code == name:
+					return None
+			for c in self.collection:
+				for i in self.collection[c]:
+					if i not in (1,2,3,4,'die',6,7,8,9):
+						continue
+					if self.collection[c][i].code == name:
+						return c
+			raise AssertionError ('undefined numerical code %d for is_collection' % name)
+		elif type (name) == str:
+			parts = name.split ()
+			if len (parts) == 1:
+				return None
+			else:
+				if len (parts) != 2 or parts[0] not in self.collection or int (parts[1]) not in self.collection[parts[0]]:
+					return None
+				return parts[0]
+		else:
+			if name[0] not in self.collection or int (name[1]) not in self.collection[name[0]]:
+				return None
+			return name[0]
 	def find_seq (self, name):
 		if not name:
 			return None
@@ -2035,12 +2210,30 @@ class Seq:
 			return -1
 		return coll['code']
 	def save (self):
-		if True:	# TODO: This should be a check if anything is added to the defaults.
-			return
-		d = os.path.join (self.parent.root, 'seq')
-		os.mkdir (d)
-		f = open (os.path.join (d, 'info' + os.extsep + 'txt'), 'w')
-		# TODO
+		if len (self.custom_seqs) > 0:
+			d = os.path.join (self.parent.root, 'seq')
+			os.mkdir (d)
+			for s in self.custom_seqs:
+				if False:
+					f = open (os.path.join (d, 'info' + os.extsep + 'txt'), 'w')
+					#TODO
+				os.mkdir (os.path.join (d, s.name))
+				for frame in range (1, len (s.frames)):
+					open (os.path.join (d, s.name, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (c[dir].frames[frame].cache[0], 'rb').read ())
+		if len (self.custom_collections) > 0:
+			d = os.path.join (self.parent.root, 'collection')
+			os.mkdir (d)
+			for c in self.custom_collections:
+				if False:
+					f = open (os.path.join (d, 'info' + os.extsep + 'txt'), 'w')
+					#TODO
+				os.mkdir (os.path.join (d, c['name']))
+				for dir in (1,2,3,4,'die',6,7,8,9):
+					if dir not in c:
+						continue
+					os.mkdir (os.path.join (d, c['name'], str (dir)))
+					for frame in range (1, len (c[dir].frames)):
+						open (os.path.join (d, c['name'], str (dir), '%02d' % frame + os.extsep + 'png'), 'wb').write (open (c[dir].frames[frame].cache[0], 'rb').read ())
 	def build_seq (self, ini, seq):
 		if seq.preload:
 			ini.write ('// Preload\r\n')
@@ -2049,7 +2242,7 @@ class Seq:
 			now = '_now'
 		else:
 			now = ''
-		if seq.type == 'normal':
+		if seq.type in ('normal', 'foreign'):
 			if seq.position == None:
 				if seq.delay != None:
 					ini.write ('load_sequence%s %s %d %d\r\n' % (now, seq.filepath, seq.code, seq.delay))
@@ -2063,7 +2256,6 @@ class Seq:
 		else:
 			ini.write ('load_sequence%s %s %d %s\r\n' % (now, seq.filepath, seq.code, seq.type.upper ()))
 		for f in range (1, len (seq.frames)):
-			# TODO: save images.
 			if seq.frames[f].source != None:
 				ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
 			if (len (seq.frames[f].hardbox) == 4 and seq.frames[f].hardbox != seq.hardbox) or (len (seq.frames[f].position) == 2 and seq.frames[f].position != seq.position):
@@ -2076,10 +2268,23 @@ class Seq:
 			ini.write ('set_frame_frame %d %d -1\r\n' % (seq.code, len (seq.frames)))
 	def build (self, root):
 		# Write graphics/*
+		if len (self.custom_seqs) != 0 or len (self.custom_collections) != 0:
+			d = os.path.join (root, 'graphics')
+			if not os.path.exists (d):
+				os.mkdir (d)
+			cd = os.path.join (d, 'custom')
+			if not os.path.exists (cd):
+				os.mkdir (cd)
+		for i in self.custom_seqs:
+			for f in range (1, len (i.frames)):
+				convert_image (Image.open (filepart (*i.frames[f].cache))).save (os.path.join (root, 'graphics', 'custom', '%s-%02d' % (i.name, f) + os.extsep + 'bmp'))
+		for i in self.custom_collections:
+			for d in i:
+				if d not in (1,2,3,4,'die',6,7,8,9):
+					continue
+				for f in range (1, len (i[d].frames)):
+					convert_image (Image.open (filepart (*i[d].frames[f].cache))).save (os.path.join (root, 'graphics', 'custom', '%s-%02d' % (i[d].name, f) + os.extsep + 'bmp'))
 		# Write dink.ini
-		d = os.path.join (root, 'graphics')
-		if not os.path.exists (d):
-			os.mkdir (d)
 		ini = open (os.path.join (root, 'dink' + os.extsep + 'ini'), 'w')
 		for c in self.collection:
 			for s in self.collection[c]:
@@ -2089,7 +2294,25 @@ class Seq:
 		for g in self.seq:
 			self.build_seq (ini, self.seq[g])
 	def get_file (self, seq, frame):
-		return seq.frames[frame].cache + ((0, 0, 0) if seq.type == 'black' else (255, 255, 255),)
+		if seq.type == 'black':
+			alpha = (0, 0, 0)
+		elif seq.type == 'foreign':
+			alpha = None
+		else:
+			alpha = (255, 255, 255)
+		return seq.frames[frame].cache + (alpha,)
+	def rename (self, old, new):
+		for i in self.seq:
+			for f in range (1, len (self.seq[i].frames)):
+				if self.seq[i].frames[f].cache[0].startswith (old):
+					self.seq[i].frames[f].cache = (new + self.seq[i].frames[f].cache[0][len (old):], self.seq[i].frames[f].cache[1], seq[i].frames[f].cache[2])
+		for i in self.collection:
+			for d in self.collection[i]:
+				if d not in (1,2,3,4,'die',6,7,8,9):
+					continue
+				for f in range (1, len (self.collection[i][d].frames)):
+					if self.collection[i][d].frames[f].cache[0].startswith (old):
+						self.collection[i][d].frames[f].cache = (new + self.collection[i][d].frames[f].cache[0][len (old):], self.collection[i][d].frames[f].cache[1], self.collection[i][d].frames[f].cache[2])
 
 class Sound:
 	def __init__ (self, parent):
@@ -2099,40 +2322,43 @@ class Sound:
 		self.music = {}
 		if self.parent.root == None:
 			return
-		d = os.path.join (parent.root, "sound")
+		self.sounds = self.detect ('sound', ('wav',), sounds)
+		self.music = self.detect ('music', ('mid', 'ogg'), musics)
+	def detect (self, dirname, exts, initial):
+		ret = {}
+		d = os.path.join (self.parent.root, dirname)
+		codes = set ()
+		other = []
 		if os.path.exists (d):
-			ext = os.extsep + 'wav'
-			other = []
-			codes = []
 			for s in os.listdir (d):
-				if not s.endswith (ext):
+				for e in exts:
+					if s.endswith (os.extsep + e):
+						break
+				else:
 					continue
+				r = re.match ('(.*?)(-(\d+))?' + os.extsep + e + '$', s)
+				nice_assert (r, 'file %s has wrong name, must be from %s' % (s, str (exts)))
 				filename = os.path.join (d, s)
 				data = (filename, 0, os.stat (filename).st_size)
-				r = re.match ('(\d+)-', s)
-				if not r:
-					other += ((s[:-len (ext)], data),)
+				code = r.group (3)
+				if not code:
+					other += ((r.group (1), data, e),)
 				else:
-					code = int (r.group (1))
-					self.sound[s[len (r.group (0)):]] = (code, data)
+					code = int (code)
+					ret[r.group (1)] = (code, data, True, e)
 					nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
-					codes += (code,)
-			i = 1
-			for s in other:
-				while i in codes:
-					i += 1
-				self.sound[s[0]] = (i, s[1])
+					codes.add (code)
+		for i in initial:
+			if initial[i][0] not in codes:
+				ret[i] = (initial[i][0], initial[i][1], False, initial[i][2])
+				codes.add (initial[i][0])
+		i = 1
+		for s in other:
+			while i in codes:
 				i += 1
-		d = os.path.join (parent.root, "music")
-		if os.path.exists (d):
-			code = 1
-			ext = os.extsep + 'mid'
-			for s in os.listdir (d):
-				if not s.endswith (ext):
-					continue
-				filename = os.path.join (d, s)
-				self.music[s[:-len (ext)]] = (code, (filename, 0, os.stat (filename).st_size))
-				code += 1
+			ret[s[0]] = (i, s[1], True, s[2])
+			i += 1
+		return ret
 	def find_sound (self, name):
 		"""Find wav file with given name. Return 0 for empty string, raise exception for not found"""
 		if name == '':
@@ -2145,25 +2371,29 @@ class Sound:
 		nice_assert (name in self.music, 'reference to undefined music %s' % name)
 		return self.music[name][0]
 	def save (self):
-		if len (self.sound) > 0:
+		if len ([1 for x in self.sound if self.sound[x][2]]) > 0:
 			d = os.path.join (self.parent.root, "sound")
 			os.mkdir (d)
 			for i in self.sound:
+				if not self.sound[i][2]:
+					continue
 				data = filepart (*self.sound[i][1]).read ()
-				open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + 'wav'), 'wb').write (data)
-		if len (self.music) > 0:
+				open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + self.sound[i][3]), 'wb').write (data)
+		if len ([x for x in self.music if self.music[x][2]]) > 0:
 			d = os.path.join (self.parent.root, "music")
 			os.mkdir (d)
 			for i in self.music:
+				if not self.music[i][2]:
+					continue
 				data = filepart (*self.music[i][1]).read ()
-				open (os.path.join (d, i + os.extsep + 'mid'), 'wb').write (data)
+				open (os.path.join (d, '%s-%d' % (i, self.music[i][0]) + os.extsep + self.music[i][3]), 'wb').write (data)
 	def rename (self, old, new):
 		for i in self.sound:
-			if self.sound[i][1][0].startswith (old):
-				self.sound[i] = (self.sound[i][0], (new + self.sound[i][1][len (old):], self.sound[i][1][1], self.sound[i][1][2]))
+			if self.sound[i][2] and self.sound[i][1][0].startswith (old):
+				self.sound[i] = (self.sound[i][0], (new + self.sound[i][1][0][len (old):], self.sound[i][1][1], self.sound[i][1][2]), self.sound[i][2], self.sound[i][3])
 		for i in self.music:
-			if self.music[i][1][0].startswith (old):
-				self.music[i] = (self.music[i][0], (new + self.music[i][1][len (old):], self.music[i][1][1], self.music[i][1][2]))
+			if self.music[i][2] and self.music[i][1][0].startswith (old):
+				self.music[i] = (self.music[i][0], (new + self.music[i][1][0][len (old):], self.music[i][1][1], self.music[i][1][2]), self.music[i][2], self.music[i][3])
 	def build (self, root):
 		# Write sound/*
 		dst = os.path.join (root, 'sound')
@@ -2171,13 +2401,15 @@ class Sound:
 			os.mkdir (dst)
 		src = os.path.join (self.parent.root, 'sound')
 		for s in self.sound:
-			if self.sound[s][1] == '':
+			if not self.sound[s][2]:
 				continue
-			open (os.join (dst, s + os.extsep + 'wav'), 'wb').write (self.sound[s][1])
+			data = filepart (*self.sound[s][1]).read ()
+			open (os.path.join (dst, s + os.extsep + self.sound[s][3]), 'wb').write (data)
 		for s in self.music:
-			if self.music[s][1] == '':
+			if not self.music[s][2]:
 				continue
-			open (os.join (dst, str (self.music[s][0]) + os.extsep + 'mid'), 'wb').write (self.music[s][1])
+			data = filepart (*self.music[s][1]).read ()
+			open (os.path.join (dst, str (self.music[s][0]) + os.extsep + self.music[s][3]), 'wb').write (data)
 
 class Script:
 	def __init__ (self, parent):
@@ -2364,63 +2596,14 @@ class Script:
 		# Write start.c
 		s = open (os.path.join (d, 'start' + os.extsep + 'c'), 'w')
 		s.write ('void main ()\r\n{\r\n')
-		for n, snd in zip (range (len (self.parent.sound.sound)), self.parent.sound.sound):
-			s.write ('\tload_sound ("%s.wav", %d);\r\n' % (snd, n))
+		for snd in self.parent.sound.sound:
+			s.write ('\tload_sound("%s.wav", %d);\r\n' % (snd, self.parent.sound.sound[snd][0]))
 		s.write ('\tset_dink_speed (3);\r\n\tsp_frame_delay (1,0);\r\n')
 		if self.title_bg != '':
 			s.write ('\tcopy_bmp_to_screen ("%s");\r\n' % self.title_bg)
 		else:
 			s.write ('\tfill_screen (%d);\r\n' % self.title_color)
 		s.write ('''\
-	load_sound("QUACK.WAV", 1);\r
-	load_sound("PIG1.WAV", 2);\r
-	load_sound("PIG2.WAV", 3);\r
-	load_sound("PIG3.WAV", 4);\r
-	load_sound("PIG4.WAV", 5);\r
-	load_sound("BURN.WAV", 6);\r
-	load_sound("OPEN.WAV", 7);\r
-	load_sound("SWING.WAV", 8);\r
-	load_sound("PUNCH.WAV", 9);\r
-	load_sound("SWORD2.WAV", 10);\r
-	load_sound("SELECT.WAV", 11);\r
-	load_sound("WSCREAM.WAV", 12);\r
-	load_sound("PICKER.WAV", 13);\r
-	load_sound("GOLD.WAV", 14);\r
-	load_sound("GRUNT1.WAV", 15);\r
-	load_sound("GRUNT2.WAV", 16);\r
-	load_sound("SEL1.WAV", 17);\r
-	load_sound("ESCAPE.WAV", 18);\r
-	load_sound("NONO.WAV", 19);\r
-	load_sound("SEL2.WAV", 20);\r
-	load_sound("SEL3.WAV", 21);\r
-	load_sound("HIGH2.WAV", 22);\r
-	load_sound("FIRE.WAV", 23);\r
-	load_sound("SPELL1.WAV", 24);\r
-	load_sound("CAVEENT.WAV", 25);\r
-	load_sound("SNARL1.WAV", 26);\r
-	load_sound("SNARL2.WAV", 27);\r
-	load_sound("SNARL3.WAV", 28);\r
-	load_sound("HURT1.WAV", 29);\r
-	load_sound("HURT2.WAV", 30);\r
-	load_sound("ATTACK1.WAV", 31);\r
-	load_sound("CAVEENT.WAV", 32);\r
-	load_sound("LEVEL.WAV", 33);\r
-	load_sound("SAVE.WAV", 34);\r
-	load_sound("SPLASH.WAV", 35);\r
-	load_sound("SWORD1.WAV", 36);\r
-	load_sound("BHIT.WAV", 37);\r
-	load_sound("SQUISH.WAV", 38);\r
-	load_sound("STAIRS.WAV", 39);\r
-	load_sound("STEPS.WAV", 40);\r
-	load_sound("ARROW.WAV", 41);\r
-	load_sound("FLYBY.WAV", 42);\r
-	load_sound("SECRET.WAV", 43);\r
-	load_sound("BOW1.WAV", 44);\r
-	load_sound("KNOCK.WAV", 45);\r
-	load_sound("DRAG1.WAV", 46);\r
-	load_sound("DRAG2.WAV", 47);\r
-	load_sound("AXE.WAV", 48);\r
-	load_sound("BIRD1.WAV", 49);\r
 	sp_seq (1, 0);\r
 	sp_brain (1, 13);\r
 	sp_pseq (1, %d);\r
@@ -2545,9 +2728,9 @@ file (info.txt).
 ''')
 		self.image = Images (self)
 		self.tile = Tile (self)
-		self.world = World (self)
 		self.seq = Seq (self)
 		self.sound = Sound (self)
+		self.world = World (self)
 		self.script = Script (self)
 		if root == None:
 			self.info = ''
@@ -2592,6 +2775,7 @@ file (info.txt).
 		self.image.rename (old, new)
 		self.tile.rename (old, new)
 		self.sound.rename (old, new)
+		self.seq.rename (old, new)
 	def build (self, root):
 		if not os.path.exists (root):
 			os.mkdir (root)

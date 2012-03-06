@@ -140,7 +140,6 @@ class View (gtk.DrawingArea):
 		ret.set_line_attributes (1, gtk.gdk.LINE_SOLID, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
 		return ret
 	def start (self, widget):
-		self.realize ()
 		if View.started != None:
 			View.update (self)
 			return
@@ -2040,6 +2039,7 @@ the_gui.new_sprite = new_sprite
 the_gui.edit_screen_script = edit_screen_script
 the_gui.edit_screen_hardness = edit_screen_hardness
 the_gui.edit_script = edit_script
+the_gui.set_music_list = keylist (data.sound.music, lambda x: x)
 the_gui ()
 
 for s in data.script.data:

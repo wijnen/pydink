@@ -214,22 +214,6 @@ startme1 197 none none nohard
 startme3 198 none none nohard
 startme7 199 none none nohard
 startme9 200 none none nohard
-redmaidendie 225 mark none nohard
-brownmaidendie 245 mark none nohard
-bluemaidendie 255 mark none nohard
-redknightdie 275 mark none nohard
-blueknightdie 285 mark none nohard
-silverknightdie 295 mark none nohard
-goldknightdie 305 mark none nohard
-girldie 335 mark none nohard
-merchantdie 345 mark none nohard
-momdie 355 mark none nohard
-brownmomdie 365 mark none nohard
-bluemerchantdie 375 mark none nohard
-greenmerchantdie 385 mark none nohard
-purplemerchantdie 395 mark none nohard
-soldierdie 405 mark none nohard
-peasantdie 415 mark none nohard
 bomb 420 none none nohard
 food 421 none none hard
 paper 422 none none hard
@@ -271,12 +255,59 @@ lab 460 none none hard
 chair 461 none none hard
 poster 462 none none hard
 grain 463 none none hard
-horngoblinattackswing 780 repeat none nohard
-slayerdie 645 mark none nohard
-hammergoblindie 765 mark none nohard
-horngoblindie 785 mark none nohard
-goblindie 805 mark none nohard
-giantdie 825 mark none nohard'''.split ('\n')]
+horngoblinattackswing 780 repeat none nohard'''.split ('\n')]
+
+soundnames = '''
+quack
+pig1
+pig2
+pig3
+pig4
+burn
+open
+swing
+punch
+sword2
+select
+wscream
+picker
+gold
+grunt1
+grunt2
+sel1
+escape
+nono
+sel2
+sel3
+high2
+fire
+spell1
+caveent
+snarl1
+snarl2
+snarl3
+hurt1
+hurt2
+attack1
+caveent
+level
+save
+splash
+sword1
+bhit
+squish
+stairs
+steps
+arrow
+flyby
+secret
+bow1
+knock
+drag1
+drag2
+axe
+bird1
+'''.split ()
 
 def read_lsb (f):
 	ret = 0
@@ -294,15 +325,19 @@ def buildtree (d):
 			ret[l.lower ()] = (l,)
 	return ret
 dinktree = buildtree (dinkconfig.dinkdir)
-# Load a file from dinkdir.
-def loaddinkfile (f):
-	f = f.replace ('\\', os.sep).split (os.sep)
+# Get real path from dinkdir.
+def makedinkpath (f):
+	f = f.split ('\\')
 	p = dinkconfig.dinkdir
 	walk = dinktree
 	for i in f[:-1]:
 		branch = walk[i]
 		p = os.path.join (p, branch[0])
 		walk = branch[1]
+	return p, walk, f
+# Load a file from dinkdir.
+def loaddinkfile (f):
+	p, walk, f = makedinkpath (f)
 	if f[-1] in walk:
 		path = os.path.join (p, walk[f[-1]][0])
 		ret = open (os.path.join (p, walk[f[-1]][0]), 'rb')
@@ -381,7 +416,7 @@ for n in range (41):
 
 # read dink.ini; make a list of sequences and sequence collections using the name list at the start.
 # Result is a list of collections and a list of sequences.
-# A collection has 10 members, which can be None or a sequence. (0 and 5 are always None.)
+# A collection has 10 members, which can be None or a sequence. (0 is always None.)
 # Sequence and Frame members are described below.
 
 def use (seq, f):
@@ -399,7 +434,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 	elif l[0] == 'load_sequence' or l[0] == 'load_sequence_now':
 		if l == ['load_sequence_now', 'graphics\dink\push\ds-p6-', '316', '75', '67', '71', '-21', '-12', '21']:
 			# Bug in original dink.ini.
-			print 'Setting sprite info for 316 with extra number, because the source is missing it.'
+			sys.stderr.write ('(ignore) warning: setting sprite info for 316 with extra number, because the source is missing it.\n')
 			l = ['load_sequence_now', 'graphics\dink\push\ds-p6-', '316', '75', '67', '71', '-21', '-12', '21', '6']
 		s = int (l[2])
 		if s in sequence_codes:
@@ -419,7 +454,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		elif len (l) == 4:
 			# Ignore bug in original source.
 			if l[3] == 'notanin':
-				print 'changing "notanin" into "notanim".'
+				sys.stderr.write ('(ignore) warning: changing "notanin" into "notanim".\n')
 				l[3] = 'notanim'
 			if l[3] == 'black' or l[3] == 'notanim' or l[3] == 'leftalign':
 				sequence_codes[s].type = l[3]
@@ -430,7 +465,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 			assert l[4] == 'black' or l[4] == 'notanim' or l[4] == 'leftalign'
 			sequence_codes[s].type = l[4]
 		elif len (l) == 9:
-			print 'warning: no delay in', l
+			sys.stderr.write ('(ignore) warning: no delay in %s.\n' % l)
 			sequence_codes[s].position = [int (x) for x in l[3:5]]
 			sequence_codes[s].hardbox = [int (x) for x in l[5:9]]
 		elif len (l) == 10:
@@ -442,7 +477,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 	elif l[0] == 'set_sprite_info':
 		if l == ['set_sprite_info', '31', '26', '49', '99', '-49', '-10', '51']:
 			# Bug in original dink.ini.
-			print 'Setting sprite info for 31 18, because the source is missing the frame.'
+			sys.stderr.write ('(ignore) warning: setting sprite info for 31 18, because the source is missing the frame.\n')
 			l = ['set_sprite_info', '31', '18', '26', '49', '99', '-49', '-10', '51']
 		assert len (l) == 9
 		s = int (l[1])
@@ -462,7 +497,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 			sequence_codes[s].frames = []
 		#use (sequence_codes[s], f)
 		if len (sequence_codes[s].frames) <= f:
-			print 'warning: not using frame delay, because %d %d was not defined yet.' % (s, f)
+			sys.stderr.write ('(ignore) warning: not using frame delay, because %d %d was not defined yet.\n' % (s, f))
 		else:
 			sequence_codes[s].frames[f].delay =  int (l[3])
 	elif l[0] == 'set_frame_frame':
@@ -476,10 +511,10 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 			sequence_codes[s].frames[f].source = (int (l[3]), int (l[4]))
 			# Fix yet another bug in original dink.ini
 			if sequence_codes[s].frames[f].source == (82, 3):
-				print 'Using 83 3 instead of 82 3 because of bug in original source'
+				sys.stderr.write ('(ignore) warning: using 83 3 instead of 82 3 because of bug in original source.\n')
 				sequence_codes[s].frames[f].source = (83, 3)
 			if sequence_codes[s].frames[f].source == (82, 2):
-				print 'Using 83 2 instead of 82 2 because of bug in original source'
+				sys.stderr.write ('(ignore) warning: using 83 2 instead of 82 2 because of bug in original source.\n')
 				sequence_codes[s].frames[f].source = (83, 2)
 		else:
 			assert len (l) == 4 and int (l[3]) == -1
@@ -494,8 +529,7 @@ for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		use (sequence_codes[s], f)
 		sequence_codes[s].special = f
 	else:
-		print l
-		raise AssertionError ('invalid line in dink.ini')
+		raise AssertionError ('Error: invalid line in dink.ini: %s' % l)
 
 # A sequence has members:
 #	frames, list with members:
@@ -597,14 +631,19 @@ codes = set ()
 collections = {}
 for c in collection_names:
 	collections[c[0]] = {}
-	for d in (4,7,8,9,6,3,2,1):
+	for d in (1,2,3,4,5,6,7,8,9):
+		# Seth decided that it would be a good idea to use the death position of duck and walk for other things. :-(
+		if d is 5 and c[1] in (20, 70):
+			continue
 		codes.add (c[1] + d)
 		if c[1] + d not in sequence_codes:
 			continue
-		collections[c[0]][d] = sequence_codes[c[1] + d]
-		collections[c[0]][d].name = (c[0], d)
+		name = d if d != 5 else 'die'
+		collections[c[0]][name] = sequence_codes[c[1] + d]
+		collections[c[0]][name].name = (c[0], name)
 		del sequence_codes[c[1] + d]
 	assert collections[c[0]] != {}
+	collections[c[0]]['name'] = c[0]
 	collections[c[0]]['code'] = c[1]
 	collections[c[0]]['brain'] = c[2]
 	collections[c[0]]['script'] = '' if c[3] == 'none' else c[3]
@@ -624,4 +663,36 @@ for s in sequence_names:
 
 assert sequence_codes == {}
 
-pickle.dump ((tilefiles, collections, sequences, codes), open (os.path.join (savedir, 'data'), 'w'))
+p = makedinkpath ('dink\\sound\\')[0]
+musics = {}
+musiccodes = set ()
+other = []
+for i in os.listdir (p):
+	root, ext = os.path.splitext (i)
+	if ext.startswith (os.extsep):
+		ext = ext[1:]
+	if ext.lower () not in ('ogg', 'mid'):
+		continue
+	f, c = loaddinkfile ('dink\\sound\\' + i + '.' + ext)
+	r = re.match (r'\d+$', root)
+	if r:
+		r = int (r.group (0))
+		musics[root] = (r, c, ext)
+		musiccodes.add (r)
+	else:
+		other += ((root, c, ext),)
+nextcode = 1
+for i in other:
+	while nextcode in musiccodes:
+		nextcode += 1
+	musics[i[0]] = (nextcode, i[1], i[2])
+	nextcode += 1
+
+sounds = {}
+for i in range (len (soundnames)):
+	f, c = loaddinkfile ('dink\\sound\\' + soundnames[i] + '.wav')
+	if c == None:
+		sys.stderr.write ("(ignore) warning: sound file %s doesn't exist.\n" % soundnames[i])
+	sounds[soundnames[i]] = (i + 1, c, 'wav')
+
+pickle.dump ((tilefiles, collections, sequences, codes, musics, sounds), open (os.path.join (savedir, 'data'), 'w'))
