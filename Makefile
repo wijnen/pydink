@@ -14,10 +14,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-all: pde.gui
+all: pde.py.gui
 	./pde
 
-%.dmod: pde pde.gui
+%.dmod: pde pde.py.gui
 	./pde $(subst .dmod,,$@)
 
 %: %.in
