@@ -21,18 +21,19 @@ import os
 import PIL.Image
 import dink
 
-def dinkexists (path):
-	# TODO: case insensitive check on all directories
-	d = os.path.dirname (path)
-	if not os.path.exists (d):
-		return None
-	l = [p for p in os.listdir (d) if p.lower () == os.path.basename (path.lower ())]
-	if len (l) == 1:
-		return os.path.join (d, l[0])
-	return None
+def dinkexists (dinkpath, path):
+	# Case insensitive check on all directories
+	p = path.split ('\\')
+	path = dinkpath
+	for d in p:
+		l = [x for x in os.listdir (path) if x.lower () == d.lower ()]
+		if len (l) != 1:
+			return None
+		path = os.path.join (path, l[0])
+	return path
 
-def dinkopen (path, mode):
-	p = dinkexists (path)
+def dinkopen (dinkpath, path, mode):
+	p = dinkexists (dinkpath, path)
 	assert p
 	return open (p, mode)
 
@@ -50,7 +51,7 @@ def clean (s):
 	return s[:s.find ('\0')]
 
 def seq_name (code, target):
-	if code == 0:
+	if code <= 0:
 		return ''
 	for i in target.seq.seq:
 		if target.seq.seq[i].code == code:
@@ -208,13 +209,19 @@ def read_screen (f, target):
 #	for i in range (size):
 #		self.mapping[i] = read_int (f)
 
+def read_graphics (path, target):
+	# TODO: read custom graphics; use dinkini.py
+	ini = [x.split () for x in dinkopen (path, 'dink.ini').readlines () if len (x.split ()) != 0]
+
 def read_all (path):
 	"""Read all data"""
 	target = dink.Dink (None)
-	#f = dinkopen (os.path.join (path, 'hard.dat'), 'rb')
+	read_graphics (target)
+	# TODO: read custom sound
+	#f = dinkopen (path, 'hard.dat', 'rb')
 	#self.hard = read_hard (f)
 	#f.close ()
-	f = dinkopen (os.path.join (path, 'dink' + os.extsep + 'dat'), 'rb')
+	f = dinkopen (path, 'dink.dat', 'rb')
 	f.seek (20)
 	screens = []
 	for s in range (768):
@@ -224,8 +231,7 @@ def read_all (path):
 			screens[s][a] = read_int (f)
 		read_int (f)
 	f.close ()
-	f = dinkopen (os.path.join (path, 'map' + os.extsep + 'dat'), 'rb')
-	target.screen = []
+	f = dinkopen (path, 'map.dat', 'rb')
 	for s in range (len (screens)):
 		if screens[s][0] == 0:
 			continue
@@ -235,13 +241,13 @@ def read_all (path):
 		room.music = music_name (screens[s][1], target)
 		room.indoor = screens[s][2] != 0
 		target.world.room[screens[s][0]] = room
-	target.info = dinkopen (os.path.join (path, 'dmod' + os.extsep + 'diz'), 'rb').read ()
-	p = os.path.join (path, 'preview' + os.extsep + 'bmp')
-	if dinkexists (p):
-		target.preview = PIL.Image.open (p)
-	p = os.path.join (path, 'tiles', 'splash' + os.extsep + 'bmp')
-	if dinkexists (p):
-		target.splash = PIL.Image.open (p)
+	target.info = dinkopen (path, 'dmod.diz', 'rb').read ()
+	p = dinkexists (path, 'preview.bmp'))
+	if p:
+		target.preview = (p, 0, os.stat (p).st_size)
+	p = dinkexists (path, 'tiles\\splash.bmp')
+	if p:
+		target.splash = (p, 0, os.stat (p).st_size)
 	return target
 
 assert len (sys.argv) == 3
