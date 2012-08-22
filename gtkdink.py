@@ -1,5 +1,7 @@
 # gtk stuff for dink, used by editor and player.
+# vim: set fileencoding=utf-8 foldmethod=marker:
 
+# {{{ Copyright header
 # gtkdink.py - library for gtk parts of using pydink games.
 # Copyright 2011 Bas Wijnen
 # 
@@ -15,11 +17,13 @@
 # 
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+# }}}
+# {{{ Imports
 import dink
 import gtk
+# }}}
 
-class GtkDink (dink.Dink):
+class GtkDink (dink.Dink): # {{{
 	def __init__ (self, root, scale):
 		dink.Dink.__init__ (self, root)
 		self.colors = ['black', 'dark blue', 'light green', 'cyan', 'orange', 'lavender', '#cc7722', 'light grey', 'dark grey', 'sky blue', 'green', 'yellow', 'yellow', 'pink', 'yellow', 'white']
@@ -127,3 +131,4 @@ class GtkDink (dink.Dink):
 		if file[3] != None:
 			pb = pb.add_alpha (*((True,) + file[3]))
 		return pb
+# }}}

@@ -389,11 +389,6 @@ def read_hard ():
 		junk, tilefiles[n] = loaddinkfile ('tiles\\ts%02d.bmp' % (n + 1))
 	return data, defaults, tilefiles
 
-# read dink.ini; make a list of sequences and sequence collections using the name list at the start.
-# Result is a list of collections and a list of sequences.
-# A collection has 10 members, which can be None or a sequence. (0 is always None.)
-# Sequence and Frame members are described below.
-
 def use (seq, f):
 	if len (seq.frames) == 0:
 		seq.frames += (None,)
@@ -430,6 +425,10 @@ def set_custom (cols, seqs):
 		#TODO
 		pass
 
+# read dink.ini; make a list of sequences and sequence collections using the name list at the start.
+# Result is a list of collections and a list of sequences.
+# A collection has 10 members, which can be None or a sequence. (0 is always None.)
+# Sequence and Frame members are described below.
 def read_ini ():
 	dinkini, junk = loaddinkfile ('dink.ini')
 	for l in [y.lower ().split () for y in dinkini.readlines ()]:
