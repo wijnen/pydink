@@ -773,8 +773,8 @@ class ViewMap (View): # {{{
 				screenzoom = self.moveinfo[2][2]
 				data.set_scale (screenzoom)
 				for s in range (len (spriteselect)):
-					spr = s[0]
-					if s[1]:
+					spr = spriteselect[s][0]
+					if spriteselect[s][1]:
 						spr.warp = self.moveinfo[2][s][1]
 					else:
 						spr.x, spr.y = self.moveinfo[2][1][s][0]

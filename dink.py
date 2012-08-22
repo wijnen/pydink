@@ -1591,9 +1591,10 @@ class World: #{{{
 			while s in self.sprite:
 				s = base + '-%d' % i
 				i += 1
-			self.sprite[s] = Sprite (self.parent, world = self)
-			self.sprite[s].bg = is_bg
-			info = self.sprite[s].read (info, base, world = self)
+			spr = Sprite (self.parent, world = self, name = s)
+			self.sprite.add (spr)
+			spr.bg = is_bg
+			info = spr.read (info, base, world = self)
 			nice_assert (info == {}, 'unused data for sprite %s' % s)
 	def save (self):
 		os.mkdir (os.path.join (self.parent.root, 'world'))
