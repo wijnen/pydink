@@ -68,6 +68,8 @@ class GtkDink (dink.Dink): # {{{
 				self.cache_add ('t', num, None)
 				return None
 			pb = self.load_pixbuf (t)
+			if not pb:
+				return None
 			tile = gtk.gdk.Pixmap (self.window, pb.get_width (), pb.get_height ())
 			tile.draw_pixbuf (self.gc, pb, 0, 0, 0, 0)
 			self.cache_add ('t', num, tile)
@@ -103,7 +105,7 @@ class GtkDink (dink.Dink): # {{{
 		t = y - seq.position[1] - y_compat
 		r = l + w * size / 100
 		b = t + h * size / 100
-		if box[0] != 0 or box[1] != 0 or box[2] != 0:
+		if box[0] != 0 or box[1] != 0 or box[2] != 0 or box[3] != 0:
 			box = list (box)
 			if box[0] > w:
 				box[0] = w
@@ -119,7 +121,7 @@ class GtkDink (dink.Dink): # {{{
 			b += box[3] - h
 			bx = box
 		else:
-			bx = None
+			bx = [0, 0, w, h]
 		return (x, y), (l, t, r, b), bx
 	def load_pixbuf (self, file):
 		pbl = gtk.gdk.PixbufLoader ()
@@ -127,6 +129,10 @@ class GtkDink (dink.Dink): # {{{
 		pbl.close ()
 		pb = pbl.get_pixbuf ()
 		if self.scale != 50:
+			w = pb.get_width () * self.scale / 50
+			h = pb.get_height () * self.scale / 50
+			if h <= 0 or w <= 0:
+				return None
 			pb = pb.scale_simple (pb.get_width () * self.scale / 50, pb.get_height () * self.scale / 50, gtk.gdk.INTERP_NEAREST)
 		if file[3] != None:
 			pb = pb.add_alpha (*((True,) + file[3]))

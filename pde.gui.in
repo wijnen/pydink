@@ -15,138 +15,138 @@ gtk
 	Set name=white-gc value="white"
 	Window title="Python Dink Editor"
 		Notebook show_tabs=:False
-			Table columns=2 setpage=setmap
-				External id=viewmap
-				VBox x-options=: bottom=:2
-					Notebook show_tabs=:True
-						VBox set_label=:Main
-							Frame label=:Main
-								Table columns=2
-									'Name
-									Entry changed=update set=set_name value=get_name
-									'Brain
-									ComboBoxText changed=update set=set_brain value=get_brain
-										'none
-										'dink
-										'bounce
-										'duck
-										'pig
-										'mark
-										'repeat
-										'play
-										'text
-										'monster
-										'rook
-										'missile
-										'resize
-										'pointer
-										'button
-										'shadow
-										'person
-										'flare
-									'Script
-									HBox
-										Entry changed=update set=set_script value=get_script
-										Button clicked=edit_script
-											'Edit
-							Frame label=:Presentation
-								Table columns=2
-									'Type
-									ComboBoxText changed=update set=set_type:Normal value=get_type
-										'Background
-										'Normal
-										'Invisible
-									'Vision
-									SpinButton range=:0,255 value-changed=update set=set_vision value=get_vision
-									'Speed
-									SpinButton range=:0,255 value-changed=update set=set_speed:1 value=get_speed
-									'Timer
-									SpinButton range=:0,255 value-changed=update set=set_timing:33 value=get_timing
-									'Sound
-									Entry changed=update set=set_sound value=get_sound
-							Frame label=:Combat
-								Table columns=2
-									'Hitpoints
-									SpinButton range=:0,10000 value-changed=update set=set_hitpoints value=get_hitpoints
-									'Strength
-									SpinButton range=:0,10000 value-changed=update set=set_strength value=get_strength
-									'Defense
-									SpinButton range=:0,10000 value-changed=update set=set_defense value=get_defense
-									'Experience
-									SpinButton range=:0,10000 value-changed=update set=set_exp value=get_exp
-									'Touch damage
-									SpinButton range=:-1,10000 value-changed=update set=set_touchdamage value=get_touchdamage
-									CheckButton right=:2 toggled=update set=set_nohit value=get_nohit
-										'Nohit
-									'Gold
-									SpinButton range=:-100000,100000 value-changed=update set=set_gold value=get_gold
-						Frame label=:Extra set_label=:Extra
-							Table columns=2
-								'X
-								SpinButton range=:0,640 value-changed=update set=set_x value=get_x
-								'Y
-								SpinButton range=:0,400 value-changed=update set=set_y value=get_y
-								'Sequence
-								Entry changed=update set=set_seq value=get_seq
-								'Frame
-								SpinButton range=:1,100 value-changed=update set=set_frame value=get_frame
-								'Size
-								SpinButton range=:0,1000 value-changed=update set=set_size:100 value=get_size
-								'Que
-								SpinButton range=:-10000,10000 value-changed=update set=set_que value=get_que
-								'Walk
-								Entry changed=update set=set_basewalk value=get_basewalk
-								'Idle
-								Entry changed=update set=set_baseidle value=get_baseidle
-								'Attack
-								Entry changed=update set=set_baseattack value=get_baseattack
-								'Die
-								Entry changed=update set=set_basedeath value=get_basedeath
-						Frame label=:Warp/box set_label=:Warp/box
-							Table columns=2
-								CheckButton right=:2 value=get_warp set=set_warp toggled=update
-									'Enable warp
-								'Screen
-								SpinButton range=:1,768 value-changed=update set=set_warpscreen value=get_warpscreen
-								'X
-								SpinButton range=:0,640 value-changed=update set=set_warpx value=get_warpx
-								'Y
-								SpinButton range=:0,400 value-changed=update set=set_warpy value=get_warpy
-								'Touch seq
-								Entry changed=update set=set_touchseq value=get_touchseq
-								CheckButton right=:2 toggled=update set=set_ishard value=get_ishard
-									'Is hard
-								CheckButton right=:2 toggled=update set=set_crop value=get_crop
-									'Crop
-								'Left
-								SpinButton range=:-640,640 value-changed=update set=set_left value=get_left
-								'Top
-								SpinButton range=:-400,400 value-changed=update set=set_top value=get_top
-								'Right
-								SpinButton range=:-640,640 value-changed=update set=set_right value=get_right
-								'Bottom
-								SpinButton range=:-400,400 value-changed=update set=set_bottom value=get_bottom
-				Frame label=:Screen y-options=:
-					Table columns=6
-						'Screen
-						SpinButton range=:1,768 value-changed=new_screen value=get_screen set=set_screen
-						'Hardness
-						HBox
-							Entry changed=update value=get_screen_hardness set=set_screen_hardness
-							Button clicked=edit_screen_hardness
-								'Edit
-						'Script
-						HBox
-							Entry changed=update value=get_screen_script set=set_screen_script
-							Button clicked=edit_screen_script
-								'Edit
-						'Music
-						ComboBoxText changed=update value=get_screen_music set=set_screen_music content=set_music_list
-						CheckButton right=:4 value=get_indoor set=set_indoor toggled=update
-							'Indoor
-						'Sprite
-						ComboBoxText changed=new_sprite set=set_sprite value=get_sprite content=set_spritelist
+			HBox setpage=setmap
+				Notebook show_tabs=:False
+					External id=viewmap setpage=setmap2
+					External id=viewworld setpage=setworld
+				Notebook show_tabs=:True switch_page=set_mode expand=:False
+					VBox set_label=:Sprite name=sprite_num setpage=set_sprite_edit
+						CheckButton toggled=update_sprite value=get_edit_bg expand=:False
+							'Edit background sprites
+						ComboBoxText changed=new_sprite set=set_sprite value=get_sprite content=set_spritelist expand=:False
+						Notebook show_tabs=:True expand=:False
+							VBox set_label=:Main
+								Frame label=:Main expand=:False
+									Table columns=2
+										'Name
+										Entry changed=update_sprite set=set_name value=get_name
+										'Brain
+										ComboBoxText changed=update_sprite set=set_brain value=get_brain
+											'none
+											'dink
+											'bounce
+											'duck
+											'pig
+											'mark
+											'repeat
+											'play
+											'text
+											'monster
+											'rook
+											'missile
+											'resize
+											'pointer
+											'button
+											'shadow
+											'person
+											'flare
+										'Script
+										HBox
+											Entry changed=update_sprite set=set_script value=get_script
+											Button clicked=edit_script
+												'Edit
+								Frame label=:Presentation expand=:False
+									Table columns=2
+										CheckButton right=:2 toggled=update_sprite set=set_visible value=get_visible
+											'Visible
+										'Vision
+										SpinButton range=:0,255 value-changed=update_sprite set=set_vision value=get_vision
+										'Speed
+										SpinButton range=:0,255 value-changed=update_sprite set=set_speed:1 value=get_speed
+										'Timing
+										SpinButton range=:0,255 value-changed=update_sprite set=set_timing:33 value=get_timing
+										'Sound
+										ComboBoxText changed=update_sprite set=set_sound content=set_sounds_list value=get_sound
+								Frame label=:Combat expand=:False
+									Table columns=2
+										'Hitpoints
+										SpinButton range=:0,10000 value-changed=update_sprite set=set_hitpoints value=get_hitpoints
+										'Strength
+										SpinButton range=:0,10000 value-changed=update_sprite set=set_strength value=get_strength
+										'Defense
+										SpinButton range=:0,10000 value-changed=update_sprite set=set_defense value=get_defense
+										'Experience
+										SpinButton range=:0,10000 value-changed=update_sprite set=set_exp value=get_exp
+										'Touch damage
+										SpinButton range=:-1,10000 value-changed=update_sprite set=set_touchdamage value=get_touchdamage
+										CheckButton right=:2 toggled=update_sprite set=set_nohit value=get_nohit
+											'Nohit
+										'Gold
+										SpinButton range=:-100000,100000 value-changed=update_sprite set=set_gold value=get_gold
+							VBox set_label=:Extra
+								Table columns=2 expand=:False
+									'X
+									SpinButton range=:-1000000,1000000 value-changed=update_sprite set=set_x value=get_x
+									'Y
+									SpinButton range=:-1000000,1000000 value-changed=update_sprite set=set_y value=get_y
+									'Sequence
+									ComboBoxText changed=update_sprite set=set_seq value=get_seq content=set_seq_list
+									'Frame
+									SpinButton range=set_num_frames:1,100 value-changed=update_sprite set=set_frame:1 value=get_frame
+									'Size
+									SpinButton range=:0,1000 value-changed=update_sprite set=set_size:100 value=get_size
+									'Que
+									SpinButton range=:-10000,10000 value-changed=update_sprite set=set_que value=get_que
+									'Walk
+									ComboBoxText changed=update_sprite set=set_basewalk value=get_basewalk content=set_walk_list
+									'Idle
+									ComboBoxText changed=update_sprite set=set_baseidle value=get_baseidle content=set_idle_list
+									'Attack
+									ComboBoxText changed=update_sprite set=set_baseattack value=get_baseattack content=set_attack_list
+									'Die
+									ComboBoxText changed=update_sprite set=set_basedeath value=get_basedeath content=set_death_list
+							VBox set_label=:Warp/box
+								Table columns=2 expand=:False
+									CheckButton right=:2 value=get_warp set=set_warp toggled=update_sprite
+										'Enable warp
+									'Screen
+									SpinButton range=:1,768 value-changed=update_sprite set=set_warpscreen value=get_warpscreen
+									'X
+									SpinButton range=:20,620 value-changed=update_sprite set=set_warpx value=get_warpx
+									'Y
+									SpinButton range=:0,400 value-changed=update_sprite set=set_warpy value=get_warpy
+									'Touch seq
+									ComboBoxText changed=update_sprite set=set_touchseq value=get_touchseq content=set_touch_list
+									CheckButton right=:2 toggled=update_sprite set=set_ishard value=get_ishard
+										'Is hard
+									CheckButton right=:2 toggled=update_sprite set=set_crop value=get_crop
+										'Crop
+									'Left
+									SpinButton range=:-640,640 value-changed=update_sprite set=set_left value=get_left
+									'Top
+									SpinButton range=:-400,400 value-changed=update_sprite set=set_top value=get_top
+									'Right
+									SpinButton range=:-640,640 value-changed=update_sprite set=set_right value=get_right
+									'Bottom
+									SpinButton range=:-400,400 value-changed=update_sprite set=set_bottom value=get_bottom
+					Label name=tiles_num set_label=:Tiles value=":There are no settings for tile editing" setpage=set_tile_edit
+					VBox set_label=:Screen name=screen_num setpage=set_screen_edit
+						Table columns=2 expand=:False
+							ComboBoxText right=:2 changed=new_screen value=get_screen set=set_screen content=set_screen_list
+							'Hardness
+							HBox
+								ComboBoxText changed=update_screen value=get_screen_hardness set=set_screen_hardness content=set_screen_hardness_list
+								Button clicked=edit_screen_hardness expand=:False
+									'Edit
+							'Script
+							HBox
+								ComboBoxText changed=update_screen value=get_screen_script set=set_screen_script content=set_screen_script_list
+								Button clicked=edit_screen_script expand=:False
+									'Edit
+							'Music
+							ComboBoxText changed=update_screen value=get_screen_music set=set_screen_music content=set_music_list
+							CheckButton right=:2 value=get_indoor set=set_indoor toggled=update_screen
+								'Indoor
 			External id=viewcollection setpage=setcollection
 			External id=viewseq setpage=setseq
 			External id=viewtiles setpage=settiles
-			External id=viewworld setpage=setworld

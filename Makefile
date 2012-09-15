@@ -17,8 +17,8 @@
 all: pde.gui
 	./pde.py
 
-%.dmod: pde pde.gui
-	./pde $(subst .dmod,,$@)
+%.dmod: pde.py pde.gui
+	./pde.py $(subst .dmod,,$@)
 
 %: %.in
 	../xmlgen/xmlgen <$< >$@

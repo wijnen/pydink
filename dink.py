@@ -71,8 +71,9 @@ def error (message):
 
 def nice_assert (test, message):
 	if test:
-		return
+		return True
 	error (message)
+	return False
 #}}}
 # {{{ Global variables and utility functions
 cachedir = os.path.join (glib.get_user_cache_dir (), 'pydink')
@@ -408,7 +409,9 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	elif name == 'create_sprite':
 		a[2] = make_brain (a[2][1:-1])
 		if isinstance (a[3], str) and a[3][0] == '"':
-			a[3] = dink.seq.find_seq (a[3][1:-1]).code
+			s = dink.seq.find_seq (a[3][1:-1])
+			nice_assert (s is not None, 'invalid sequence in create_sprite: %s' % a[3][1:-1])
+			a[3] = s.code
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
 		a[0] = make_brain (a[0][1:-1])
 	elif name == 'playmidi':
@@ -419,12 +422,11 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		a[0] = dink.seq.find_seq (a[0][1:-1]).code
 	elif name == 'sp':
 		nm = a[0][1:-1]
-		sprite = None
-		# Sprite names used with sp () must be unique in the entire game, because the script doesn't know from which room it's called.
-		for r in dink.world.room:
-			if nm in dink.world.room[r].sprite:
-				nice_assert (sprite is None, 'referenced sprite %s is not unique' % nm)
-				sprite = dink.world.room[r].sprite[nm]
+		sprites = [s for s in dink.world.sprite if s.name == nm]
+		nice_assert (len (sprites) == 1, 'referenced sprite %s not found' % nm)
+		sprite = sprites[0]
+		# Sprite names used with sp () must be locked to their room, because the script doesn't know from which room it's called.
+		nice_assert (sprite.room is not None, 'referenced sprite %s is not locked to a room' % nm)
 		a[0] = sprite.editcode
 	elif name == 'sp_base_attack' or name == 'sp_base_death' or name == 'sp_base_idle' or name == 'sp_base_walk':
 		if isinstance (a[1], str) and a[1][0] == '"':
@@ -460,7 +462,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	else:
 		return bt + indent + name + '(' + ', '.join (at) + ');\r\n', ''
 
-def read_args (dink, script):
+def read_args (dink, script, used):
 	args = []
 	b = ''
 	if script[0] == ')':
@@ -494,7 +496,7 @@ def read_args (dink, script):
 				args += (sp,)
 				script = script[p + 1:]
 			else:
-				script, a = tokenize_expr (dink, script)
+				script, a = tokenize_expr (dink, script, used = used)
 				args += (a,)
 			t, script, isname = token (script)
 			if t != ',':
@@ -644,17 +646,17 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 internal_functions = {
 		'activate_bow': '',
 		'add_exp': 'ii',
-		'add_item': 's*i',
-		'add_magic': 's*i',
+		'add_item': 'sqi',
+		'add_magic': 'sqi',
 		'arm_magic': '',
 		'arm_weapon': '',
 		'busy': 'i',
 		'compare_sprite_script': 'is',
 		'compare_weapon': 's',
-		'copy_bmp_to_screen': 's',
+		'copy_bmp_to_screen': 'b',
 		'count_item': 's',
 		'count_magic': 's',
-		'create_sprite': 'ii**i',
+		'create_sprite': 'ii*qi',
 		'debug': 's',
 		'dink_can_walk_off_screen': 'i',
 		'disable_all_sprites': '',
@@ -697,7 +699,7 @@ internal_functions = {
 		'move_stop': 'iiii',
 		'playmidi': 's',
 		'playsound': 'siiii',
-		'preload_seq': 'i',
+		'preload_seq': 'q',
 		'push_active': 'i',
 		'random': 'ii',
 		'reset_timer': '',
@@ -716,7 +718,7 @@ internal_functions = {
 		'set_callback_random': 'sii',
 		'set_dink_speed': 'i',
 		'set_keep_mouse': 'i',
-		'show_bmp': 'sii',
+		'show_bmp': 'bii',
 		'sound_set_kill': 'i',
 		'sound_set_survive': 'ii',
 		'sound_set_vol': 'ii',
@@ -725,10 +727,10 @@ internal_functions = {
 		'sp_attack_hit_sound': 'ii',
 		'sp_attack_hit_sound_speed': 'ii',
 		'sp_attack_wait': 'ii',
-		'sp_base_attack': 'i*',
-		'sp_base_death': 'i*',
-		'sp_base_idle': 'i*',
-		'sp_base_walk': 'i*',
+		'sp_base_attack': 'ic',
+		'sp_base_death': 'ic',
+		'sp_base_idle': 'ic',
+		'sp_base_walk': 'ic',
 		'sp_brain': 'iS',
 		'sp_brain_parm': 'iI',
 		'sp_brain_parm2': 'iI',
@@ -756,12 +758,12 @@ internal_functions = {
 		'sp_notouch': 'iI',
 		'sp_pframe': 'iI',
 		'sp_picfreeze': 'ii',
-		'sp_pseq': 'iS',
+		'sp_pseq': 'iQ',
 		'sp_que': 'iI',
 		'sp_range': 'iI',
 		'sp_reverse': 'iI',
 		'sp_script': 'is',
-		'sp_seq': 'iS',
+		'sp_seq': 'iQ',
 		'sp_size': 'iI',
 		'sp_sound': 'i*',
 		'sp_speed': 'iI',
@@ -783,17 +785,17 @@ internal_functions = {
 		'wait': 'i',
 		'wait_for_button': '',
 		'sp_code': 's',
-		'seq_code': 's',
+		'seq_code': 'q',
 		'brain_code': 's',
-		'collection_code': 's'
+		'collection_code': 'c'
 		}
 
-def make_direct (dink, name, args):
+def make_direct (dink, name, args, used):
 	# Check validity of name and arguments.
 	nice_assert (name in internal_functions, 'use of undefined function %s' % name)
 	ia = internal_functions[name]
 	a = list (args)
-	if len (a) < len (ia) and (ia.endswith ('I') or ia.endswith ('S')):
+	if len (a) < len (ia) and (ia.endswith ('I') or ia.endswith ('S') or ia.endswith ('Q')):
 		a += (None,)
 	nice_assert (len (a) == len (ia), 'incorrect number of arguments for %s (must be %d; is %d)' % (name, len (ia), len (a)))
 	for i in range (len (ia)):
@@ -803,6 +805,15 @@ def make_direct (dink, name, args):
 			nice_assert (isinstance (a[i], str) and a[i][0] == '"', 'argument %d of %s must be a string' % (i, name))
 		elif ia[i] in ('*', 'S'):
 			pass
+		elif ia[i] == 'b':
+			nice_assert (isinstance (a[i], str) and a[i][0] == '"', 'argument %d of %s must be a bitmap filename' % (i, name))
+		elif ia[i] == 'c':
+			if used is not None and isinstance (a[i], str) and a[i][0] == '"' and a[i] != '""':
+				used[0].add (a[i][1:-1])
+		elif ia[i] in ('q', 'Q'):
+			if a[i] is not None:
+				if used is not None and isinstance (a[i], str) and a[i][0] == '"' and a[i] != '""':
+					used[1].add (a[i][1:-1])
 		else:
 			raise AssertionError ('invalid character in internal_functions %s' % ia)
 	# Find direct functions.
@@ -818,13 +829,14 @@ def make_direct (dink, name, args):
 		return coll['code']
 	elif name == 'sp_code':
 		nm = args[0][1:-1]
-		sprite = None
-		for r in dink.world.room:
-			if nm in dink.world.room[r].sprite:
-				nice_assert (sprite is None, 'referenced sprite %s is not unique' % nm)
-				sprite = dink.world.room[r].sprite[nm]
-		nice_assert (sprite is not None, "referenced sprite %s doesn't exist" % nm)
-		return sprite.editcode
+		sprites = [s for s in dink.world.sprite if s.name == nm]
+		nice_assert (len (sprites) == 1, "referenced sprite %s doesn't exist" % nm)
+		nice_assert (sprites[0].room is not None, "referenced sprite %s is not locked to a room" % nm)
+		if used is not None:
+			# When looking for used sequences, editcodes are not initialized yet. This is no problem, because that part isn't used anyway.
+			return 1
+		nice_assert (hasattr (sprites[0], 'editcode'), 'sprite %s has no editcode' % nm)
+		return sprites[0].editcode
 	else:
 		# Nothing special.
 		return None
@@ -844,7 +856,7 @@ def choice_args (args):
 	nice_assert (ret != [], 'A choice must have at least one option.')
 	return ret
 
-def tokenize_expr (parent, script):
+def tokenize_expr (parent, script, used):
 	need_operator = False
 	ret = []
 	operators = []
@@ -904,19 +916,19 @@ def tokenize_expr (parent, script):
 					if script.startswith ('('):
 						# Read away the opening parenthesis.
 						t, script, isname = token (script)
-						script, args = read_args (parent, script)
+						script, args = read_args (parent, script, used)
 						if isinstance (name, str):
-							if filename in functions and name in functions[filename]:
+							if filename.lower () in functions and name in functions[filename.lower ()]:
 								# local function.
-								nice_assert (len (args) == len (functions[filename][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[filename][name][1])))
-								ret += (['()', (filename, name), args],)
+								nice_assert (len (args) == len (functions[filename.lower ()][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[filename.lower ()][name][1])))
+								ret += (['()', (filename.lower (), name), args],)
 							else:
 								# internal function.
 								if name == 'choice':
 									ret += (['choice', choice_args (args), choice_title[0]],)
 									choice_title[:] = [None, False]
 								else:
-									direct = make_direct (parent, name, args)
+									direct = make_direct (parent, name, args, used = used)
 									if direct is not None:
 										ret += (direct,)
 									else:
@@ -937,7 +949,7 @@ def tokenize_expr (parent, script):
 def check_exists (the_locals, name):
 	return name in the_locals or name in the_globals
 
-def tokenize (script, dink, fname):
+def tokenize (script, dink, fname, used):
 	'''Tokenize a script completely. Return a list of functions (name, (rettype, args), definition-statement).'''
 	global the_locals
 	the_locals = []
@@ -961,7 +973,7 @@ def tokenize (script, dink, fname):
 			if name not in the_globals:
 				the_globals[name] = 0
 			continue
-		nice_assert (t == 'void' or t == 'int', 'invalid token at top level; only extern, void or int allowed (not %s)' % t)
+		nice_assert (t in ('void', 'int'), 'invalid token at top level; only extern, void or int allowed (not %s)' % t)
 		t, script, isname = token (script)
 		nice_assert (isname, 'function name required after top level void (not %s)' % t)
 		name = t
@@ -974,11 +986,11 @@ def tokenize (script, dink, fname):
 				break
 		t, script, isname = token (script)
 		nice_assert (t == '{', 'function body not defined')
-		script, s = tokenize_statement ('{ ' + script, dink, fname, name)
+		script, s = tokenize_statement ('{ ' + script, dink, fname, name, used = used)
 		ret += ((name, functions[fname][name], s),)
 	return ret
 
-def tokenize_statement (script, dink, fname, own_name):
+def tokenize_statement (script, dink, fname, own_name, used):
 	global the_locals
 	t, script, isname = token (script, False)
 	nice_assert (t is not None, 'missing statement')
@@ -992,14 +1004,14 @@ def tokenize_statement (script, dink, fname, own_name):
 				ret = '{', statements
 				need_semicolon = False
 				break
-			script, s = tokenize_statement (t + ' ' + script, dink, fname, own_name)
+			script, s = tokenize_statement (t + ' ' + script, dink, fname, own_name, used)
 			statements += (s,)
 	elif t == ';':
 		ret = None
 		need_semicolon = False
 	elif t == 'return':
 		if functions[fname][own_name][0] == 'int':
-			script, e = tokenize_expr (dink, script)
+			script, e = tokenize_expr (dink, script, used)
 			ret = 'return', e
 		else:
 			ret = 'return', None
@@ -1010,10 +1022,10 @@ def tokenize_statement (script, dink, fname, own_name):
 	elif t == 'while':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after while')
-		script, e = tokenize_expr (dink, script)
+		script, e = tokenize_expr (dink, script, used)
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for while not closed')
-		script, s = tokenize_statement (script, dink, fname, own_name)
+		script, s = tokenize_statement (script, dink, fname, own_name, used)
 		need_semicolon = False
 		ret = 'while', e, s
 	elif t == 'for':
@@ -1024,14 +1036,14 @@ def tokenize_statement (script, dink, fname, own_name):
 			nice_assert (isname, 'first for-expression must be empty or assignment (not %s)' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'first for-expression must be empty or assignment (not %s)' % a)
-			script, e = tokenize_expr (dink, script)
+			script, e = tokenize_expr (dink, script, used)
 			f1 = (a, n, e)
 			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
 		else:
 			f1 = None
 		t, script, isname = token (script)
 		nice_assert (t == ';', 'two semicolons required in for argument')
-		script, f2 = tokenize_expr (dink, script)
+		script, f2 = tokenize_expr (dink, script, used)
 		t, script, isname = token (script)
 		nice_assert (t == ';', 'two semicolons required in for argument')
 		if script[0] != ')':
@@ -1039,26 +1051,26 @@ def tokenize_statement (script, dink, fname, own_name):
 			nice_assert (isname, 'third for-expression must be empty or assignment (not %s)' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'third for-expression must be empty or assignment (not %s)' % a)
-			script, e = tokenize_expr (dink, script)
+			script, e = tokenize_expr (dink, script, used)
 			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
 			f3 = (a, n, e)
 		else:
 			f3 = None
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for for not closed')
-		script, s = tokenize_statement (script, dink, fname, own_name)
+		script, s = tokenize_statement (script, dink, fname, own_name, used)
 		need_semicolon = False
 		ret = 'for', f1, f2, f3, s
 	elif t == 'if':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after if')
-		script, e = tokenize_expr (dink, script)
+		script, e = tokenize_expr (dink, script, used)
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis not closed for if')
-		script, s1 = tokenize_statement (script, dink, fname, own_name)
+		script, s1 = tokenize_statement (script, dink, fname, own_name, used)
 		t, script, isname = token (script)
 		if t == 'else':
-			script, s2 = tokenize_statement (script, dink, fname, own_name)
+			script, s2 = tokenize_statement (script, dink, fname, own_name, used)
 		else:
 			script = t + ' ' + script
 			s2 = None
@@ -1072,7 +1084,7 @@ def tokenize_statement (script, dink, fname, own_name):
 			the_locals += (name,)
 		t, script, isname = token (script)
 		if t == '=':
-			script, e = tokenize_expr (dink, script)
+			script, e = tokenize_expr (dink, script, used)
 		else:
 			e = None
 			script = t + ' ' + script
@@ -1092,7 +1104,7 @@ def tokenize_statement (script, dink, fname, own_name):
 		elif t in ['=', '+=', '-=', '*=', '/=']:
 			nice_assert (check_exists (the_locals, name), 'use of undefined variable %s' % name)
 			op = t
-			script, e = tokenize_expr (dink, script)
+			script, e = tokenize_expr (dink, script, used)
 			ret = op, name, e
 		else:
 			if t == '.':
@@ -1105,24 +1117,24 @@ def tokenize_statement (script, dink, fname, own_name):
 			if name == 'choice_title':
 				nice_assert (choice_title[1] == False, 'duplicate choice_title without a choice')
 				choice_title[1] = True
-				script, args = read_args (dink, script)
+				script, args = read_args (dink, script, used)
 				nice_assert (len (args) >= 1 and len (args) <= 3 and args[0][0] == '"', 'invalid argument list for %s' % name)
 				choice_title[0] = args
 				ret = None
 			elif name == 'choice':
 				choices = []
-				script, args = read_args (dink, script)
+				script, args = read_args (dink, script, used)
 				choices = choice_args (args)
 				ret = 'choice', choice_args (args), choice_title[0]
 				choice_title[:] = [None, False]
 			else:
-				script, args = read_args (dink, script)
+				script, args = read_args (dink, script, used)
 				if isinstance (name, str):
 					if name in functions[fname]:
 						nice_assert (len (args) == len (functions[fname][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[fname][name][1])))
 						ret = '()', (fname, name), args
 					else:
-						direct = make_direct (dink, name, args)
+						direct = make_direct (dink, name, args, used = used)
 						if direct is not None:
 							ret = direct
 						else:
@@ -1142,7 +1154,7 @@ def preprocess (script, dink, fname):
 		return data.split ('\n', 1)[1]
 	global numlabels
 	numlabels = 0
-	fs = tokenize (script, dink, fname)
+	fs = tokenize (script, dink, fname, used = None)
 	return '\r\n'.join ([build_function_def (x, fname, dink) for x in fs])
 
 def build_function_def (data, fname, dink):
@@ -1344,12 +1356,10 @@ class Sprite: #{{{
 			walk = ''
 			attack = ''
 			death = ''
-		os = name if name is not None else s
-		i = 0
-		while s in world.sprite:
-			s = os + '-%d' % i
-			i += 1
-		self.name = s
+		self.name = None
+		self.rename (name if name is not None else s, world)
+		self.room = None
+		self.bg = False
 		self.x = None
 		self.y = None
 		self.seq = seq
@@ -1381,6 +1391,22 @@ class Sprite: #{{{
 		self.vision = 0
 		self.nohit = False
 		self.touch_damage = 0
+	def rename (self, name, world = None):
+		if world is None:
+			world = self.parent.world
+		if self.name is not None:
+			world.spritenames.remove (self.name)
+		if name in world.spritenames:
+			i = 0
+			n = name
+			while n in world.spritenames:
+				n = name + '-%03d' % i
+				i += 1
+		else:
+			n = name
+		assert n not in world.spritenames
+		world.spritenames.add (n)
+		self.name = n
 	def get_screens (self, world):
 		ret = []
 		if self.x is None or self.y is None:
@@ -1410,7 +1436,7 @@ class Sprite: #{{{
 			world = self.parent.world
 		for i in self.get_screens (world):
 			world.room[i].sprite.remove (self)
-	def read (self, info, base, room = None, world = None):
+	def read (self, info, name, base, room = None, world = None):
 		'''Read sprite info from info. Optionally lock sprite to room.'''
 		self.unregister (world)
 		self.room = room
@@ -1425,7 +1451,7 @@ class Sprite: #{{{
 		else:
 			print 'Warning: strange seq:', seq
 			self.seq = None
-		self.name = base
+		self.rename (name, world)
 		info, self.frame = get (info, 'frame', 1)
 		info, self.visible = get (info, 'room', 0)
 		info, self.visible = get (info, 'visible', True)
@@ -1461,51 +1487,60 @@ class Sprite: #{{{
 		info, self.touch_damage = get (info, 'touch_damage', 0)
 		self.register (world)
 		return info
-	def save (self, dirname, name):
-		d = os.path.join (self.parent.root, 'world', dirname)
-		i = 0
-		while True:
-			n = os.path.join (d, name + '-%d' % i + os.extsep + 'txt')
-			if not os.path.exists (n):
-				break
-			i += 1
-		f = open (n, 'w')
-		put (f, 'x', self.sprite[s].x)
-		put (f, 'y', self.sprite[s].y)
-		if isinstance (self.sprite[s].seq, str):
-			seq = self.sprite[s].seq
+	def save (self, dirname):
+		if self.room is not None:
+			n = self.room
+			x = (n - 1) % 32
+			y = (n - 1) / 32
+			d = os.path.join (self.parent.root, 'world', '%03d-%02d-%02d-%s' % (n, x, y, dirname))
 		else:
-			seq = '%s %d' % self.sprite[s].seq
+			d = os.path.join (self.parent.root, 'world', dirname)
+		if not os.path.exists (d):
+			os.makedirs (d)
+		n = os.path.join (d, self.name + os.extsep + 'txt')
+		nice_assert (not os.path.exists (n), 'duplicate sprite name')
+		f = open (n, 'w')
+		put (f, 'x', self.x)
+		put (f, 'y', self.y)
+		if isinstance (self.seq, str):
+			seq = self.seq
+		else:
+			seq = '%s %s' % (self.seq[0], str (self.seq[1]))
+		r = re.match ('(.*)-\d*$', self.name)
+		if r is not None:
+			base = r.group (1)
+		else:
+			base = self.name
 		put (f, 'seq', seq, base)
-		put (f, 'frame', self.sprite[s].frame, 1)
-		put (f, 'visible', self.sprite[s].visible, True)
-		put (f, 'size', self.sprite[s].size, 100)
-		put (f, 'brain', self.sprite[s].brain, 'none')
-		put (f, 'script', self.sprite[s].script, '')
-		put (f, 'speed', self.sprite[s].speed, 1)
-		put (f, 'base_walk', self.sprite[s].base_walk, '')
-		put (f, 'base_idle', self.sprite[s].base_idle, '')
-		put (f, 'base_attack', self.sprite[s].base_attack, '')
-		put (f, 'timing', self.sprite[s].timing, 33)
-		put (f, 'que', self.sprite[s].que, 0)
-		put (f, 'hard', self.sprite[s].hard, True)
-		put (f, 'left', self.sprite[s].left, 0)
-		put (f, 'top', self.sprite[s].top, 0)
-		put (f, 'right', self.sprite[s].right, 0)
-		put (f, 'bottom', self.sprite[s].bottom, 0)
-		if self.sprite[s].warp is not None:
-			put (f, 'warp', ' '.join ([str (x) for x in self.sprite[s].warp]))
-		put (f, 'touch_seq', self.sprite[s].touch_seq, '')
-		put (f, 'base_death', self.sprite[s].base_death, '')
-		put (f, 'gold', self.sprite[s].gold, 0)
-		put (f, 'hitpoints', self.sprite[s].hitpoints, 0)
-		put (f, 'strength', self.sprite[s].strength, 0)
-		put (f, 'defense', self.sprite[s].defense, 0)
-		put (f, 'exp', self.sprite[s].exp, 0)
-		put (f, 'sound', self.sprite[s].sound, '')
-		put (f, 'vision', self.sprite[s].vision, 0)
-		put (f, 'nohit', self.sprite[s].nohit, False)
-		put (f, 'touch_damage', self.sprite[s].touch_damage, 0)
+		put (f, 'frame', self.frame, 1)
+		put (f, 'visible', self.visible, True)
+		put (f, 'size', self.size, 100)
+		put (f, 'brain', self.brain, 'none')
+		put (f, 'script', self.script, '')
+		put (f, 'speed', self.speed, 1)
+		put (f, 'base_walk', self.base_walk, '')
+		put (f, 'base_idle', self.base_idle, '')
+		put (f, 'base_attack', self.base_attack, '')
+		put (f, 'timing', self.timing, 33)
+		put (f, 'que', self.que, 0)
+		put (f, 'hard', self.hard, True)
+		put (f, 'left', self.left, 0)
+		put (f, 'top', self.top, 0)
+		put (f, 'right', self.right, 0)
+		put (f, 'bottom', self.bottom, 0)
+		if self.warp is not None:
+			put (f, 'warp', ' '.join ([str (x) for x in self.warp]))
+		put (f, 'touch_seq', self.touch_seq, '')
+		put (f, 'base_death', self.base_death, '')
+		put (f, 'gold', self.gold, 0)
+		put (f, 'hitpoints', self.hitpoints, 0)
+		put (f, 'strength', self.strength, 0)
+		put (f, 'defense', self.defense, 0)
+		put (f, 'exp', self.exp, 0)
+		put (f, 'sound', self.sound, '')
+		put (f, 'vision', self.vision, 0)
+		put (f, 'nohit', self.nohit, False)
+		put (f, 'touch_damage', self.touch_damage, 0)
 #}}}
 
 class Room: #{{{
@@ -1550,66 +1585,74 @@ class World: #{{{
 	def __init__ (self, parent):
 		self.parent = parent
 		self.room = {}
+		self.spritenames = set ()
+		self.sprite = set ()
 		if self.parent.root is None:
 			return
 		d = os.path.join (parent.root, 'world')
 		for y in range (24):
 			for x in range (32):
 				n = y * 32 + x + 1
-				path = os.path.join (d, '%03d-%02d-%02d' % (n, x, y) + os.extsep + 'txt')
-				if not os.path.exists (path):
+				path = os.path.join (d, '%03d-%02d-%02d' % (n, x, y))
+				infopath = path + os.extsep + 'txt'
+				if not os.path.exists (infopath):
 					continue
-				self.room[n] = Room (parent, path)
-		for f in os.listdir (d):
-			r = re.match ('(\d{3})-(\d{2})-(\d{2})' + os.extsep + 'txt$', f)
-			if r is None:
-				if re.match ('\d+-', f) is not None:
-					sys.stderr.write ("Warning: not using %s as room\n" % f)
-				continue
-			n, x, y = [int (k) for k in r.groups ()]
-			if x >= 32 or y >= 24 or n != y * 32 + x + 1:
-				sys.stderr.write ("Warning: not using %s as room (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
-		self.sprite = set ()
+				self.room[n] = Room (parent, infopath)
+				self.read_sprites (path + '-bg', True, n)
+				self.read_sprites (path + '-sprite', False, n)
 		self.read_sprites ('bg', True)
 		self.read_sprites ('sprite', False)
+		for f in os.listdir (d):
+			if os.path.isdir (os.path.join (d, f)):
+				pass # TODO: check some more stuff.
+			else:
+				r = re.match ('(\d{3})-(\d{2})-(\d{2})' + os.extsep + 'txt$', f)
+				if r is None:
+					if re.match ('\d+-', f) is not None:
+						sys.stderr.write ("Warning: not using %s as room\n" % f)
+					continue
+				n, x, y = [int (k) for k in r.groups ()]
+				if x >= 32 or y >= 24 or n != y * 32 + x + 1:
+					sys.stderr.write ("Warning: not using %s as room (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
 	def add_sprite (self, name, pos, seq, frame):
 		spr = Sprite (self.parent, seq, frame, name = name)
+		self.sprite.add (spr)
 		spr.x, spr.y = pos
 		spr.register ()
-	def read_sprites (self, dirname, is_bg):
+		return spr
+	def read_sprites (self, dirname, is_bg, room = None):
 		sdir = os.path.join (self.parent.root, 'world', dirname)
 		if not os.path.exists (sdir):
 			return
 		for s in os.listdir (sdir):
-			r = re.match ('([^.].+?)(-(\d*?))?\.txt$', s)
+			r = re.match ('(([^.].+?)(-\d+)?)\.txt$', s)
 			nice_assert (r, 'sprite has incorrect filename')
 			filename = os.path.join (sdir, s)
 			info = readlines (open (filename))
-			base = r.group (1)
-			s = base
-			i = 0
-			while s in self.sprite:
-				s = base + '-%d' % i
-				i += 1
+			s = r.group (1)
+			base = r.group (2)
+			nice_assert (s not in self.spritenames, 'duplicate definition of sprite name %s' % s)
 			spr = Sprite (self.parent, world = self, name = s)
 			self.sprite.add (spr)
 			spr.bg = is_bg
-			info = spr.read (info, base, world = self)
-			nice_assert (info == {}, 'unused data for sprite %s' % s)
+			info = spr.read (info, s, base, room, world = self)
+			nice_assert (info == {}, 'unused data for sprite %s: %s' % (s, str (info.keys ())))
 	def save (self):
 		os.mkdir (os.path.join (self.parent.root, 'world'))
 		for r in self.room:
 			self.room[r].save (r)
 		for s in self.sprite:
-			if self.sprite[s].bg:
-				self.sprite[s].save ('bg', s)
+			if s.bg:
+				s.save ('bg')
 			else:
-				self.sprite[s].save ('sprite', s)
+				s.save ('sprite')
 	def write_sprite (self, spr, mdat, s, is_bg):
 		sx = (s - 1) % 32
 		sy = (s - 1) / 32
-		mdat.write (make_lsb (spr.x - sx * 50 * 12, 4))
-		mdat.write (make_lsb (spr.y - sy * 50 * 8, 4))
+		x = spr.x - sx * 50 * 12
+		y = spr.y - sy * 50 * 8
+		mdat.write (make_lsb (x, 4))
+		mdat.write (make_lsb (y, 4))
 		sq = self.parent.seq.find_seq (spr.seq)
 		if sq is None:
 			mdat.write (make_lsb (-1, 4))
@@ -1664,21 +1707,39 @@ class World: #{{{
 		mdat.write ('\0' * 20)
 	def find_used_sprites (self):
 		# Initial values are all which are used by the engine.
-		cols = set ()
-		seqs = set (('status', 'nums', 'numr', 'numb', 'nump', 'numy', 'special', 'textbox', 'spurt', 'spurtl', 'spurtr', 'health-w', 'health-g', 'arrow-l', 'arrow-r', 'shiny', 'menu'))
-		for s in self.sprite:
-			spr = self.sprite[s]
+		cols = set (('idle', 'walk', 'hit', 'push'))
+		seqs = set (('status', 'nums', 'numr', 'numb', 'nump', 'numy', 'special', 'textbox', 'spurt', 'spurtl', 'spurtr', 'health-w', 'health-g', 'health-br', 'health-r', 'level', 'title', 'arrow-l', 'arrow-r', 'shiny', 'menu'))
+		self.parent.seq.clear_used ()
+		for spr in self.sprite:
 			c = self.parent.seq.as_collection (spr.seq)
 			if c:
 				cols.add (c)
+				col = self.parent.seq.find_collection (c)
+				for d in (1,2,3,4,'die',6,7,8,9):
+					if d in col:
+						col[d].used = True
 			else:
 				seqs.add (spr.seq)
+				self.parent.seq.find_seq (spr.seq).used = True
 			for i in (spr.base_idle, spr.base_walk, spr.base_attack, spr.base_death):
 				if i:
 					cols.add (i)
-		# TODO: Fill with values from scripts.
-		cols.update (('idle', 'walk', 'pig', 'duck', 'hit', 'duckbloody', 'duckhead', 'push', 'shoot', 'comet', 'fireball', 'seeding'))
+		# Fill with values from scripts.
+		used = self.parent.script.find_used_sprites ()
+		cols.update (used[0])
+		seqs.update (used[1])
+		# Some collections and seqs which are often used from default scripts.
+		cols.update (('pig', 'duck', 'duckbloody', 'duckhead', 'shoot', 'comet', 'fireball', 'seeding'))
 		seqs.update (('treefire', 'explode', 'smallheart', 'heart', 'spray', 'blast', 'coin', 'button-ordering', 'button-quit', 'button-start', 'button-continue', 'startme1', 'startme3', 'startme7', 'startme9', 'food', 'seed4', 'seed6', 'shadow', 'die', 'item-m', 'item-w', 'fishx', 'crawl', 'horngoblinattackswing'))
+		for c in cols:
+			col = self.parent.seq.find_collection (c)
+			for d in (1,2,3,4,'die',6,7,8,9):
+				if d in col:
+					col[d].used = True
+		for s in seqs:
+			seq = self.parent.seq.find_seq (s)
+			nice_assert (seq is not None, "used sequence %s doesn't exist" % s)
+			self.parent.seq.find_seq (s).used = True
 		return cols, seqs
 	def build (self, root):
 		used_cols, used_seqs = self.find_used_sprites ()
@@ -1687,8 +1748,8 @@ class World: #{{{
 		for i in used_cols:
 			collection = self.parent.seq.find_collection (i)
 			if collection['code'] is not None:
-				for c in (1,2,3,4,5,6,7,8,9):
-					used_codes.add (collection['code'] + c)
+				for c in (1,2,3,4,'die',6,7,8,9):
+					used_codes.add (collection['code'] + (5 if c == 'die' else c))
 				remove.add (i)
 		used_cols.difference_update (remove)
 		remove.clear ()
@@ -1702,13 +1763,13 @@ class World: #{{{
 		for i in used_cols:
 			collection = self.parent.seq.find_collection (i)
 			while True:
-				for d in (1,2,3,4,5,6,7,8,9):
-					if (next_code + d) in used_codes:
+				for d in (1,2,3,4,'die',6,7,8,9):
+					if (next_code + (5 if d == 'die' else d)) in used_codes:
 						break
 				else:
 					collection['code'] = next_code
 					for d in collection:
-						if d == 'die' or d in (1,2,3,4,6,7,8,9):
+						if d in (1,2,3,4,'die',6,7,8,9):
 							collection[d].code = next_code + (5 if d == 'die' else d)
 					break
 				next_code += 10
@@ -1760,9 +1821,9 @@ class World: #{{{
 			# sprite 0 is never used...
 			mdat.write ('\0' * 220)
 			editcode = 1
-			for sp in self.room[s].sprite:
-				spr = self.room[s].sprite[sp]
-				spr.editcode = editcode
+			for spr in self.room[s].sprite:
+				if spr.room is not None:
+					spr.editcode = editcode
 				editcode += 1
 				self.write_sprite (spr, mdat, s, False)
 			n = len (self.room[s].sprite)
@@ -2224,9 +2285,15 @@ class Seq: #{{{
 					return None
 				return self.seq[parts[0]]
 			else:
-				if len (parts) != 2 or parts[0] not in self.collection or int (parts[1]) not in self.collection[parts[0]]:
+				if len (parts) != 2 or parts[0] not in self.collection:
 					return None
-				return self.collection[parts[0]][int (parts[1])]
+				if parts[1] != 'die':
+					p = int (parts[1])
+				else:
+					p = parts[1]
+				if p not in self.collection[parts[0]]:
+					return None
+				return self.collection[parts[0]][p]
 		else:
 			if name[0] not in self.collection or int (name[1]) not in self.collection[name[0]]:
 				return None
@@ -2235,6 +2302,13 @@ class Seq: #{{{
 		if name not in self.collection:
 			return None
 		return self.collection[name]
+	def clear_used (self):
+		for s in self.seq:
+			self.seq[s].used = False
+		for c in self.collection:
+			for d in (1,2,3,4,'die',6,7,8,9):
+				if d in self.collection[c]:
+					self.collection[c][d].used = False
 	def collection_code (self, name):
 		if isinstance (name, str) and name.startswith ('*'):
 			seq = self.find_seq (name[1:])
@@ -2271,6 +2345,8 @@ class Seq: #{{{
 					for frame in range (1, len (c[dir].frames)):
 						open (os.path.join (d, c['name'], str (dir), '%02d' % frame + os.extsep + 'png'), 'wb').write (open (c[dir].frames[frame].cache[0], 'rb').read ())
 	def build_seq (self, ini, seq):
+		if not seq.used:
+			return
 		if seq.preload:
 			ini.write ('// Preload\r\n')
 			ini.write ('load_sequence_now %s %d\r\n' % (seq.preload, seq.code))
@@ -2324,7 +2400,7 @@ class Seq: #{{{
 		ini = open (os.path.join (root, 'dink' + os.extsep + 'ini'), 'w')
 		for c in self.collection:
 			for s in self.collection[c]:
-				if s not in (1,2,3,4,6,7,8,9):
+				if s not in (1,2,3,4,'die',6,7,8,9):
 					continue
 				self.build_seq (ini, self.collection[c][s])
 		for g in self.seq:
@@ -2600,20 +2676,27 @@ class Script: #{{{
 			if max_args < len (args):
 				max_args = len (args)
 		funcs[''] = the_statics
-	def compile (self):
+	def compile (self, used = None):
 		'''Compile all scripts. Return a dictionary of files, each value in it is a dictionary of functions, each value is a sequence of statements.
 		It also fills the functions dictionary, which has fnames as keys and a dict of name:(retval, args) as values, plus '':[statics].
 		Statics is a list of names.'''
 		global functions
+		global filename
 		functions = {}
 		ret = {}
 		for name in self.data:
 			ret[name.lower ()] = {}
 			functions[name.lower ()] = {}
+			filename = name
 			self.find_functions (self.data[name], functions[name.lower ()])
 		for name in self.data:
-			for f in tokenize (self.data[name.lower ()], self.parent, name.lower ()):
+			filename = name
+			for f in tokenize (self.data[name.lower ()], self.parent, name.lower (), used = used):
 				ret[name.lower ()][f[0]] = f[2]
+		return ret
+	def find_used_sprites (self):
+		ret = [set (), set ()]
+		self.compile (used = ret)
 		return ret
 	def build (self, root):
 		# Write Story/*
@@ -2844,12 +2927,12 @@ file (info.txt).
 			self.script.start_y = y
 			self.script.title_script = 'start_game'
 			self.script.intro_script = ''
-		builddir = tempfile.mkdtemp ()
+		builddir = tempfile.mkdtemp (prefix = 'pydink-test-')
 		try:
 			self.build (builddir)
 			os.spawnl (os.P_WAIT, dinkconfig.dinkprog, dinkconfig.dinkprog, '-g', builddir, '-r', dinkconfig.dinkdir, '-w')
 		finally:
-			shutil.rmtree (builddir)
+			#shutil.rmtree (builddir)
 			if y is not None:
 				self.script.start_map, self.script.start_x, self.script.start_y, self.script.title_script, self.script.intro_script = tmp
 #}}}

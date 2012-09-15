@@ -263,7 +263,7 @@ sel3
 high2
 fire
 spell1
-caveent
+-
 snarl1
 snarl2
 snarl3
@@ -653,29 +653,31 @@ def read_sound ():
 	for i in os.listdir (p):
 		root, ext = os.path.splitext (i)
 		if ext.startswith (os.extsep):
-			ext = ext[1:]
+			ext = ext[len (os.extsep):]
 		if ext.lower () not in ('ogg', 'mid'):
 			continue
-		f, c = loaddinkfile ('sound\\' + i + '.' + ext)
+		f, c = loaddinkfile ('sound\\' + root + '.' + ext)
 		r = re.match (r'\d+$', root)
 		if r:
 			r = int (r.group (0))
 			musics[root] = (r, c, ext)
 			musiccodes.add (r)
 		else:
-			other += ((root, c, ext),)
+			other.append ((root, c, ext))
 	nextcode = 1
 	for i in other:
 		while nextcode in musiccodes:
 			nextcode += 1
 		musics[i[0]] = (nextcode, i[1], i[2])
+		musiccodes.add (nextcode)
 	nextcode += 1
 
 	sounds = {}
 	for i in range (len (soundnames)):
-		f, c = loaddinkfile ('sound\\' + soundnames[i] + '.wav')
-		if c == None:
-			sys.stderr.write ("(ignore) warning: sound file %s doesn't exist.\n" % soundnames[i])
-		sounds[soundnames[i]] = (i + 1, c, 'wav')
+		if soundnames[i] != '-':
+			f, c = loaddinkfile ('sound\\' + soundnames[i] + '.wav')
+			if c == None:
+				sys.stderr.write ("(ignore) warning: sound file %s doesn't exist.\n" % soundnames[i])
+			sounds[soundnames[i]] = (i + 1, c, 'wav')
 
 	return musics, sounds
