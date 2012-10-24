@@ -21,7 +21,7 @@ gtk
 					External id=viewworld setpage=setworld
 				Notebook show_tabs=:True switch_page=set_mode expand=:False
 					VBox set_label=:Sprite name=sprite_num setpage=set_sprite_edit
-						CheckButton toggled=update_sprite value=get_edit_bg expand=:False
+						CheckButton toggled=update_bg value=get_edit_bg expand=:False
 							'Edit background sprites
 						ComboBoxText changed=new_sprite set=set_sprite value=get_sprite content=set_spritelist expand=:False
 						Notebook show_tabs=:True expand=:False
@@ -31,7 +31,7 @@ gtk
 										'Name
 										Entry changed=update_sprite set=set_name value=get_name
 										'Brain
-										ComboBoxText changed=update_sprite set=set_brain value=get_brain
+										ComboBoxText changed=update_sprite set=set_brain value=get_brain value-text=get_brain_text
 											'none
 											'dink
 											'bounce
@@ -132,7 +132,7 @@ gtk
 					Label name=tiles_num set_label=:Tiles value=":There are no settings for tile editing" setpage=set_tile_edit
 					VBox set_label=:Screen name=screen_num setpage=set_screen_edit
 						Table columns=2 expand=:False
-							ComboBoxText right=:2 changed=new_screen value=get_screen set=set_screen content=set_screen_list
+							ComboBoxText right=:2 changed=new_screen value=get_screen value-text=get_screen_text set=set_screen content=set_screen_list
 							'Hardness
 							HBox
 								ComboBoxText changed=update_screen value=get_screen_hardness set=set_screen_hardness content=set_screen_hardness_list
@@ -140,7 +140,7 @@ gtk
 									'Edit
 							'Script
 							HBox
-								ComboBoxText changed=update_screen value=get_screen_script set=set_screen_script content=set_screen_script_list
+								Entry changed=update_screen value=get_screen_script set=set_screen_script
 								Button clicked=edit_screen_script expand=:False
 									'Edit
 							'Music

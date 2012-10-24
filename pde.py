@@ -177,6 +177,9 @@ class View (gtk.DrawingArea): # {{{
 		View.noselectgc = self.make_gc ('noselect-gc')
 		View.noshowgc = self.make_gc ('noshow-gc')
 		View.hardgc = self.make_gc ('hard-gc')
+		View.bggc = self.make_gc ('hard-gc')
+		View.bggc.set_line_attributes (1, gtk.gdk.LINE_ON_OFF_DASH, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		View.bggc.set_dashes (3, (6, 4))
 		View.pastegc = self.make_gc ('paste-gc')
 		View.emptygc = self.make_gc ('empty-gc')
 		View.whitegc = self.make_gc ('white-gc')
@@ -394,7 +397,7 @@ class ViewMap (View): # {{{
 		if self.firstconfigure:
 			self.firstconfigure = False
 			# Initial offset is centered on dink starting screen.
-			screen = data.script.start_map
+			screen = data.start_map
 			sc = ((screen - 1) % 32, (screen - 1) / 32)
 			s = (12, 8)
 			self.offset = [sc[x] * s[x] * screenzoom + (s[x] / 2) * screenzoom - self.screensize[x] / 2 for x in range (2)]
@@ -474,8 +477,7 @@ class ViewMap (View): # {{{
 				self.draw_tile_hard (((x * 50 - offset[0]) * 50 / screenzoom, (y * 50 - offset[1]) * 50 / screenzoom), (origin[0] + x, origin[1] + y))
 		# Sprite hardness.
 		for spr in lst:
-			if spr[1].bg != the_gui.get_edit_bg:
-				continue
+			bg = spr[1].bg != the_gui.get_edit_bg
 			if spr[0][0] == None:
 				# This is a warp target.
 				continue
@@ -488,28 +490,29 @@ class ViewMap (View): # {{{
 			if spr[3]:
 				self.buffer.draw_rectangle (self.hardgc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
 			else:
-				self.buffer.draw_rectangle (self.hardgc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
+				self.buffer.draw_rectangle (self.bggc if bg else self.hardgc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
 		# Wireframe information for all except selected sprites.
 		for spr in lst:
-			if spr[1].bg != the_gui.get_edit_bg:
-				continue
 			if spr[3]:
 				continue
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
-				(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
-				# Que: not drawn for not selected sprites.
-				# Hotspot.
-				self.buffer.draw_line (self.noselectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
-				self.buffer.draw_line (self.noselectgc, x * screenzoom / 50, (y - 10) * screenzoom / 50, x * screenzoom / 50, (y + 10) * screenzoom / 50)
+				if spr[1].bg == the_gui.get_edit_bg:
+					(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					# Que: not drawn for not selected sprites.
+					# Hotspot.
+					self.buffer.draw_line (self.noselectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
+					self.buffer.draw_line (self.noselectgc, x * screenzoom / 50, (y - 10) * screenzoom / 50, x * screenzoom / 50, (y + 10) * screenzoom / 50)
 			else:
 				# This is a warp target.
+				bg = spr[1].bg != the_gui.get_edit_bg
 				n, x, y = spr[1].warp
 				y += ((n - 1) / 32) * 8 * 50 - self.offset[1]
 				x += ((n - 1) % 32) * 12 * 50 - self.offset[0] - 20
-				self.buffer.draw_line (self.noselectgc, (x - 20) * screenzoom / 50, y * screenzoom / 50, (x + 20) * screenzoom / 50, y * screenzoom / 50)
-				self.buffer.draw_line (self.noselectgc, x * screenzoom / 50, (y - 20) * screenzoom / 50, x * screenzoom / 50, (y + 20) * screenzoom / 50)
-				self.buffer.draw_arc (self.noselectgc, False, (x - 15) * screenzoom / 50, (y - 15) * screenzoom / 50, 30 * screenzoom / 50, 30 * screenzoom / 50, 0, 64 * 360)
+				if not bg:
+					self.buffer.draw_line (self.noselectgc, (x - 20) * screenzoom / 50, y * screenzoom / 50, (x + 20) * screenzoom / 50, y * screenzoom / 50)
+					self.buffer.draw_line (self.noselectgc, x * screenzoom / 50, (y - 20) * screenzoom / 50, x * screenzoom / 50, (y + 20) * screenzoom / 50)
+				self.buffer.draw_arc (self.bggc if bg else self.noselectgc, False, (x - 15) * screenzoom / 50, (y - 15) * screenzoom / 50, 30 * screenzoom / 50, 30 * screenzoom / 50, 0, 64 * 360)
 		# No matter what is visible, always show selected sprite's stuff on top.
 		for spr in lst:
 			if not spr[3]:
@@ -643,7 +646,7 @@ class ViewMap (View): # {{{
 				p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 				n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
 				data.play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
-			elif key == gtk.keysyms.s: # save
+			elif key == gtk.keysyms.w: # save
 				sync ()
 				data.save ()
 			elif key == gtk.keysyms.q: # quit
@@ -693,8 +696,6 @@ class ViewMap (View): # {{{
 					spr = s[0]
 					spr.nohit = not spr.nohit
 				update_editgui ()
-			elif key == gtk.keysyms.w: # toggle select warp or sprite.
-				spriteselect[:] = [(s[0], s[0].warp is not None and not s[1]) for s in spriteselect]
 			elif key == gtk.keysyms.Delete: # delete sprite
 				for killer in spriteselect:
 					# Remove warp target in any case.
@@ -766,6 +767,22 @@ class ViewMap (View): # {{{
 				self.moveinfo = 'move', None, self.make_cancel ()
 			elif key == gtk.keysyms.q: # move que
 				self.moveinfo = 'que', None, self.make_cancel ()
+			elif key == gtk.keysyms.w: # toggle select warp or sprite, or set warp.
+				global updating
+				updating = True
+				for spr in spriteselect:
+					if spr[0].warp != None:
+						continue
+					n = (p[1] / (50 * 8)) * 32 + (p[0] / (50 * 12)) + 1
+					spr[0].warp = (n, p[0] % (50 * 12) + 20, p[1] % (50 * 8))
+					the_gui.set_warpscreen = n
+					the_gui.set_warpx = p[0] % (12 * 50)
+					the_gui.set_warpy = p[1] % (8 * 50)
+					the_gui.set_warp = True
+					the_gui.set_ishard = True
+					add_warptarget (spr[0])
+				updating = False
+				spriteselect[:] = [(s[0], s[0].warp is not None and not s[1]) for s in spriteselect]
 			elif key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert: # new sprite from sequence
 				self.newinfo = p, (ox, oy), n
 				viewseq.update ()
@@ -823,21 +840,6 @@ class ViewMap (View): # {{{
 				View.collectiontype = 'idle'
 				viewcollection.direction (None)
 				the_gui.setcollection = True
-			elif key == gtk.keysyms.w:
-				global updating
-				updating = True
-				for spr in spriteselect:
-					if spr[0].warp != None:
-						continue
-					n = (p[1] / (50 * 8)) * 32 + (p[0] / (50 * 12)) + 1
-					spr[0].warp = (n, p[0] % (50 * 12) + 20, p[1] % (50 * 8))
-					the_gui.set_warpscreen = n
-					the_gui.set_warpx = p[0] % (12 * 50)
-					the_gui.set_warpy = p[1] % (8 * 50)
-					the_gui.set_warp = True
-					the_gui.set_ishard = True
-					add_warptarget (spr[0])
-				updating = False
 	def copy (self):
 		copybuffer.clear ()
 		for i in select.data:
@@ -1715,7 +1717,7 @@ class ViewWorld (View): # {{{
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress (self, widget, e):
 		if e.state & gtk.gdk.CONTROL_MASK:
-			if e.keyval == gtk.keysyms.s: # save
+			if e.keyval == gtk.keysyms.w: # save
 				sync ()
 				data.save ()
 			elif e.keyval == gtk.keysyms.q: # quit
@@ -1759,7 +1761,7 @@ class ViewWorld (View): # {{{
 
 # {{{ Gui utility functions
 def get_screen ():
-	s = the_gui.get_screen
+	s = the_gui.get_screen_text
 	if s is None:
 		return None
 	x, y = [int (x) for x in s.split ()[0].split (',')]
@@ -1794,7 +1796,9 @@ def update_screens ():
 	updating = True
 	screens = data.world.room.keys ()
 	screens.sort ()
-	the_gui.set_screen_list = ['%d,%d (%d)' % ((n - 1) % 32, (n - 1) / 32, n) for n in screens]
+	global screen_list
+	screen_list = ['%d,%d (%d)' % ((n - 1) % 32, (n - 1) / 32, n) for n in screens]
+	the_gui.set_screen_list = screen_list
 	the_gui.set_screen = '%d,%d (%d)' % viewmap.get_current_screen ()
 	updating = False
 
@@ -1879,7 +1883,6 @@ def update_editgui ():
 def update_sprite_gui (dummy):
 	if updating:
 		return
-	# Changing the selected sprite is handled in its own function, so doesn't need anything here.
 	# This is about the selected sprite, if exactly one. TODO: allow multi-sprite changes.
 	if not 0 <= viewmap.current_selection < len (spriteselect):
 		View.update (viewmap)
@@ -1906,7 +1909,7 @@ def update_sprite_gui (dummy):
 		sprite.frame = frame
 	sprite.visible = the_gui.get_visible
 	sprite.size = int (the_gui.get_size)
-	brain = dink.brains[the_gui.get_brain]
+	sprite.brain = the_gui.get_brain_text
 	sprite.script = the_gui.get_script
 	sprite.speed = int (the_gui.get_speed)
 	collection = ([''] + collectionlist ())[the_gui.get_basewalk]
@@ -1998,6 +2001,17 @@ def update_world_gui (dummy):
 	if updating:
 		return
 	View.update (viewmap)
+def update_bg_gui (dummy):
+	newspriteselect = []
+	for s in spriteselect:
+		if s[1]:
+			if (s[0], False) in spriteselect:
+				newspriteselect.append (s)
+			continue
+		s[0].bg = not s[0].bg
+		newspriteselect.append (s)
+	spriteselect[:] = newspriteselect
+	update_sprite_gui (None)
 
 def set_mode (page, pagenum, dummy):
 	global mode
@@ -2172,6 +2186,7 @@ the_gui.update_screen = update_screen_gui
 #the_gui.update_world = update_world_gui
 #the_gui.update_tile = update_tile_gui
 the_gui.update_sprite = update_sprite_gui
+the_gui.update_bg = update_bg_gui
 the_gui.set_mode = set_mode
 the_gui.new_sprite = new_sprite
 the_gui.new_screen = new_screen

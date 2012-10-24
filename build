@@ -99,11 +99,13 @@ for l in open (title).readlines ():
 r = os.path.join (root, 'world')
 for rn in os.listdir (r):
 	rf = os.path.join (r, rn)
-	other_scripts += [x.split ('=', 1)[1].strip () for x in open (os.path.join (rf, 'info' + os.extsep + 'txt')).readlines () if x.strip ().startswith ('script')]
-	rfs = os.path.join (rf, 'sprite')
-	for s in os.listdir (rfs):
-		sf = os.path.join (rfs, s)
-		sprite_scripts += [x.split ('=', 1)[1].strip () for x in open (sf).readlines () if x.strip ().startswith ('script')]
+	if not os.path.isdir (rf):
+		other_scripts += [x.split ('=', 1)[1].strip () for x in open (rf).readlines () if x.strip ().startswith ('script')]
+	rfs = rf + '-sprite'
+	if os.path.isdir (rfs):
+		for s in os.listdir (rfs):
+			sf = os.path.join (rfs, s)
+			sprite_scripts += [x.split ('=', 1)[1].strip () for x in open (sf).readlines () if x.strip ().startswith ('script')]
 button_click = '''\
 	spawn ("start-game");
 	kill_this_task ();
@@ -165,9 +167,8 @@ button_click = '''\
 #}
 #''')
 if created:
-	room = os.path.join (os.path.join (root, 'world'), '400-15-12')
-	check (room)
-	check (os.path.join (room, 'info' + os.extsep + 'txt'), '''\
+	room = os.path.join (os.path.join (root, 'world'), '400-15-12.txt')
+	check (room, '''\
 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2 4,2,2
@@ -181,8 +182,6 @@ if created:
 #script = run-when-entered
 #indoor = no
 ''')
-	sprite = os.path.join (room, 'sprite')
-	check (sprite)
 	print 'Content created: not running build.'
 	sys.exit (0)
 

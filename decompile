@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# vim: set foldmethod=marker :
 
-# decompile - turn existing dmod into pydink code.
+# decompile - turn existing dmod into pydink code. {{{
 # Copyright 2011 Bas Wijnen
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -15,241 +16,51 @@
 # 
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# }}}
 
+# {{{ Imports.
 import sys
 import os
 import PIL.Image
 import dink
-
-def dinkexists (dinkpath, path):
-	# Case insensitive check on all directories
-	p = path.split ('\\')
-	path = dinkpath
-	for d in p:
-		l = [x for x in os.listdir (path) if x.lower () == d.lower ()]
-		if len (l) != 1:
-			return None
-		path = os.path.join (path, l[0])
-	return path
-
-def dinkopen (dinkpath, path, mode):
-	p = dinkexists (dinkpath, path)
-	assert p
-	return open (p, mode)
-
-def read_int (f):
-	"""Reads a 4-byte lsb-first int from f and return it."""
-	ret = 0
-	for i in range (4):
-		ret |= ord (f.read (1)) << (8 * i)
-	if ret > 1 << 31:
-		ret -= 1 << 32
-	return ret
-
-def clean (s):
-	"""Clean a string by removing all '\0's from the end."""
-	return s[:s.find ('\0')]
-
-def seq_name (code, target):
-	if code <= 0:
-		return ''
-	for i in target.seq.seq:
-		if target.seq.seq[i].code == code:
-			return i
-	for c in target.seq.collection:
-		for i in target.seq.collection[c]:
-			if i not in (1,2,3,4,6,7,8,9):
-				continue
-			if target.seq.collection[c][i].code == code:
-				return c, i
-	sys.stderr.write ('undefined sequence code %d\n' % code)
-	return 'seq-%d' % code
-
-def coll_name (code, target):
-	if code == 0 or code == -1:
-		return ''
-	for c in target.seq.collection:
-		if target.seq.collection[c]['code'] == code:
-			return c
-	for i in target.seq.seq:
-		if target.seq.seq[i].code == code:
-			return '*' + i
-	sys.stderr.write ('undefined collection code %d\n' % code)
-	return 'coll-%d' % code
-
-def brain_name (code):
-	if code >= len (dink.brains):
-		return code
-	return dink.brains[code]
-
-def sound_name (code, target):
-	if code == 0:
-		return ''
-	return code #TODO
-
-def music_name (code, target):
-	if code == 0:
-		return ''
-	return code #TODO
-
-def read_sprite (f, target, num):
-	"""Read a sprite from map.dat"""
-	ret = dink.Sprite ()
-	ret.num = num
-	ret.x = read_int (f)
-	ret.y = read_int (f)
-	ret.seq = seq_name (read_int (f), target)
-	ret.frame = read_int (f)
-	ret.type = read_int (f)
-	ret.size = read_int (f)
-	active = read_int (f) & 0xff
-	read_int (f)
-	read_int (f)
-	ret.brain = brain_name (read_int (f))
-	ret.script = clean (f.read (14))
-	f.seek (38, 1)
-	ret.speed = read_int (f)
-	ret.base_walk = coll_name (read_int (f), target)
-	ret.base_idle = coll_name (read_int (f), target)
-	ret.base_attack = coll_name (read_int (f), target)
-	read_int (f)
-	ret.timer = read_int (f)
-	ret.que = read_int (f)
-	ret.hard = read_int (f) == 0	# Note: the meaning is inverted, "== 0" is correct!
-	ret.left = read_int (f)
-	ret.top = read_int (f)
-	ret.right = read_int (f)
-	ret.bottom = read_int (f)
-	prop = read_int (f)
-	warp_map = read_int (f)
-	warp_x = read_int (f)
-	warp_y = read_int (f)
-	if prop:
-		ret.warp = [warp_map, warp_x, warp_y]
-	else:
-		ret.warp = None
-	ret.touch_seq = seq_name (read_int (f), target)
-	ret.base_die = coll_name (read_int (f), target)
-	ret.gold = read_int (f)
-	ret.hitpoints = read_int (f)
-	ret.strength = read_int (f)
-	ret.defense = read_int (f)
-	ret.exp = read_int (f)
-	ret.sound = sound_name (read_int (f), target)
-	ret.vision = read_int (f)
-	ret.nohit = read_int (f) != 0
-	ret.touch_damage = read_int (f)
-	for k in range (5):
-		read_int (f)
-	if not active:
-		return None
-	return ret
-
-def read_tile (f):
-	"""Read a tile from map.dat"""
-	ret = [0, 0, 0]
-	n = read_int (f)
-	ret[0] = n / 128
-	n %= 128
-	ret[1] = n % 12
-	ret[2] = n / 12
-	f.seek (4, 1)
-	althard = read_int (f)
-	f.seek (68, 1)
-	return ret
-
-def read_screen (f, target):
-	"""Read a screen, including tiles and sprites, from map.dat"""
-	room = dink.Room (target)
-	f.seek (20, 1)
-	for y in range (8):
-		for x in range (12):
-			room.tiles[y][x] = read_tile (f)
-	# end marker: ignore.
-	read_tile (f)
-	# junk to ignore.
-	f.seek (160 + 80, 1)
-
-	for s in range (100):
-		spr = read_sprite (f, target, s + 1)
-		if spr:
-			if type (spr.seq) == str:
-				name = spr.seq
-			else:
-				name = '%s-%d' % spr.seq
-			room.sprite['%s-%d' % (name, s)] = spr
-	# end marker: ignore.
-	read_sprite (f, target, 101)
-	room.script = clean (f.read (21))
-	f.seek (1019, 1)
-	return room
-
-#def read_hard_tile (f):
-#	"""Read hardness from hard.dat"""
-#	self.data = [None] * 50
-#	for y in range (50):
-#		self.data[y] = [None] * 50
-#		for x in range (50):
-#			self.data[y][x] = ord (f.read (1))
-#			if self.data[y][x] > 2:
-#				sys.stderr.write ("invalid hardness\n")
-#				self.data[y][x] = 3
-#		f.read (1)
-#	f.read (51)
-#	self.used = ord (f.read (1))
-#	f.seek (6, 1)
-
-#def read_hard (f):
-#	"""Read all hardness info"""
-#	self.tile = [None] * 800
-#	for i in range (800):
-#		self.tile[i] = read_hard_tile (f)
-#	size = 40 * 8 * 12
-#	self.mapping = [None] * size
-#	for i in range (size):
-#		self.mapping[i] = read_int (f)
-
-def read_graphics (path, target):
-	# TODO: read custom graphics; use dinkini.py
-	ini = [x.split () for x in dinkopen (path, 'dink.ini').readlines () if len (x.split ()) != 0]
-
-def read_all (path):
-	"""Read all data"""
-	target = dink.Dink (None)
-	read_graphics (target)
-	# TODO: read custom sound
-	#f = dinkopen (path, 'hard.dat', 'rb')
-	#self.hard = read_hard (f)
-	#f.close ()
-	f = dinkopen (path, 'dink.dat', 'rb')
-	f.seek (20)
-	screens = []
-	for s in range (768):
-		screens += [[0, 0, 0]]
-	for a in range (3):
-		for s in range (768):
-			screens[s][a] = read_int (f)
-		read_int (f)
-	f.close ()
-	f = dinkopen (path, 'map.dat', 'rb')
-	for s in range (len (screens)):
-		if screens[s][0] == 0:
-			continue
-		f.seek (31280 * (screens[s][0] - 1))
-		room = read_screen (f, target)
-		room.script = clean (f.read (21))
-		room.music = music_name (screens[s][1], target)
-		room.indoor = screens[s][2] != 0
-		target.world.room[screens[s][0]] = room
-	target.info = dinkopen (path, 'dmod.diz', 'rb').read ()
-	p = dinkexists (path, 'preview.bmp'))
-	if p:
-		target.preview = (p, 0, os.stat (p).st_size)
-	p = dinkexists (path, 'tiles\\splash.bmp')
-	if p:
-		target.splash = (p, 0, os.stat (p).st_size)
-	return target
+import readini
+# }}}
 
 assert len (sys.argv) == 3
-target = read_all (sys.argv[1])
+readini.set_dmoddir (sys.argv[1])
+
+target = dink.Dink (None)
+
+# {{{ Read and parse hardness.
+hard, defaulthard, tilefiles = readini.read_hard ()
+# Build tile and hardness images.
+for t in tilefiles:
+	# TODO: Build tile and hardness images.
+	pass
+# }}}
+
+# {{{ Read and parse graphics.
+collections, sequences, codes = readini.read_ini ()
+target.seq.seq = sequences
+target.seq.collection = collections
+# }}}
+
+# {{{ Read and parse sound.
+musics, sounds = readini.read_sound ()
+target.sound.sound = sounds
+target.sound.music = music
+# }}}
+
+readini.read_map (target, hard, defaulthard)
+
+# {{{ Preview and splash image.
+target.info = dinkopen (path, 'dmod.diz', 'rb').read ()
+p = dinkexists (path, 'preview.bmp'))
+if p:
+	target.preview = (p, 0, os.stat (p).st_size)
+p = dinkexists (path, 'tiles\\splash.bmp')
+if p:
+	target.splash = (p, 0, os.stat (p).st_size)
+# }}}
+
 target.save (sys.argv[2])

@@ -1,7 +1,7 @@
-# vim: set fileencoding=utf-8 :
-
 # readdmod - read dmod files for pydink programs.
-# Copyright 2011-2012 Bas Wijnen
+# vim: set fileencoding=utf-8 foldmethod=marker :
+
+# Copyright 2011-2012 Bas Wijnen {{{
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -15,12 +15,16 @@
 # 
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# }}}
 
+# {{{ Documentation.
 # This code is called by makecache to parse all stuff from the original game,
 # and by decompile to parse a dmod.
 # It reads hardness, collections and seqs links from dink.ini, tile screens,
 # sounds, music.
+# }}}
 
+# {{{ Imports
 import sys
 import os
 import re
@@ -30,7 +34,9 @@ import glib
 p = os.path.join (glib.get_user_config_dir (), 'pydink')
 sys.path += (p,)
 import dinkconfig
+# }}}
 
+# {{{ Names.
 collection_names = [(lambda t:(t[0], int (t[1]), t[2], t[3], t[4], t[5]))(x.split ()) for x in '''\
 idle 10 repeat none none none
 duck 20 duck none none none
@@ -289,9 +295,10 @@ drag2
 axe
 bird1
 '''.split ()
+# }}}
 
-# Create lowercase tree of all files in dinkdir.
-def buildtree (d):
+def buildtree (d): # {{{
+	'''Create lowercase tree of all files in dinkdir.'''
 	ret = {}
 	for l in os.listdir (d):
 		p = os.path.join (d, l)
@@ -301,16 +308,18 @@ def buildtree (d):
 			ret[l.lower ()] = (l,)
 	return ret
 dinktree = buildtree (dinkconfig.dinkdir)
+# }}}
 
-dmoddir = None
-dmodtree = None
-def set_dmoddir (d):
+def set_dmoddir (d): # {{{
 	global dmoddir, dmodtree
 	dmoddir = d
 	dmodtree = buildtree (dmoddir)
+dmoddir = None
+dmodtree = None
+# }}}
 
-# Get real path from dinkdir.
-def makedinkpath (f):
+def makedinkpath (f): # {{{
+	'''Get real path from dinkdir.'''
 	f = f.split ('\\')
 	if dmodtree != None:
 		paths = ((dmoddir, dmodtree), (dinkconfig.dinkdir, dinktree))
@@ -326,16 +335,17 @@ def makedinkpath (f):
 		else:
 			return p, walk, f
 	raise AssertionError ('path %s not found in dmod or dinkdir' % '\\'.join (f))
+# }}}
 
-def read_lsb (f):
+def read_lsb (f): # {{{
 	ret = 0
 	for i in range (4):
 		ret += ord (f.read (1)) << (i << 3)
 	return ret
+# }}}
 
-
-# Load a file from dinkdir.
-def loaddinkfile (f):
+def loaddinkfile (f): # {{{
+	'''Load a file from dinkdir.'''
 	p, walk, f = makedinkpath (f)
 	if f[-1] in walk:
 		path = os.path.join (p, walk[f[-1]][0])
@@ -361,9 +371,10 @@ def loaddinkfile (f):
 	dirfile.seek (offset)
 	data = dirfile.read (end - offset)
 	return StringIO.StringIO (data), (path, offset, end - offset)
+# }}}
 
-def read_hard ():
-	# read hardness into usable format.
+def read_hard (): # {{{
+	'''read hardness into usable format.'''
 	f, junk = loaddinkfile ('hard.dat')
 	data = [None] * 800
 	for t in range (800):
@@ -388,49 +399,54 @@ def read_hard ():
 	for n in range (41):
 		junk, tilefiles[n] = loaddinkfile ('tiles\\ts%02d.bmp' % (n + 1))
 	return data, defaults, tilefiles
-
-def use (seq, f):
-	if len (seq.frames) == 0:
-		seq.frames += (None,)
-	while len (seq.frames) <= f:
-		seq.frames += (dinkconfig.Frame (),)
+# }}}
 
 sequence_codes = {}
 
-def fill_frame (s, f, im):
-	if 'position' not in dir (sequence_codes[s].frames[f]):
-		if sequence_codes[s].position != None:
-			sequence_codes[s].frames[f].position = sequence_codes[s].position
-		elif im != None:
-			# Why is this how the default position is computed? Beats me, blame Seth...
-			sequence_codes[s].frames[f].position = (im.size[0] - im.size[0] / 2 + im.size[0] / 6, im.size[1] - im.size[1] / 4 - im.size[1] / 30, False)
-		else:
-			src = sequence_codes[s].frames[f].source
-			sequence_codes[s].frames[f].position = sequence_codes[src[0]].frames[src[1]].position
-	if 'hardbox' not in dir (sequence_codes[s].frames[f]):
-		if sequence_codes[s].hardbox != None:
-			sequence_codes[s].frames[f].hardbox = sequence_codes[s].hardbox
-		elif im != None:
-			# Why is this how the default hardbox is computed? Beats me, blame Seth...
-			sequence_codes[s].frames[f].hardbox = (-im.size[0] / 4, -im.size[1] / 10, im.size[0] / 4, im.size[1] / 10, False)
-		else:
-			sequence_codes[s].frames[f].hardbox = sequence_codes[src[0]].frames[src[1]].hardbox
-	if 'delay' not in dir (sequence_codes[s].frames[f]):
-		sequence_codes[s].frames[f].delay = sequence_codes[s].delay
-	if 'source' not in dir (sequence_codes[s].frames[f]):
-		sequence_codes[s].frames[f].source = None
-
-def set_custom (cols, seqs):
+def set_custom (cols, seqs): # {{{
 	for c in cols:
 		#TODO
 		pass
+# }}}
 
-# read dink.ini; make a list of sequences and sequence collections using the name list at the start.
-# Result is a list of collections and a list of sequences.
-# A collection has 10 members, which can be None or a sequence. (0 is always None.)
-# Sequence and Frame members are described below.
-def read_ini ():
+def read_ini (): # {{{
+	'''read dink.ini; make a list of sequences and sequence collections using the name list at the start.
+	Result is a list of collections and a list of sequences.
+	A collection has 10 members, which can be None or a sequence. (0 is always None.)
+	Sequence and Frame members are described below.'''
 	dinkini, junk = loaddinkfile ('dink.ini')
+
+	def fill_frame (s, f, im): # {{{
+		if 'position' not in dir (sequence_codes[s].frames[f]):
+			if sequence_codes[s].position != None:
+				sequence_codes[s].frames[f].position = sequence_codes[s].position
+			elif im != None:
+				# Why is this how the default position is computed? Beats me, blame Seth...
+				sequence_codes[s].frames[f].position = (im.size[0] - im.size[0] / 2 + im.size[0] / 6, im.size[1] - im.size[1] / 4 - im.size[1] / 30)
+			else:
+				src = sequence_codes[s].frames[f].source
+				sequence_codes[s].frames[f].position = sequence_codes[src[0]].frames[src[1]].position
+		if 'hardbox' not in dir (sequence_codes[s].frames[f]):
+			if sequence_codes[s].hardbox != None:
+				sequence_codes[s].frames[f].hardbox = sequence_codes[s].hardbox
+			elif im != None:
+				# Why is this how the default hardbox is computed? Beats me, blame Seth...
+				sequence_codes[s].frames[f].hardbox = (-im.size[0] / 4, -im.size[1] / 10, im.size[0] / 4, im.size[1] / 10, False)
+			else:
+				sequence_codes[s].frames[f].hardbox = sequence_codes[src[0]].frames[src[1]].hardbox
+		if 'delay' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].delay = sequence_codes[s].delay
+		if 'source' not in dir (sequence_codes[s].frames[f]):
+			sequence_codes[s].frames[f].source = None
+	# }}}
+
+	def use (seq, f): # {{{
+		if len (seq.frames) == 0:
+			seq.frames += (None,)
+		while len (seq.frames) <= f:
+			seq.frames += (dinkconfig.Frame (),)
+	# }}}
+
 	for l in [y.lower ().split () for y in dinkini.readlines ()]:
 		if l == [] or l[0].startswith ('//') or l[0].startswith (';') or l[0] == 'starting_dink_x' or l[0] == 'starting_dink_y' or l[0] == 'starting_dink_map':
 			pass
@@ -644,8 +660,9 @@ def read_ini ():
 	assert sequence_codes == {}
 
 	return collections, sequences, codes
+# }}}
 
-def read_sound ():
+def read_sound (): # {{{
 	p = makedinkpath ('sound\\')[0]
 	musics = {}
 	musiccodes = set ()
@@ -681,3 +698,155 @@ def read_sound ():
 			sounds[soundnames[i]] = (i + 1, c, 'wav')
 
 	return musics, sounds
+# }}}
+
+def read_map (data, hard, defaulthard): # {{{
+	def clean (s): # {{{
+		"""Clean a string by removing all '\0's from the end."""
+		return s[:s.find ('\0')]
+	# }}}
+	def get_seq (code, data): # {{{
+		return data.seq.find_seq (code)
+	# }}}
+	def get_collection (code, data): # {{{
+		return data.seq.find_collection (code)
+	# }}}
+	def get_brain (code): # {{{
+		return dink.brains[code] if 0 <= code < len (dink.brains) else str (code)
+	# }}}
+	def get_sound (code, data): # {{{
+		for s in data.sound.sound:
+			if data.sound.sound[s][0] == code:
+				return s
+		return ''
+	# }}}
+	def get_music (code, data): # {{{
+		for s in data.sound.music:
+			if data.sound.music[s][0] == code:
+				return s
+		return ''
+	# }}}
+	def read_sprite (f, data, room): # {{{
+		"""Read a sprite from map.dat"""
+		ret = data.Sprite (data)
+		ret.room = room
+		ret.x = read_lsb (f) + ((room - 1) % 32) * 50 * 12
+		ret.y = read_lsb (f) + ((room - 1) / 32) * 50 * 8
+		ret.seq = get_seq (read_lsb (f), data).name
+		ret.frame = read_lsb (f)
+		t = read_lsb (f)
+		if t == 0:
+			ret.bg = True
+			ret.visible = True
+		elif t == 1:
+			ret.bg = False
+			ret.visible = True
+		elif t == 2:
+			ret.bg = False
+			ret.visible = False
+		else:
+			sys.stderr.write ('invalid sprite type %d' % t)
+			ret.bg = True
+			ret.visible = False
+		ret.size = read_lsb (f)
+		active = read_lsb (f) & 0xff
+		read_lsb (f)
+		read_lsb (f)
+		ret.brain = get_brain (read_lsb (f))
+		ret.script = clean (f.read (14))
+		f.seek (38, 1)
+		ret.speed = read_lsb (f)
+		ret.base_walk = get_collection (read_lsb (f), target)['name']
+		ret.base_idle = get_collection (read_lsb (f), target)['name']
+		ret.base_attack = get_collection (read_lsb (f), target)['name']
+		read_lsb (f)
+		timer = read_lsb (f)
+		ret.que = read_lsb (f)
+		ret.hard = read_lsb (f) == 0    # Note: the meaning is inverted, "== 0" is correct!
+		ret.left = read_lsb (f)
+		ret.top = read_lsb (f)
+		ret.right = read_lsb (f)
+		ret.bottom = read_lsb (f)
+		prop = read_lsb (f)
+		warp_map = read_lsb (f)
+		warp_x = read_lsb (f)
+		warp_y = read_lsb (f)
+		if prop:
+			ret.warp = [warp_map, warp_x, warp_y]
+		else:
+			ret.warp = None
+		ret.touch_seq = get_seq (read_lsb (f), target).name
+		ret.base_die = get_collection (read_lsb (f), target)['name']
+		ret.gold = read_lsb (f)
+		ret.hitpoints = read_lsb (f)
+		ret.strength = read_lsb (f)
+		ret.defense = read_lsb (f)
+		ret.exp = read_lsb (f)
+		ret.sound = get_sound (read_lsb (f), target)
+		ret.vision = read_lsb (f)
+		ret.nohit = read_lsb (f) != 0
+		ret.touch_damage = read_lsb (f)
+		for k in range (5):
+			read_lsb (f)
+		if not active:
+			return None
+		data.world.sprite.add (ret)
+		ret.register ()
+		return ret
+	# }}}
+	def read_tile (f): # {{{
+		"""Read a tile from map.dat"""
+		ret = [0, 0, 0]
+		n = read_lsb (f)
+		ret[0] = n / 128
+		n %= 128
+		ret[1] = n % 12
+		ret[2] = n / 12
+		f.seek (4, 1)
+		althard = read_lsb (f)
+		f.seek (68, 1)
+		return ret, althard
+	# }}}
+	def read_screen (f, data, roomnum, hard, defaulthard): # {{{
+		"""Read a screen, including tiles and sprites, from map.dat"""
+		room = dink.Room (data)
+		f.seek (20, 1)
+		hard = [None] * 8 * 12
+		for y in range (8):
+			for x in range (12):
+				room.tiles[y][x], hard[y * 12 + x] = read_tile (f)
+		# TODO: build hard image and keep it if it's not default.
+		# end marker: ignore.
+		read_tile (f)
+		# junk to ignore.
+		f.seek (160 + 80, 1)
+		for s in range (100):
+			spr = read_sprite (f, data, roomnum)
+			if spr:
+				if type (spr.seq) == str:
+					name = spr.seq
+				else:
+					name = '%s-%d' % spr.seq
+		# end marker: ignore.
+		read_sprite (f, target, None)
+		room.script = clean (f.read (21))
+		f.seek (1019, 1)
+		return room
+	# }}}
+	screens = [[0, 0, 0] for i in range (768)]
+	f = loaddinkfile ('dink.dat')[0]
+	f.seek (20)
+	for a in range (3):
+		for s in range (768):
+			screens[s][a] = read_lsb (f)
+	f.close ()
+	f = loaddinkfile ('map.dat')[0]
+	for s in range (len (screens)):
+		if screens[s][0] == 0:
+			continue
+		f.seek (31280 * (screens[s][0] - 1))
+		room = read_screen (f, data, s, hard, defaulthard)
+		room.music = get_music (screens[s][1], data)
+		room.indoor = screens[s][2] != 0
+		data.world.room[s] = room
+# }}}
