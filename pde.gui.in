@@ -1,152 +1,274 @@
 gtk
-	Set name=run-script value="cd `dirname $SCRIPT` ; x-terminal-emulator -e vi `basename $SCRIPT`"
-	Set name=edit-hardness value="gimp '$IMAGE'"
-	Set name=sync value=""
-	Set name=default-gc value="black"
-	Set name=grid-gc value="gray"
-	Set name=border-gc value="white"
-	Set name=invalid-gc value="magenta"
-	Set name=select-gc value="red"
-	Set name=noselect-gc value="yellow"
-	Set name=noshow-gc value="orange"
-	Set name=hard-gc value="white"
-	Set name=paste-gc value="cyan"
-	Set name=empty-gc value="#eee"
-	Set name=white-gc value="white"
-	Window title="Python Dink Editor"
-		Notebook show_tabs=:False
-			HBox setpage=setmap
-				Notebook show_tabs=:False
-					External id=viewmap setpage=setmap2
-					External id=viewworld setpage=setworld
-				Notebook show_tabs=:True switch_page=set_mode expand=:False
-					VBox set_label=:Sprite name=sprite_num setpage=set_sprite_edit
-						CheckButton toggled=update_bg value=get_edit_bg expand=:False
-							'Edit background sprites
-						ComboBoxText changed=new_sprite set=set_sprite value=get_sprite content=set_spritelist expand=:False
-						Notebook show_tabs=:True expand=:False
-							VBox set_label=:Main
-								Frame label=:Main expand=:False
-									Table columns=2
-										'Name
-										Entry changed=update_sprite set=set_name value=get_name
-										'Brain
-										ComboBoxText changed=update_sprite set=set_brain value=get_brain value-text=get_brain_text
-											'none
-											'dink
-											'bounce
-											'duck
-											'pig
-											'mark
-											'repeat
-											'play
-											'text
-											'monster
-											'rook
-											'missile
-											'resize
-											'pointer
-											'button
-											'shadow
-											'person
-											'flare
-										'Script
-										HBox
-											Entry changed=update_sprite set=set_script value=get_script
-											Button clicked=edit_script
-												'Edit
-								Frame label=:Presentation expand=:False
-									Table columns=2
-										CheckButton right=:2 toggled=update_sprite set=set_visible value=get_visible
-											'Visible
-										'Vision
-										SpinButton range=:0,255 value-changed=update_sprite set=set_vision value=get_vision
-										'Speed
-										SpinButton range=:0,255 value-changed=update_sprite set=set_speed:1 value=get_speed
-										'Timing
-										SpinButton range=:0,255 value-changed=update_sprite set=set_timing:33 value=get_timing
-										'Sound
-										ComboBoxText changed=update_sprite set=set_sound content=set_sounds_list value=get_sound
-								Frame label=:Combat expand=:False
-									Table columns=2
-										'Hitpoints
-										SpinButton range=:0,10000 value-changed=update_sprite set=set_hitpoints value=get_hitpoints
-										'Strength
-										SpinButton range=:0,10000 value-changed=update_sprite set=set_strength value=get_strength
-										'Defense
-										SpinButton range=:0,10000 value-changed=update_sprite set=set_defense value=get_defense
-										'Experience
-										SpinButton range=:0,10000 value-changed=update_sprite set=set_exp value=get_exp
-										'Touch damage
-										SpinButton range=:-1,10000 value-changed=update_sprite set=set_touchdamage value=get_touchdamage
-										CheckButton right=:2 toggled=update_sprite set=set_nohit value=get_nohit
-											'Nohit
-										'Gold
-										SpinButton range=:-100000,100000 value-changed=update_sprite set=set_gold value=get_gold
-							VBox set_label=:Extra
-								Table columns=2 expand=:False
-									'X
-									SpinButton range=:-1000000,1000000 value-changed=update_sprite set=set_x value=get_x
-									'Y
-									SpinButton range=:-1000000,1000000 value-changed=update_sprite set=set_y value=get_y
-									'Sequence
-									ComboBoxText changed=update_sprite set=set_seq value=get_seq content=set_seq_list
-									'Frame
-									SpinButton range=set_num_frames:1,100 value-changed=update_sprite set=set_frame:1 value=get_frame
-									'Size
-									SpinButton range=:0,1000 value-changed=update_sprite set=set_size:100 value=get_size
-									'Que
-									SpinButton range=:-10000,10000 value-changed=update_sprite set=set_que value=get_que
-									'Walk
-									ComboBoxText changed=update_sprite set=set_basewalk value=get_basewalk content=set_walk_list
-									'Idle
-									ComboBoxText changed=update_sprite set=set_baseidle value=get_baseidle content=set_idle_list
-									'Attack
-									ComboBoxText changed=update_sprite set=set_baseattack value=get_baseattack content=set_attack_list
-									'Die
-									ComboBoxText changed=update_sprite set=set_basedeath value=get_basedeath content=set_death_list
-							VBox set_label=:Warp/box
-								Table columns=2 expand=:False
-									CheckButton right=:2 value=get_warp set=set_warp toggled=update_sprite
-										'Enable warp
-									'Screen
-									SpinButton range=:1,768 value-changed=update_sprite set=set_warpscreen value=get_warpscreen
-									'X
-									SpinButton range=:20,620 value-changed=update_sprite set=set_warpx value=get_warpx
-									'Y
-									SpinButton range=:0,400 value-changed=update_sprite set=set_warpy value=get_warpy
-									'Touch seq
-									ComboBoxText changed=update_sprite set=set_touchseq value=get_touchseq content=set_touch_list
-									CheckButton right=:2 toggled=update_sprite set=set_ishard value=get_ishard
-										'Is hard
-									CheckButton right=:2 toggled=update_sprite set=set_crop value=get_crop
-										'Crop
-									'Left
-									SpinButton range=:-640,640 value-changed=update_sprite set=set_left value=get_left
-									'Top
-									SpinButton range=:-400,400 value-changed=update_sprite set=set_top value=get_top
-									'Right
-									SpinButton range=:-640,640 value-changed=update_sprite set=set_right value=get_right
-									'Bottom
-									SpinButton range=:-400,400 value-changed=update_sprite set=set_bottom value=get_bottom
-					Label name=tiles_num set_label=:Tiles value=":There are no settings for tile editing" setpage=set_tile_edit
-					VBox set_label=:Screen name=screen_num setpage=set_screen_edit
-						Table columns=2 expand=:False
-							ComboBoxText right=:2 changed=new_screen value=get_screen value-text=get_screen_text set=set_screen content=set_screen_list
-							'Hardness
-							HBox
-								ComboBoxText changed=update_screen value=get_screen_hardness set=set_screen_hardness content=set_screen_hardness_list
-								Button clicked=edit_screen_hardness expand=:False
-									'Edit
-							'Script
-							HBox
-								Entry changed=update_screen value=get_screen_script set=set_screen_script
-								Button clicked=edit_screen_script expand=:False
-									'Edit
-							'Music
-							ComboBoxText changed=update_screen value=get_screen_music set=set_screen_music content=set_music_list
-							CheckButton right=:2 value=get_indoor set=set_indoor toggled=update_screen
-								'Indoor
-			External id=viewcollection setpage=setcollection
-			External id=viewseq setpage=setseq
-			External id=viewtiles setpage=settiles
+	Setting name=run_script value="cd `dirname '$SCRIPT'` ; x-terminal-emulator -e vi `basename '$SCRIPT'`"
+	Setting name=edit_hardness value="gimp '$IMAGE'"
+	Setting name=sync value=""
+	Setting name=default_gc value="black"
+	Setting name=grid_gc value="gray"
+	Setting name=border_gc value="white"
+	Setting name=invalid_gc value="magenta"
+	Setting name=select_gc value="red"
+	Setting name=noselect_gc value="yellow"
+	Setting name=noshow_gc value="orange"
+	Setting name=hard_gc value="white"
+	Setting name=warp_gc value="#f88"
+	Setting name=paste_gc value="cyan"
+	Setting name=empty_gc value="#eee"
+	Setting name=white_gc value="white"
+	Setting name=nobackingstore value=False type=bool
+	FileChooserDialog title="Select game directory to edit" action=:create_folder show=show_open:False overwrite_confirmation=:False response=open
+	FileChooserDialog title="Select game directory to save" action=:create_folder show=show_save_as:False response=save_as
+	AboutDialog setup=about show=show_about
+	Window title="title:Python Dink Editor"
+		VBox
+			MenuBar expand=:False
+				Menu title=File
+					MenuItem title=Open action=file_open
+					MenuItem title=Save action=file_save
+					MenuItem title="Save as" action=file_save_as
+					MenuItem title=Quit action=file_quit
+				Menu title=Edit
+					MenuItem title="Select all" action=edit_select_all
+					MenuItem title="Deselect all" action=edit_deselect_all
+				Menu title=Help
+					MenuItem title=About action=help_about
+			Notebook show_tabs=:False
+				HBox set_page=setmap
+					Notebook show_tabs=:False
+						External id=viewmap set_page=setmap2
+						External id=viewworld set_page=setworld
+					Notebook show_tabs=:True switch_page=set_mode expand=:False
+						VBox label=:Sprite name=sprite_num set_page=set_sprite_edit
+							ComboBoxText changed=new_sprite value=sprite text=sprite_text content=set_spritelist expand=:False
+							Notebook show_tabs=:True expand=:False
+								VBox label=:Main
+									Frame label=:Main expand=:False
+										Table columns=2
+											'Name
+											Entry changed=update_sprite_name value=name
+											'Brain
+											ComboBoxEntryText changed=update_sprite_brain value=brain text=brain_text
+												'none
+												'dink
+												'bounce
+												'duck
+												'pig
+												'mark
+												'repeat
+												'play
+												'text
+												'monster
+												'rook
+												'missile
+												'resize
+												'pointer
+												'button
+												'shadow
+												'person
+												'flare
+											'Script
+											HBox
+												Entry changed=update_sprite_script value=script
+												Button clicked=edit_script
+													'Edit
+									Frame label=:Presentation expand=:False
+										Table columns=2
+											'Layer
+											SpinButton range=:0,9 value-changed=update_sprite_layer value=layer
+											'Vision
+											SpinButton range=:0,255 value-changed=update_sprite_vision value=vision
+											'Speed
+											SpinButton range=:0,255 value-changed=update_sprite_speed value=speed:1
+											'Timing
+											SpinButton range=:0,255 value-changed=update_sprite_timing value=timing:33
+											'Sound
+											ComboBoxText changed=update_sprite_sound content=set_sounds_list value=sound text=sound_text
+									Frame label=:Combat expand=:False
+										Table columns=2
+											'Hitpoints
+											SpinButton range=:0,10000 value-changed=update_sprite_hitpoints value=hitpoints
+											'Strength
+											SpinButton range=:0,10000 value-changed=update_sprite_strength value=strength
+											'Defense
+											SpinButton range=:0,10000 value-changed=update_sprite_defense value=defense
+											'Experience
+											SpinButton range=:0,10000 value-changed=update_sprite_experience value=experience
+											'Touch damage
+											SpinButton range=:-1,10000 value-changed=update_sprite_touch_damage value=touch_damage
+											CheckButton right=:2 toggled=update_sprite_nohit value=nohit
+												'Nohit
+											'Gold
+											SpinButton range=:-100000,100000 value-changed=update_sprite_gold value=gold
+								VBox set_label=:Extra
+									Table columns=2 expand=:False
+										'X
+										SpinButton range=:-1000000,1000000 value-changed=update_sprite_x value=x
+										'Y
+										SpinButton range=:-1000000,1000000 value-changed=update_sprite_y value=y
+										'Sequence
+										ComboBoxText changed=update_sprite_seq value=seq text=seq_text content=set_seq_list
+										'Frame
+										SpinButton range=set_num_frames:1,100 value-changed=update_sprite_frame value=frame:1
+										'Size
+										SpinButton range=:0,1000 value-changed=update_sprite_size value=size:100
+										'Que
+										SpinButton range=:-10000,10000 value-changed=update_sprite_que value=que
+										'Walk
+										ComboBoxText changed=update_sprite_walk value=basewalk content=set_walk_list text=basewalk_text
+										'Idle
+										ComboBoxText changed=update_sprite_idle value=baseidle content=set_idle_list text=baseidle_text
+										'Attack
+										ComboBoxText changed=update_sprite_attack value=baseattack content=set_attack_list text=baseattack_text
+										'Die
+										ComboBoxText changed=update_sprite_die value=basedeath content=set_death_list text=basedeath_text
+								VBox set_label=:Warp/box
+									Table columns=2 expand=:False
+										CheckButton right=:2 value=warp toggled=update_sprite_warp
+											'Enable warp
+										'Map
+										SpinButton range=:1,768 value-changed=update_sprite_warpmap value=warpmap
+										'X
+										SpinButton range=:20,620 value-changed=update_sprite_warpx value=warpx
+										'Y
+										SpinButton range=:0,400 value-changed=update_sprite_warpy value=warpy
+										'Touch seq
+										ComboBoxText changed=update_sprite_touchseq value=touchseq content=set_touch_list text=touchseq_text
+										CheckButton right=:2 toggled=update_sprite_hard value=hard
+											'Is hard
+										CheckButton right=:2 toggled=update_sprite_crop value=crop
+											'Crop
+										'Left
+										SpinButton range=:-640,640 value-changed=update_sprite_left value=left
+										'Top
+										SpinButton range=:-400,400 value-changed=update_sprite_top value=top
+										'Right
+										SpinButton range=:-640,640 value-changed=update_sprite_right value=right
+										'Bottom
+										SpinButton range=:-400,400 value-changed=update_sprite_bottom value=bottom
+						VBox set_label=:Layers name=layers_num set_page=set_layer_edit
+							Table columns=4 expand=:False
+								'1
+								ComboBoxText changed=update_layer value=layer1_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer1_background
+									'Background
+								CheckButton value=layer1_visible
+									'Visible
+								'2
+								ComboBoxText changed=update_layer value=layer2_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer2_background
+									'Background
+								CheckButton value=layer2_visible
+									'Visible
+								'3
+								ComboBoxText changed=update_layer value=layer3_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer3_background
+									'Background
+								CheckButton value=layer3_visible
+									'Visible
+								'4
+								ComboBoxText changed=update_layer value=layer4_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer4_background
+									'Background
+								CheckButton value=layer4_visible
+									'Visible
+								'5
+								ComboBoxText changed=update_layer value=layer5_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer5_background
+									'Background
+								CheckButton value=layer5_visible
+									'Visible
+								'6
+								ComboBoxText changed=update_layer value=layer6_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer6_background
+									'Background
+								CheckButton value=layer6_visible
+									'Visible
+								'7
+								ComboBoxText changed=update_layer value=layer7_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer7_background
+									'Background
+								CheckButton value=layer7_visible
+									'Visible
+								'8
+								ComboBoxText changed=update_layer value=layer8_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer8_background
+									'Background
+								CheckButton value=layer8_visible
+									'Visible
+								'9
+								ComboBoxText changed=update_layer value=layer9_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer9_background
+									'Background
+								CheckButton value=layer9_visible
+									'Visible
+								'0
+								ComboBoxText changed=update_layer value=layer0_presentation
+									'Visible
+									'Transparent
+									'Invisible
+									'Ignore
+								CheckButton value=layer0_background
+									'Background
+								CheckButton value=layer0_visible
+									'Visible
+								Label value=':Invisible foreground layers are ignored' right=:4
+								Label value=':when building a dmod' right=:4
+								Label value=":Active Layer" right=:2
+								SpinButton range=:0,9 value-changed=new_layer value=active_layer
+						Label name=tiles_num label=:Tiles value=":There are no settings for tile editing" set_page=set_tile_edit
+						VBox label=:Map name=map_num set_page=set_map_edit
+							Table columns=2 expand=:False
+								ComboBoxText right=:2 changed=new_map value=map text=map_text content=set_map_list
+								'Hardness
+								HBox
+									ComboBoxEntryText changed=update_map text=map_hardness content=set_map_hardness_list
+									Button clicked=edit_map_hardness expand=:False
+										'Edit
+								'Script
+								HBox
+									Entry changed=update_map value=map_script
+									Button clicked=edit_map_script expand=:False
+										'Edit
+								'Music
+								ComboBoxText changed=update_map text=map_music content=set_music_list
+								CheckButton right=:2 value=indoor toggled=update_map
+									'Indoor
+				External id=viewcollection set_page=setcollection
+				External id=viewseq set_page=setseq
+				External id=viewtiles set_page=settiles
+			Statusbar text=statusbar

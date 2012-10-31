@@ -1,0 +1,12 @@
+gtk
+	Window title=":Pydink cache generator - configuration"
+		Table columns=2
+			'Dink data
+			FileChooserButton filename=dir action=:select_folder
+			'Freedink executable
+			FileChooserButton filename=freedink action=:open
+			Button clicked=run right=:2
+				'Generate cache
+			Label value=error right=:2
+			Button clicked=done right=:2
+				'Close

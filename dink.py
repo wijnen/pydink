@@ -20,16 +20,18 @@
 
 # {{{ Directory setup specification
 #world
-#	nnn-xx-yy			script, tiles, hardness
-#bg
-#	nnn-xx-yy-name.txt		x, y, etc. for background sprites
-#sprite
-#	nnn-xx-yy-name.txt		script, x, y, etc.
+#	nnn-xx-yy.txt			script, tiles, hardness
+#	nnn-xx-yy-sprite		sprites which are locked to this map
+#		[0-9]			layer
+#			name.txt	sprite info
+#	sprite				sprites which are not locked to a map
+#		[0-9]			layer
+#			name.txt	sprite info
 #tile
 #	nn.png				tile map
 #	nn-hard.png			hardness for tile map
 #hard
-#	name.png			hardness for screen
+#	name.png			hardness for map
 #image
 #	name.png			splash, map, or similar image
 #seq
@@ -60,9 +62,6 @@ import shutil
 import StringIO
 import pickle
 import glib
-
-sys.path += (os.path.join (glib.get_user_config_dir (), 'pydink'),)
-import dinkconfig
 # }}}
 # {{{ Error handling
 def error (message):
@@ -77,8 +76,22 @@ def nice_assert (test, message):
 # }}}
 # {{{ Global variables and utility functions
 cachedir = os.path.join (glib.get_user_cache_dir (), 'pydink')
-tilefiles, collections, sequences, codes, musics, sounds = pickle.load (open (os.path.join (cachedir, 'data'), 'rb'))
 filename = ''
+read_cache = False
+
+class Sequence:
+	pass
+class Frame:
+	pass
+
+def read_config ():
+	config = {}
+	for x in open (os.path.join (glib.get_user_config_dir (), 'pydink', 'config.txt')).readlines ():
+		if x.strip () == '' or x.strip ().startswith ('#'):
+			continue
+		k, v = x.strip ().split (None, 1)
+		config[k] = v
+	return config
 
 def make_hard_image (path):
 	src = Image.open (path).convert ('RGB')
@@ -424,8 +437,8 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		sprites = [s for s in dink.world.sprite if s.name == nm]
 		nice_assert (len (sprites) == 1, 'referenced sprite %s not found' % nm)
 		sprite = sprites[0]
-		# Sprite names used with sp () must be locked to their room, because the script doesn't know from which room it's called.
-		nice_assert (sprite.room is not None, 'referenced sprite %s is not locked to a room' % nm)
+		# Sprite names used with sp () must be locked to their map, because the script doesn't know from which map it's called.
+		nice_assert (sprite.map is not None, 'referenced sprite %s is not locked to a map' % nm)
 		a[0] = sprite.editcode
 	elif name == 'sp_base_attack' or name == 'sp_base_death' or name == 'sp_base_idle' or name == 'sp_base_walk':
 		if isinstance (a[1], str) and a[1][0] == '"':
@@ -830,7 +843,7 @@ def make_direct (dink, name, args, used):
 		nm = args[0][1:-1]
 		sprites = [s for s in dink.world.sprite if s.name == nm]
 		nice_assert (len (sprites) == 1, "referenced sprite %s doesn't exist" % nm)
-		nice_assert (sprites[0].room is not None, "referenced sprite %s is not locked to a room" % nm)
+		nice_assert (sprites[0].map is not None, "referenced sprite %s is not locked to a map" % nm)
 		if used is not None:
 			# When looking for used sequences, editcodes are not initialized yet. This is no problem, because that part isn't used anyway.
 			return 1
@@ -1383,13 +1396,12 @@ class Sprite: #{{{
 			death = ''
 		self.name = None
 		self.rename (name if name is not None else s, world)
-		self.room = None
-		self.bg = False
+		self.map = None
+		self.layer = 1
 		self.x = None
 		self.y = None
 		self.seq = seq
 		self.frame = frame
-		self.visible = True
 		self.size = 100
 		self.brain = brain
 		self.script = script
@@ -1411,7 +1423,7 @@ class Sprite: #{{{
 		self.hitpoints = 0
 		self.strength = 0
 		self.defense = 0
-		self.exp = 0
+		self.experience = 0
 		self.sound = ''
 		self.vision = 0
 		self.nohit = False
@@ -1432,39 +1444,39 @@ class Sprite: #{{{
 		assert n not in world.spritenames
 		world.spritenames.add (n)
 		self.name = n
-	def get_screens (self, world):
+	def get_maps (self, world):
 		ret = []
 		if self.x is None or self.y is None:
 			return ret
-		if self.room is not None and self.room in world.room:
-			ret.append (self.room)
+		if self.map is not None and self.map in world.map:
+			ret.append (self.map)
 		else:
 			# Compute bounding box; add sprite wherever it is visible.
 			s = self.parent.seq.find_seq (self.seq)
 			if s is None or self.frame >= len (s.frames):
-				# Sequence not found: no screens.
+				# Sequence not found: no maps.
 				return ret
 			boundingbox = s.frames[self.frame].boundingbox
 			minx = (self.x + boundingbox[0]) / (50 * 12)
 			miny = (self.y + boundingbox[1]) / (50 * 8)
 			maxx = (self.x + boundingbox[2]) / (50 * 12)
 			maxy = (self.y + boundingbox[3]) / (50 * 8)
-			ret += [r for r in (y * 32 + x + 1 for y in range (miny, maxy + 1) for x in range (minx, maxx + 1)) if r in world.room]
+			ret += [r for r in (y * 32 + x + 1 for y in range (miny, maxy + 1) for x in range (minx, maxx + 1)) if r in world.map]
 		return ret
 	def register (self, world = None):
 		if world is None:
 			world = self.parent.world
-		for i in self.get_screens (world):
-			world.room[i].sprite.add (self)
+		for i in self.get_maps (world):
+			world.map[i].sprite.add (self)
 	def unregister (self, world = None):
 		if world is None:
 			world = self.parent.world
-		for i in self.get_screens (world):
-			world.room[i].sprite.remove (self)
-	def read (self, info, name, base, room = None, world = None):
-		'''Read sprite info from info. Optionally lock sprite to room.'''
+		for i in self.get_maps (world):
+			world.map[i].sprite.remove (self)
+	def read (self, info, name, base, map = None, world = None):
+		'''Read sprite info from info. Optionally lock sprite to map.'''
 		self.unregister (world)
-		self.room = room
+		self.map = map
 		info, self.x = get (info, 'x', int)
 		info, self.y = get (info, 'y', int)
 		info, seq = get (info, 'seq', base)
@@ -1478,8 +1490,6 @@ class Sprite: #{{{
 			self.seq = None
 		self.rename (name, world)
 		info, self.frame = get (info, 'frame', 1)
-		info, self.visible = get (info, 'room', 0)
-		info, self.visible = get (info, 'visible', True)
 		info, self.size = get (info, 'size', 100)
 		info, self.brain = get (info, 'brain', 'none')
 		info, self.script = get (info, 'script', '')
@@ -1505,21 +1515,21 @@ class Sprite: #{{{
 		info, self.hitpoints = get (info, 'hitpoints', 0)
 		info, self.strength = get (info, 'strength', 0)
 		info, self.defense = get (info, 'defense', 0)
-		info, self.exp = get (info, 'exp', 0)
+		info, self.experience = get (info, 'exp', 0)
 		info, self.sound = get (info, 'sound', '')
 		info, self.vision = get (info, 'vision', 0)
 		info, self.nohit = get (info, 'nohit', False)
 		info, self.touch_damage = get (info, 'touch_damage', 0)
 		self.register (world)
 		return info
-	def save (self, dirname):
-		if self.room is not None:
-			n = self.room
+	def save (self):
+		if self.map is not None:
+			n = self.map
 			x = (n - 1) % 32
 			y = (n - 1) / 32
-			d = os.path.join (self.parent.root, 'world', '%03d-%02d-%02d-%s' % (n, x, y, dirname))
+			d = os.path.join (self.parent.root, 'world', '%03d-%02d-%02d-sprite' % (n, x, y), '%d' % self.layer)
 		else:
-			d = os.path.join (self.parent.root, 'world', dirname)
+			d = os.path.join (self.parent.root, 'world', 'sprite', '%d' % self.layer)
 		if not os.path.exists (d):
 			os.makedirs (d)
 		n = os.path.join (d, self.name + os.extsep + 'txt')
@@ -1538,7 +1548,6 @@ class Sprite: #{{{
 			base = self.name
 		put (f, 'seq', seq, base)
 		put (f, 'frame', self.frame, 1)
-		put (f, 'visible', self.visible, True)
 		put (f, 'size', self.size, 100)
 		put (f, 'brain', self.brain, 'none')
 		put (f, 'script', self.script, '')
@@ -1561,14 +1570,14 @@ class Sprite: #{{{
 		put (f, 'hitpoints', self.hitpoints, 0)
 		put (f, 'strength', self.strength, 0)
 		put (f, 'defense', self.defense, 0)
-		put (f, 'exp', self.exp, 0)
+		put (f, 'exp', self.experience, 0)
 		put (f, 'sound', self.sound, '')
 		put (f, 'vision', self.vision, 0)
 		put (f, 'nohit', self.nohit, False)
 		put (f, 'touch_damage', self.touch_damage, 0)
 # }}}
 
-class Room: #{{{
+class Map: #{{{
 	def __init__ (self, parent, path = None):
 		self.parent = parent
 		self.sprite = set ()
@@ -1609,7 +1618,7 @@ class Room: #{{{
 class World: #{{{
 	def __init__ (self, parent):
 		self.parent = parent
-		self.room = {}
+		self.map = {}
 		self.spritenames = set ()
 		self.sprite = set ()
 		if self.parent.root is None:
@@ -1622,11 +1631,9 @@ class World: #{{{
 				infopath = path + os.extsep + 'txt'
 				if not os.path.exists (infopath):
 					continue
-				self.room[n] = Room (parent, infopath)
-				self.read_sprites (path + '-bg', True, n)
-				self.read_sprites (path + '-sprite', False, n)
-		self.read_sprites ('bg', True)
-		self.read_sprites ('sprite', False)
+				self.map[n] = Map (parent, infopath)
+				self.read_sprites (path + '-sprite', n)
+		self.read_sprites ('sprite')
 		if not os.path.exists (d):
 			return
 		for f in os.listdir (d):
@@ -1636,43 +1643,45 @@ class World: #{{{
 				r = re.match ('(\d{3})-(\d{2})-(\d{2})' + os.extsep + 'txt$', f)
 				if r is None:
 					if re.match ('\d+-', f) is not None:
-						sys.stderr.write ("Warning: not using %s as room\n" % f)
+						sys.stderr.write ("Warning: not using %s as map\n" % f)
 					continue
 				n, x, y = [int (k) for k in r.groups ()]
 				if x >= 32 or y >= 24 or n != y * 32 + x + 1:
-					sys.stderr.write ("Warning: not using %s as room (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
+					sys.stderr.write ("Warning: not using %s as map (%d != %d * 32 + %d + 1)\n" % (f, n, y, x))
 	def add_sprite (self, name, pos, seq, frame):
 		spr = Sprite (self.parent, seq, frame, name = name)
 		self.sprite.add (spr)
 		spr.x, spr.y = pos
 		spr.register ()
 		return spr
-	def read_sprites (self, dirname, is_bg, room = None):
+	def read_sprites (self, dirname, map = None):
+		global filename
 		sdir = os.path.join (self.parent.root, 'world', dirname)
 		if not os.path.exists (sdir):
 			return
-		for s in os.listdir (sdir):
-			r = re.match ('(([^.].+?)(-\d+)?)\.txt$', s)
-			nice_assert (r, 'sprite has incorrect filename')
-			filename = os.path.join (sdir, s)
-			info = readlines (open (filename))
-			s = r.group (1)
-			base = r.group (2)
-			nice_assert (s not in self.spritenames, 'duplicate definition of sprite name %s' % s)
-			spr = Sprite (self.parent, world = self, name = s)
-			self.sprite.add (spr)
-			spr.bg = is_bg
-			info = spr.read (info, s, base, room, world = self)
-			nice_assert (info == {}, 'unused data for sprite %s: %s' % (s, str (info.keys ())))
+		for layer in range (10):
+			layerdir = os.path.join (sdir, '%d' % layer)
+			if not os.path.exists (layerdir):
+				continue
+			for s in os.listdir (layerdir):
+				r = re.match ('(([^.].+?)(-\d+)?)\.txt$', s)
+				nice_assert (r, 'sprite has incorrect filename')
+				filename = os.path.join (layerdir, s)
+				info = readlines (open (filename))
+				s = r.group (1)
+				base = r.group (2)
+				nice_assert (s not in self.spritenames, 'duplicate definition of sprite name %s' % s)
+				spr = Sprite (self.parent, world = self, name = s)
+				self.sprite.add (spr)
+				spr.layer = layer
+				info = spr.read (info, s, base, map, world = self)
+				nice_assert (info == {}, 'unused data for sprite %s: %s' % (s, str (info.keys ())))
 	def save (self):
 		os.mkdir (os.path.join (self.parent.root, 'world'))
-		for r in self.room:
-			self.room[r].save (r)
+		for r in self.map:
+			self.map[r].save (r)
 		for s in self.sprite:
-			if s.bg:
-				s.save ('bg')
-			else:
-				s.save ('sprite')
+			s.save ()
 	def write_sprite (self, spr, mdat, s):
 		sx = (s - 1) % 32
 		sy = (s - 1) / 32
@@ -1686,12 +1695,18 @@ class World: #{{{
 		else:
 			mdat.write (make_lsb (sq.code, 4))
 		mdat.write (make_lsb (spr.frame, 4))
-		mdat.write (make_lsb (0 if spr.bg else 1 if spr.visible else 2, 4))
+		# Invisible foreground is ignored, and this function is not even called for it.
+		if not self.parent.layer_background[spr.layer]:
+			mdat.write (make_lsb (1, 4))
+		elif self.parent.layer_visible[spr.layer]:
+			mdat.write (make_lsb (0, 4))
+		else:
+			mdat.write (make_lsb (2, 4))
 		mdat.write (make_lsb (spr.size, 4))
 		mdat.write (make_lsb (1, 4))	# active
 		mdat.write (make_lsb (0, 4))	# rotation
 		mdat.write (make_lsb (0, 4))	# special
-		if not nice_assert (spr.warp is None or spr.brain != 'repeat', 'sprite %s has repeat brain and warp; resetting brain to none to avoid bug in engine' % spr.name):
+		if not nice_assert (spr.warp is None or spr.brain != 'repeat' or self.parent.layer_background[spr.layer], 'sprite %s has repeat brain and warp; resetting brain to none to avoid bug in engine' % spr.name):
 			mdat.write (make_lsb (make_brain ('none'), 4))
 		else:
 			mdat.write (make_lsb (make_brain (spr.brain), 4))
@@ -1729,7 +1744,7 @@ class World: #{{{
 		mdat.write (make_lsb (spr.hitpoints, 4))
 		mdat.write (make_lsb (spr.strength, 4))
 		mdat.write (make_lsb (spr.defense, 4))
-		mdat.write (make_lsb (spr.exp, 4))
+		mdat.write (make_lsb (spr.experience, 4))
 		mdat.write (make_lsb (self.parent.sound.find_sound (spr.sound), 4))
 		mdat.write (make_lsb (spr.vision, 4))
 		mdat.write (make_lsb (int (spr.nohit), 4))
@@ -1816,52 +1831,56 @@ class World: #{{{
 		# Write dink.dat
 		ddat = open (os.path.join (root, 'dink' + os.extsep + 'dat'), "wb")
 		ddat.write ('Smallwood' + '\0' * 15)
-		rooms = []
+		maps = []
 		for i in range (1, 32 * 24 + 1):
-			if not i in self.room:
+			if not i in self.map:
 				ddat.write (make_lsb (0, 4))
 				continue
-			rooms.append (i)
+			maps.append (i)
 			# Note that the write is after the append, because the index must start at 1.
-			ddat.write (make_lsb (len (rooms), 4))
+			ddat.write (make_lsb (len (maps), 4))
 		ddat.write ('\0' * 4)
 		for i in range (1, 32 * 24 + 1):
-			if not i in self.room:
+			if not i in self.map:
 				ddat.write (make_lsb (0, 4))
 				continue
-			ddat.write (make_lsb (self.parent.sound.find_music (self.room[i].music), 4))
+			ddat.write (make_lsb (self.parent.sound.find_music (self.map[i].music), 4))
 		ddat.write ('\0' * 4)
 		for i in range (1, 32 * 24 + 1):
-			if not i in self.room or not self.room[i].indoor:
+			if not i in self.map or not self.map[i].indoor:
 				ddat.write (make_lsb (0, 4))
 			else:
 				ddat.write (make_lsb (1, 4))
 		# Write map.dat
 		mdat = open (os.path.join (root, 'map' + os.extsep + 'dat'), "wb")
-		for s in rooms:
+		for s in maps:
 			mdat.write ('\0' * 20)
 			# tiles and hardness
 			for y in range (8):
 				for x in range (12):
-					bmp, tx, ty = self.room[s].tiles[y][x]
+					bmp, tx, ty = self.map[s].tiles[y][x]
 					mdat.write (make_lsb ((bmp - 1) * 128 + ty * 12 + tx, 4))
 					mdat.write ('\0' * 4)
-					mdat.write (make_lsb (self.parent.tile.find_hard (self.room[s].hard, x, y, bmp, tx, ty), 4))
+					mdat.write (make_lsb (self.parent.tile.find_hard (self.map[s].hard, x, y, bmp, tx, ty), 4))
 					mdat.write ('\0' * 68)
 			mdat.write ('\0' * 320)
 			# sprites
 			# sprite 0 is never used...
 			mdat.write ('\0' * 220)
 			editcode = 1
-			for spr in self.room[s].sprite:
-				if spr.room is not None:
+			ignored = 0
+			for spr in self.map[s].sprite:
+				if not self.parent.layer_visible[spr.layer] and self.parent.layer_background[spr.layer]:
+					ignored += 1
+					continue
+				if spr.map is not None:
 					spr.editcode = editcode
 				editcode += 1
 				self.write_sprite (spr, mdat, s)
-			n = len (self.room[s].sprite)
+			n = len (self.map[s].sprite) - ignored
 			mdat.write ('\0' * 220 * (100 - n))
 			# base script
-			mdat.write (make_string (self.room[s].script, 21))
+			mdat.write (make_string (self.map[s].script, 21))
 			mdat.write ('\0' * 1019)
 # }}}
 
@@ -1875,36 +1894,38 @@ class Tile: #{{{
 		self.parent = parent
 		self.hard = {}
 		self.tile = {}
-		ext = os.extsep + 'png'
-		d = os.path.join (parent.root, 'hard')
-		if os.path.exists (d):
-			for t in os.listdir (d):
-				if not t.endswith (ext):
-					continue
-				base = t[:-len (ext)]
-				f = os.path.join (d, t)
-				self.hard[base] = (f, 0, os.stat (f).st_size)
-		d = os.path.join (parent.root, 'tile')
-		if os.path.exists (d):
-			for t in os.listdir (d):
-				h = '-hard' + ext
-				if not t.endswith (h):
-					continue
-				base = t[:-len (h)]
-				nice_assert (re.match ('^\d+$', base), 'tile hardness must have a numeric filename with -hard appended')
-				f = os.path.join (d, t)
-				hardfile = (f, 0, os.stat (f).st_size)
-				n = int (base)
-				t = os.path.join (d, base + ext)
-				if os.path.exists (t):
-					self.tile[n] = ((t, 0, os.stat (t).st_size), hardfile, 3)
-				else:
-					self.tile[n] = (tilefiles[n - 1], hardfile, 2)
+		if self.parent.root is not None:
+			ext = os.extsep + 'png'
+			d = os.path.join (parent.root, 'hard')
+			if os.path.exists (d):
+				for t in os.listdir (d):
+					if not t.endswith (ext):
+						continue
+					base = t[:-len (ext)]
+					f = os.path.join (d, t)
+					self.hard[base] = (f, 0, os.stat (f).st_size)
+			d = os.path.join (parent.root, 'tile')
+			if os.path.exists (d):
+				for t in os.listdir (d):
+					h = '-hard' + ext
+					if not t.endswith (h):
+						continue
+					base = t[:-len (h)]
+					nice_assert (re.match ('^\d+$', base), 'tile hardness must have a numeric filename with -hard appended')
+					f = os.path.join (d, t)
+					hardfile = (f, 0, os.stat (f).st_size)
+					n = int (base)
+					t = os.path.join (d, base + ext)
+					if os.path.exists (t):
+						self.tile[n] = ((t, 0, os.stat (t).st_size), hardfile, 3)
+					else:
+						self.tile[n] = (tilefiles[n - 1], hardfile, 2)
 		ext = os.extsep + 'bmp'
 		for n in range (1, 41):
 			if n not in self.tile:
-				t = os.path.join (d, str (n) + ext)
-				if os.path.exists (t):
+				if self.parent.root is not None:
+					t = os.path.join (d, str (n) + ext)
+				if self.parent.root is not None and os.path.exists (t):
 					tilefile = ((t, 0, os.stat (t).st_size), 1)
 				else:
 					tilefile = (tilefiles[n - 1], 0)
@@ -1912,17 +1933,17 @@ class Tile: #{{{
 				self.tile[n] = (tilefile[0], (hardfile, 0, os.stat (hardfile).st_size), tilefile[1])
 	def find_hard (self, hard, x, y, bmp, tx, ty):
 		if hard != '':
-			nice_assert (hard in self.hard, 'reference to undefined hardness screen %s' % hard)
+			nice_assert (hard in self.hard, 'reference to undefined hardness map %s' % hard)
 			ret = self.hardmap[hard][y][x]
 			if ret != self.tilemap[bmp][ty][tx]:
 				return ret
 		return 0
 	def save (self):
 		hfiles = []
-		for n in self.parent.world.room:
-			h = self.parent.world.room[n].hard
+		for n in self.parent.world.map:
+			h = self.parent.world.map[n].hard
 			if h:
-				nice_assert (h in self.hard, "room %d references hardness %s which isn't defined" % (n, h))
+				nice_assert (h in self.hard, "map %d references hardness %s which isn't defined" % (n, h))
 				hfiles += (h,)
 		for h in self.hard:
 			nice_assert (h in hfiles, 'not saving unused hardness %s' % h)
@@ -1954,7 +1975,7 @@ class Tile: #{{{
 			if self.tile[i][1][0].startswith (old):
 				self.tile[i] = (self.tile[i][0], (new + self.tile[i][1][0][len (old):], self.tile[i][1][1], self.tile[i][1][2]), self.tile[i][2])
 	def write_hard (self, image, h):
-		'''Write hardness of all tiles in a given screen to hard.dat (opened as h). Return map of indices used.'''
+		'''Write hardness of all tiles in a given map to hard.dat (opened as h). Return map of indices used.'''
 		ret = [None] * 8
 		for y in range (8):
 			ret[y] = [None] * 12
@@ -2002,17 +2023,17 @@ class Tile: #{{{
 		self.hardmap = {}
 		self.tilemap = [None] * 41
 		for t in self.hard:
-			# Write hardness for custom hard screens.
+			# Write hardness for custom hard maps.
 			self.hardmap[t] = self.write_hard (Image.open (filepart (*self.hard[t])), h)
 		for n in range (1, 41):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
-				# Write custom tile screens.
+				# Write custom tile maps.
 				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, str (t) + os.extsep + 'bmp'))
 			# Write hardness for standard tiles.
 			self.tilemap[n] = self.write_hard (Image.open (filepart (*self.tile[n][1])), h)
 		nice_assert (len (self.hmap) <= 800, 'More than 800 hardness tiles defined (%d)' % len (self.hmap))
 		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
-		# Write hardness index for tile screens.
+		# Write hardness index for tile maps.
 		for t in range (1, 41):
 			m = self.tilemap[t]
 			for y in range (8):
@@ -2147,7 +2168,7 @@ class Seq: #{{{
 		ret['death'] = ''
 		return ret
 	def makeseq (self, base):
-		ret = dinkconfig.Sequence ()
+		ret = Sequence ()
 		ret.name = base
 		ret.brain = 'none'
 		ret.script = ''
@@ -2165,7 +2186,7 @@ class Seq: #{{{
 		ret.code = None
 		return ret
 	def makeframe (self):
-		ret = dinkconfig.Frame ()
+		ret = Frame ()
 		ret.position = None
 		ret.hardbox = None
 		ret.boundingbox = None
@@ -2524,7 +2545,7 @@ class Sound: #{{{
 		self.music = {}
 		if self.parent.root is None:
 			return
-		self.sounds = self.detect ('sound', ('wav',), sounds)
+		self.sound = self.detect ('sound', ('wav',), sounds)
 		self.music = self.detect ('music', ('mid', 'ogg'), musics)
 	def detect (self, dirname, exts, initial):
 		ret = {}
@@ -2884,8 +2905,10 @@ void main ()\r
 class Images: #{{{
 	def __init__ (self, parent):
 		self.parent = parent
-		im = os.path.join (self.parent.root, 'image')
 		self.images = {}
+		if self.parent.root is None:
+			return
+		im = os.path.join (self.parent.root, 'image')
 		if not os.path.exists (im):
 			return
 		for i in os.listdir (im):
@@ -2916,15 +2939,20 @@ class Images: #{{{
 
 class Dink: #{{{
 	def __init__ (self, root):
+		global filename, read_cache
+		if not read_cache:
+			global tilefiles, collections, sequences, codes, musics, sounds
+			tilefiles, collections, sequences, codes, musics, sounds = pickle.load (open (os.path.join (cachedir, 'data'), 'rb'))
+			read_cache = True
+		self.config = read_config ()
 		if root is None:
 			self.root = None
 		else:
 			self.root = os.path.abspath (os.path.normpath (root))
 			p = os.path.join (self.root, 'info' + os.extsep + 'txt')
+			filename = os.path.join (self.root, 'info' + os.extsep + 'txt')
 		self.image = Images (self)
-		global filename
-		filename = os.path.join (self.root, 'info' + os.extsep + 'txt')
-		if os.path.exists (filename):
+		if root is not None and os.path.exists (filename):
 			f = open (filename)
 			info = readlines (f)
 			self.info = f.read ()
@@ -2935,6 +2963,11 @@ class Dink: #{{{
 			info, p = get (info, 'pointer', 'special 8')
 			p = p.rsplit (None, 1)
 			self.pointer_seq, self.pointer_frame = p[0], int (p[1])
+			self.layer_visible = [None] * 10
+			self.layer_background = [None] * 10
+			for i in range (10):
+				info, self.layer_visible[i] = get (info, 'visible-%d' % i, i != 9)
+				info, self.layer_background[i] = get (info, 'background-%d' % i, i in (0, 9))
 			nice_assert (info == {}, 'unused data')
 		else:
 			self.image.preview = ''
@@ -2994,6 +3027,9 @@ file (info.txt).
 		put (f, 'splash', self.image.splash, '')
 		put (f, 'start', '%d %d %d' % (self.start_map, self.start_x, self.start_y))
 		put (f, 'pointer', '%s %d' % (self.pointer_seq, self.pointer_frame))
+		for i in range (10):
+			put (f, 'visible-%d' % i, self.layer_visible[i], i != 9)
+			put (f, 'background-%d' % i, self.layer_background[i], i in (0, 9))
 		f.write ('\r\n' + self.info)
 		if backup is not None:
 			self.rename (backup, self.root)
@@ -3034,11 +3070,11 @@ file (info.txt).
 		builddir = tempfile.mkdtemp (prefix = 'pydink-test-')
 		try:
 			self.build (builddir)
-			if os.path.basename (dinkconfig.dinkdir) == '':
-				d = os.path.dirname (os.path.dirname (dinkconfig.dinkdir))
+			if os.path.basename (self.config['dinkdir']) == '':
+				d = os.path.dirname (os.path.dirname (self.config['dinkdir']))
 			else:
-				d = os.path.dirname (dinkconfig.dinkdir)
-			os.spawnl (os.P_WAIT, dinkconfig.dinkprog, dinkconfig.dinkprog, '-g', builddir, '-r', d, '-w')
+				d = os.path.dirname (self.config['dinkdir'])
+			os.spawnl (os.P_WAIT, self.config['dinkprog'], self.config['dinkprog'], '-g', builddir, '-r', d, '-w')
 		finally:
 			shutil.rmtree (builddir)
 			if y is not None:

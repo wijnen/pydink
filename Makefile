@@ -20,6 +20,9 @@ all: pde.gui
 %.dmod: pde.py pde.gui
 	./pde.py $(subst .dmod,,$@)
 
+cache: makecache.py makecache.gui
+	./makecache.py
+
 %: %.in
 	../xmlgen/xmlgen <$< >$@
 

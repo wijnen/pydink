@@ -29,8 +29,9 @@ class GtkDink (dink.Dink): # {{{
 		self.colors = ['black', 'dark blue', 'light green', 'cyan', 'orange', 'lavender', '#cc7722', 'light grey', 'dark grey', 'sky blue', 'green', 'yellow', 'yellow', 'pink', 'yellow', 'white']
 		for c in range (len (self.colors)):
 			self.colors[c] = gtk.gdk.colormap_get_system ().alloc_color (self.colors[c])
-		self.scale = scale
 		self.time = 0
+		self.scale = None
+		self.set_scale (scale, True)
 	def cache_get (self, type, name):
 		try:
 			ret = self.cache[(type, name)]

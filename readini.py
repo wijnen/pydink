@@ -30,11 +30,12 @@ import os
 import re
 import Image
 import StringIO
-import glib
-p = os.path.join (glib.get_user_config_dir (), 'pydink')
-sys.path += (p,)
-import dinkconfig
+import dink
 # }}}
+
+is_setup = False
+dinkdir = ''
+err = ''
 
 # {{{ Names.
 collection_names = [(lambda t:(t[0], int (t[1]), t[2], t[3], t[4], t[5]))(x.split ()) for x in '''\
@@ -307,7 +308,13 @@ def buildtree (d): # {{{
 		else:
 			ret[l.lower ()] = (l,)
 	return ret
-dinktree = buildtree (dinkconfig.dinkdir)
+# }}}
+
+def setup (dir): # {{{
+	global dinkdir, dinktree, is_setup
+	dinkdir = dir
+	dinktree = buildtree (dinkdir)
+	is_setup = True
 # }}}
 
 def set_dmoddir (d): # {{{
@@ -322,9 +329,9 @@ def makedinkpath (f): # {{{
 	'''Get real path from dinkdir.'''
 	f = f.split ('\\')
 	if dmodtree != None:
-		paths = ((dmoddir, dmodtree), (dinkconfig.dinkdir, dinktree))
+		paths = ((dmoddir, dmodtree), (dinkdir, dinktree))
 	else:
-		paths = ((dinkconfig.dinkdir, dinktree),)
+		paths = ((dinkdir, dinktree),)
 	for p, walk in paths:
 		for i in f[:-1]:
 			branch = walk[i]
@@ -346,6 +353,8 @@ def read_lsb (f): # {{{
 
 def loaddinkfile (f): # {{{
 	'''Load a file from dinkdir.'''
+	if not is_setup:
+		setup (dink.read_config ()['dinkdir'])
 	p, walk, f = makedinkpath (f)
 	if f[-1] in walk:
 		path = os.path.join (p, walk[f[-1]][0])
@@ -392,7 +401,8 @@ def read_hard (): # {{{
 				elif p == 2:
 					pixels[x, y] = (0, 0, 255, 255)
 				else:
-					sys.stderr.write ('Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (t, x, y, p))
+					global err
+					err += 'Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (t, x, y, p)
 					pixels[x, y] = (0, 0, 0, 0)
 	defaults = [[read_lsb (f) for x in range (8 * 12 + 32)] for s in range (41)]
 	tilefiles = [None] * 41
@@ -414,6 +424,7 @@ def read_ini (): # {{{
 	Result is a list of collections and a list of sequences.
 	A collection has 10 members, which can be None or a sequence. (0 is always None.)
 	Sequence and Frame members are described below.'''
+	global err
 	dinkini, junk = loaddinkfile ('dink.ini')
 
 	def fill_frame (s, f, im): # {{{
@@ -444,7 +455,7 @@ def read_ini (): # {{{
 		if len (seq.frames) == 0:
 			seq.frames += (None,)
 		while len (seq.frames) <= f:
-			seq.frames += (dinkconfig.Frame (),)
+			seq.frames += (dink.Frame (),)
 	# }}}
 
 	for l in [y.lower ().split () for y in dinkini.readlines ()]:
@@ -453,18 +464,18 @@ def read_ini (): # {{{
 		elif l[0] == 'load_sequence' or l[0] == 'load_sequence_now':
 			if l == ['load_sequence_now', 'graphics\dink\push\ds-p6-', '316', '75', '67', '71', '-21', '-12', '21']:
 				# Bug in original dink.ini.
-				sys.stderr.write ('(ignore) warning: setting sprite info for 316 with extra number, because the source is missing it.\n')
+				err += '(ignore) warning: setting sprite info for 316 with extra number, because the source is missing it.\n'
 				l += ('6',)
 			s = int (l[2])
 			if s in sequence_codes:
 				if 'filepath' in dir (sequence_codes[s]):
 					assert 'preload' not in dir (sequence_codes[s])
 					preload = sequence_codes[s].filepath
-					sequence_codes[s] = dinkconfig.Sequence ()
+					sequence_codes[s] = dink.Sequence ()
 					sequence_codes[s].frames = []
 					sequence_codes[s].preload = preload
 			else:
-				sequence_codes[s] = dinkconfig.Sequence ()
+				sequence_codes[s] = dink.Sequence ()
 				sequence_codes[s].frames = []
 			sequence_codes[s].filepath = l[1]
 			sequence_codes[s].now = l[0] == 'load_sequence_now'
@@ -473,7 +484,7 @@ def read_ini (): # {{{
 			elif len (l) == 4:
 				# Ignore bug in original source.
 				if l[3] == 'notanin':
-					sys.stderr.write ('(ignore) warning: changing "notanin" into "notanim".\n')
+					err += '(ignore) warning: changing "notanin" into "notanim".\n'
 					l[3] = 'notanim'
 				if l[3] == 'black' or l[3] == 'notanim' or l[3] == 'leftalign':
 					sequence_codes[s].type = l[3]
@@ -484,7 +495,7 @@ def read_ini (): # {{{
 				assert l[4] == 'black' or l[4] == 'notanim' or l[4] == 'leftalign'
 				sequence_codes[s].type = l[4]
 			elif len (l) == 9:
-				sys.stderr.write ('(ignore) warning: no delay in %s.\n' % l)
+				err += '(ignore) warning: no delay in %s.\n' % l
 				sequence_codes[s].position = [int (x) for x in l[3:5]]
 				sequence_codes[s].hardbox = [int (x) for x in l[5:9]]
 			elif len (l) == 10:
@@ -496,13 +507,13 @@ def read_ini (): # {{{
 		elif l[0] == 'set_sprite_info':
 			if l == ['set_sprite_info', '31', '26', '49', '99', '-49', '-10', '51']:
 				# Bug in original dink.ini.
-				sys.stderr.write ('(ignore) warning: setting sprite info for 31 18, because the source is missing the frame.\n')
+				err += '(ignore) warning: setting sprite info for 31 18, because the source is missing the frame.\n'
 				l = ['set_sprite_info', '31', '18', '26', '49', '99', '-49', '-10', '51']
 			assert len (l) == 9
 			s = int (l[1])
 			f = int (l[2])
 			if s not in sequence_codes:
-				sequence_codes[s] = dinkconfig.Sequence ()
+				sequence_codes[s] = dink.Sequence ()
 				sequence_codes[s].frames = []
 			use (sequence_codes[s], f)
 			sequence_codes[s].frames[f].position = [int (x) for x in l[3:5]]
@@ -512,28 +523,28 @@ def read_ini (): # {{{
 			s = int (l[1])
 			f = int (l[2])
 			if s not in sequence_codes:
-				sequence_codes[s] = dinkconfig.Sequence ()
+				sequence_codes[s] = dink.Sequence ()
 				sequence_codes[s].frames = []
 			#use (sequence_codes[s], f)
 			if len (sequence_codes[s].frames) <= f:
-				sys.stderr.write ('(ignore) warning: not using frame delay, because %d %d was not defined yet.\n' % (s, f))
+				err += '(ignore) warning: not using frame delay, because %d %d was not defined yet.\n' % (s, f)
 			else:
 				sequence_codes[s].frames[f].delay =  int (l[3])
 		elif l[0] == 'set_frame_frame':
 			s = int (l[1])
 			f = int (l[2])
 			if s not in sequence_codes:
-				sequence_codes[s] = dinkconfig.Sequence ()
+				sequence_codes[s] = dink.Sequence ()
 				sequence_codes[s].frames = []
 			if len (l) == 5:
 				use (sequence_codes[s], f)
 				sequence_codes[s].frames[f].source = (int (l[3]), int (l[4]))
 				# Fix yet another bug in original dink.ini
 				if sequence_codes[s].frames[f].source == (82, 3):
-					sys.stderr.write ('(ignore) warning: using 83 3 instead of 82 3 because of bug in original source.\n')
+					err += '(ignore) warning: using 83 3 instead of 82 3 because of bug in original source.\n'
 					sequence_codes[s].frames[f].source = (83, 3)
 				if sequence_codes[s].frames[f].source == (82, 2):
-					sys.stderr.write ('(ignore) warning: using 83 2 instead of 82 2 because of bug in original source.\n')
+					err += '(ignore) warning: using 83 2 instead of 82 2 because of bug in original source.\n'
 					sequence_codes[s].frames[f].source = (83, 2)
 			else:
 				assert len (l) == 4 and int (l[3]) == -1
@@ -543,7 +554,7 @@ def read_ini (): # {{{
 			s = int (l[1])
 			f = int (l[2])
 			if s not in sequence_codes:
-				sequence_codes[s] = dinkconfig.Sequence ()
+				sequence_codes[s] = dink.Sequence ()
 				sequence_codes[s].frames = []
 			use (sequence_codes[s], f)
 			sequence_codes[s].special = f
@@ -694,7 +705,8 @@ def read_sound (): # {{{
 		if soundnames[i] != '-':
 			f, c = loaddinkfile ('sound\\' + soundnames[i] + '.wav')
 			if c == None:
-				sys.stderr.write ("(ignore) warning: sound file %s doesn't exist.\n" % soundnames[i])
+				global err
+				err += "(ignore) warning: sound file %s doesn't exist.\n" % soundnames[i]
 			sounds[soundnames[i]] = (i + 1, c, 'wav')
 
 	return musics, sounds
@@ -745,7 +757,8 @@ def read_map (data, hard, defaulthard): # {{{
 			ret.bg = False
 			ret.visible = False
 		else:
-			sys.stderr.write ('invalid sprite type %d' % t)
+			global err
+			err += 'invalid sprite type %d' % t
 			ret.bg = True
 			ret.visible = False
 		ret.size = read_lsb (f)
