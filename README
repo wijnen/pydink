@@ -1,4 +1,4 @@
-This is pydink, an alternative engine and editor for Dink Smallwood. It
+This is PyDink, an alternative engine and editor for Dink Smallwood. It
 requires the (free) artwork of the original game (or new artwork, but that
 isn't provided).
 
@@ -6,91 +6,142 @@ It is not entirely bug-compatible. Several choices have been made which make
 things work differently from the original game. Games that are not too complex
 should work on both systems, though.
 
-*** Setting up ***
-Also make sure you have Python and PyGtk installed.
+*** Setting up the system ***
+First make sure you have Python, PyGtk, and FreeDink installed. You can get
+them here:
+http://python.org/download
+http://pygtk.org/downloads.html
+http://www.dinknetwork.com/file/gnu_freedink
 
-In the pydink directory, do
-ln -s ../libgui-py/gui.py
+(They're all free software, which means that if you're not using Windows, you
+can most likely save yourself some trouble and install them with your package
+manager.)
 
-Then run
-./makecache
+PyGtk has two versions: its own version, and the Python version that it should
+work with. Make sure that this second version matches the Python that you are
+installing.
 
-Then edit pydink/config.py in your configuration directory (~/.config on unix).
-Also edit the first lines of pde.gui.in to make it start you editors instead of mine.
+Install Python before installing PyGtk.
 
-Then prepare the gui:
-../xmlgen/xmlgen < pde.gui.in > pde.gui
+You will need to edit scripts during dmod making. Don't use a lousy editor like
+notepad if you want to keep your sanity. For beginners, I recommend gedit:
+http://gedit.en.softonic.com/. If you want real power and don't mind having
+to learn how to use it first, I recommend vim: http://www.vim.org/download.php
 
-To create an empty dmod, run
-./build directory
+*** Setting up PyDink ***
+Run makecache from this directory. Specify the location of the Dink data files
+and the freedink executable. It will give some errors when generating the
+cache; these are errors in Dink's source code. They can be safely ignored.
 
-After that, running this command again will (try to) build a dmod from the files in the directory.
+Edit pde.gui. It is an xml file which can be edited with your text editor. The
+Settings at the top should be changed to match you system and preferences. What
+they mean:
+edit_script:
+	The command to run for editing a script. The default value starts a new
+	terminal with vi in the directory of the script on a unix system. It
+	will not work on Windows. Change it for example to "gedit '$SCRIPT'".
+edit_hardness:
+	The command to run for editing hardness. The default value starts the
+	gimp, which should work if you have installed it. Change it to your
+	preferred image editor if you don't.
+*_gc:
+	Colours of many elements in the gui. Feel free to change them.
+nobackingstore:
+	On slow systems, draw directly to the screen instead of an off-screen
+	window, which is then copied to the screen. Setting this to True will
+	make the program fast and ugly. Unless you are experiencing slowness in
+	the screen drawing, leave this to False.
 
-The files can be edited by hand, but more easily with the editor:
-./pde directory
+*** Running the PyDink editor (pde) ***
+If everything is correctly set up, a window should open when you run pde.py.
+This window has a map on the left and a side bar on the right (unless you've
+changed the interface in pde.gui ;-) ). The editor is always in one of several
+modes, each of which has its own shortcut keys. The keys for changing modes are
+always the same. The mode can also be changed by selecting its tab in the
+sidebar. The modes are:
 
+Sprite edit: (ctrl-s), change properties of sprites. You'll be using this most of the time.
+Layer edit: (ctrl-l), change properties of layers; most notably their visibility.
+Tile edit: (ctrl-t), change map tiles.
+Map edit: (ctrl-m), change map screen properties.
 
-Every command is a single key. Undo is not implemented, nor is auto-save, so be careful. Auto-backup is implemented, so if you want an undo-option, just save a lot.
+Every command is a single key. For many keys, the pointer position while
+pressing it matters. So move your pointer to the right place, then press the
+key. You can cancel an editing action by pressing the right mouse button or the
+Escape key, or confirm it using the left mouse button or Enter key. Undo is not
+implemented, nor is auto-save, so be careful. Auto-backup is implemented, so to
+simulate undo, just save a lot.
 
-The controls are:
-Left mouse button: select sprite, select multiple when dragging. Keep old selection when holding control while clicking. During an operation: confirm and finish the operation (move, resize, etc).
+Very fast introduction:
 
-Middle mouse button: paste selected sprites or tiles.
+The first thing you'll want to do in a new dmod is create a map screen: go to
+map edit with ctrl-m, then press Insert while the pointer is hovering over the
+map screen you want to create. If you want to remove it again, you can press
+Delete while hovering over it. These keys only work in map edit mode.
 
-Right mouse button: select tiles. Similar to left button.
+Go back to sprite edit mode (ctrl-s) and add a sprite: press 0 on the numpad to
+select from a list of non-collection (see below) sequences. Select a sequence
+by clicking and holding the middle mouse button. Its frames appear and you can
+select one. The first frame can also be selected from the position where the
+sequence was, so just clicking and not holding will select the first frame. The
+sprite will appear where your pointer was when you pressed 0. If it isn't at
+the right place, press m to move it, then move your pointer. Note that it moves
+with, not to, the pointer. This makes sense for multi-sprite select. Left-click
+to finish the move action. Similarly, use s to scale and q to set the depth
+que.
 
-Keys (TODO are not implemented yet):
-a set attack
-b set walk
-c start cropping TODO
-d set die
-e edit script
-f fill tiles
-g make group TODO
-h toggle is_hard
-i set idle
-j jump to selected
-k kill sprite
-l start resizing (largeness)
-m start moving
-n jump to next TODO
-o open group TODO
-p play
-q start que change
-r random fill tiles
-s save
-t toggle show tilescreen
-u undo TODO
-v set visual? TODO
-w enable warp and toggle select warp target or sprite
-x exit (without saving!)
-y yank (copy) tiles
-z start screen zoom
+Instead of 0, you can also use other keys on the numpad to create collection
+sprites. A collection is several sequences which represent different directions
+of the same thing. For example, Dink has 8 directions where he can walk; the
+"walk" collection is a combination of those 8 sequences. The directions can be
+read directly from the numpad. For example, 1 is pointing to bottom left, 6 to
+the right. 5 is special, it is the death sequence of a collection. This will be
+used when a monster dies (unless base_death is set; in that case a sequence
+from that collection will be used).
 
-0-9 run script TODO
-/ search sprites TODO
-' toggle nohit
-` enter command TODO
-- unselect all
-= view world map
-backspace restore 100% zoom
-home center screen
-ins insert screen
-del delete screen
-escape cancel current operation
-enter finish current operation
-space start screen panning
-numpad 12346789 new sprite from collection with given direction
-numpad 5 new sprite from collection with any direction
-numpad 0 new sprite from non-collection sequence
+If you have sprites selected and use the left mouse button in the sequence
+selection screen, the sequence of the selected sprites is changed and no new
+sprites are added. When using the left mouse button on a warp target, the
+sprite's touch sequence (which will be played when warping) is changed (the
+frame is ignored in that case).
 
-In the sequence selection screens, the mouse buttons mean:
-Left: change selected sprite's sequence and frame to selected frame.
-Middle: add new sprite with selected frame.
-Right: unused.
+Speaking of warps, the easiest way to add a warp property to a sprite, is by
+pressing the w key while it is selected. If it didn't have a warp target yet,
+it will now be warping to the pointer position. If it did have a warp target,
+it toggles the selection between the warp target and the sprite itself. The j
+key is particularly useful in combination with this; that will make the view
+jump to the current selection. So to see where a warp is going or coming from,
+select the sprite or warp target by clicking on it, then press w to select the
+other one and press j to see where it is.
 
-For many commands the pointer position when the key is pressed is important.
+When multiple sprites are selected, the n key for next has a similar function;
+it will jump to all selected sprites in turn (j jumps to a point in their
+center).
 
-Screen zoom is so slow that you should only use it by pressing cursor keys, not by moving the mouse.
+Standard pointer actions:
+left-click: select single sprite or tile.
+ctrl-left-click: add or remove single sprite or tile to or from selection.
+left-drag: select multiple sprites or tiles.
+ctrl-left-drag: add or remove multiple sprites or tiles to or from selection.
+middle-click: paste selected sprites or tiles around current pointer position.
+middle-drag: pan view.
+right-click: cancel current operation.
+
+There are 10 layers available to sort the sprites. By default, layer 9 is for
+invisible background sprites and layer 0 for visible (normal) background
+sprites. You can change these settings in layer edit mode. Pressing a number
+key (not on the numpad) changes the active layer. Using ctrl and a number key
+moves the selected sprites to a new layer.
+
+To test the dmod, put your pointer on the desired starting position and press
+ctrl-p. To save (write) it, press ctrl-w. To build the dmod for playing outside
+the editor, press ctrl-b. To quit the editor, press ctrl-q.
+
+Note that you will need to edit info.txt before building a real dmod. If you
+want to use non-standard graphics, you will also need to add it manually.
+Making any such manual changes must be done while the editor is not running,
+because the editor works on an internal copy of the data. If you change the
+data on disk and then save, the changed data is moved to the backup directory
+and a new version without the changes is saved in its place.
 
 Feedback is very welcome.

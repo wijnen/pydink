@@ -45,23 +45,26 @@ def write_config (data): # {{{
 
 # Argument parsing. {{{
 a = argparse.ArgumentParser ()
-a.add_argument ('--dir', default = None, help = 'location of dink data', type = str)
+a.add_argument ('--dinkdir', default = None, help = 'location of dink data', type = str)
+a.add_argument ('--dmoddir', default = None, help = 'location of dink data', type = str)
 a.add_argument ('--freedink', default = None, help = 'location of freedink executable', type = str)
 args = a.parse_args ()
 # }}}
 
 # Setup gui. {{{
-if args.dir is None or args.freedink is None:
+if args.dinkdir is None or args.dmoddir is None or args.freedink is None:
 	import gui
 	with_gui = True
 	the_gui = gui.Gui ()
-	the_gui.dir = '/usr/share/games/dink/dink' if args.dir is None else args.dir
+	the_gui.dinkdir = '/usr/share/games/dink/dink' if args.dinkdir is None else args.dinkdir
+	the_gui.dmoddir = os.path.join (os.path.expanduser ('~'), 'dmods') if args.dmoddir is None else args.dmoddir
 	the_gui.freedink = '/usr/games/freedink' if args.freedink is None else args.freedink
 	the_gui.run = lambda: the_gui (False, True)
 	the_gui.done = lambda: the_gui (False)
 else:
 	with_gui = False
-	dinkdir = args.dir
+	dinkdir = args.dinkdir
+	dmoddir = args.dmoddir
 	freedink = args.freedink
 # }}}
 
@@ -71,7 +74,8 @@ while True:
 		if the_gui () is None:
 			# The window was closed.
 			sys.exit (0)
-		dinkdir = the_gui.dir
+		dinkdir = the_gui.dinkdir
+		dmoddir = the_gui.dmoddir
 		freedink = the_gui.freedink
 	# }}}
 
@@ -79,8 +83,9 @@ while True:
 	f = open (configfilename, 'w')
 	f.write ('''\
 dinkdir		%s
+dmoddir		%s
 dinkprog	%s
-''' % (dinkdir, freedink))
+''' % (dinkdir, dmoddir, freedink))
 	f.close ()
 	# }}}
 	readini.setup (dinkdir)

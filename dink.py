@@ -1745,7 +1745,13 @@ class World: #{{{
 		mdat.write (make_lsb (spr.strength, 4))
 		mdat.write (make_lsb (spr.defense, 4))
 		mdat.write (make_lsb (spr.experience, 4))
-		mdat.write (make_lsb (self.parent.sound.find_sound (spr.sound), 4))
+		# Ok, so Seth doesn't like 0. He adds an empty element to every
+		# array to make sure 0 is never used. That's annoying, but I've
+		# learned to live with it. BUT WHAT IS THIS?! While the sounds
+		# in scripts are 1-based, like the rest of the code, he thought
+		# it would be a good idea to drop this idea for sounds and make
+		# them 0-based. Seth, STOP BEING SO TERRIBLY INCONSISTENT!!!
+		mdat.write (make_lsb (self.parent.sound.find_sound (spr.sound) - 1, 4))
 		mdat.write (make_lsb (spr.vision, 4))
 		mdat.write (make_lsb (int (spr.nohit), 4))
 		mdat.write (make_lsb (spr.touch_damage, 4))
@@ -2651,9 +2657,9 @@ int make_button (int button)
 
 void main ()
 {
-	sp_script (make_button (create_sprite (76, 40, "button", "start", 1)), "game-start");
-	sp_script (make_button (create_sprite (524, 40, "button", "continue", 1)), "game-continue");
-	sp_script (make_button (create_sprite (560, 440, "button", "quit", 1)), "game-quit");
+	sp_script (make_button (create_sprite (76, 40, "button", "button-start", 1)), "game-start");
+	sp_script (make_button (create_sprite (524, 40, "button", "button-continue", 1)), "game-continue");
+	sp_script (make_button (create_sprite (560, 440, "button", "button-quit", 1)), "game-quit");
 }
 '''
 			if 'game-start' in self.data:
@@ -2977,6 +2983,8 @@ class Dink: #{{{
 			self.start_y = 200
 			self.pointer_seq = 'special'
 			self.pointer_frame = 8
+			self.layer_visible = [i != 9 for i in range (10)]
+			self.layer_background = [i in (0, 9) for i in range (10)]
 			self.info = '''\
 %s
 
@@ -3038,9 +3046,14 @@ file (info.txt).
 		self.tile.rename (old, new)
 		self.sound.rename (old, new)
 		self.seq.rename (old, new)
-	def build (self, root):
-		if not os.path.exists (root):
-			os.mkdir (root)
+	def build (self, root = None):
+		if root is None:
+			if self.root is None:
+				return
+			root = os.path.join (self.config['dmoddir'], os.path.basename (self.root))
+		if os.path.exists (root):
+			shutil.rmtree (root)
+		os.mkdir (root)
 		# Write tiles/*
 		self.tile.build (root)
 		# Write images.
@@ -3068,6 +3081,8 @@ file (info.txt).
 				del self.script.data['intro']
 			self.script.data['start'] = 'void main ()\n{\n\tstart_game ();\n\tkill_this_task ();\n}\n'
 		builddir = tempfile.mkdtemp (prefix = 'pydink-test-')
+		oldroot = self.root
+		self.root = 'playtest'
 		try:
 			self.build (builddir)
 			if os.path.basename (self.config['dinkdir']) == '':
@@ -3076,6 +3091,7 @@ file (info.txt).
 				d = os.path.dirname (self.config['dinkdir'])
 			os.spawnl (os.P_WAIT, self.config['dinkprog'], self.config['dinkprog'], '-g', builddir, '-r', d, '-w')
 		finally:
+			self.root = oldroot
 			shutil.rmtree (builddir)
 			if y is not None:
 				self.script.start_map, self.script.start_x, self.script.start_y, intro, self.script.data['start'] = tmp

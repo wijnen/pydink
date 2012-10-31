@@ -2,7 +2,9 @@ gtk
 	Window title=":Pydink cache generator - configuration"
 		Table columns=2
 			'Dink data
-			FileChooserButton filename=dir action=:select_folder
+			FileChooserButton filename=dinkdir action=:select_folder
+			'DMod directory
+			FileChooserButton filename=dmoddir action=:select_folder
 			'Freedink executable
 			FileChooserButton filename=freedink action=:open
 			Button clicked=run right=:2

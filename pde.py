@@ -668,6 +668,10 @@ class ViewMap (View): # {{{
 				p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 				n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
 				data.play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
+			elif key == gtk.keysyms.b: # build
+				os.system (the_gui.sync)
+				sync ()
+				data.build ()
 			elif key == gtk.keysyms.w: # save
 				save ()
 			elif key == gtk.keysyms.q: # quit
@@ -847,11 +851,16 @@ class ViewMap (View): # {{{
 			else:
 				return False
 		else:
-			if key == gtk.keysyms.a: # set base attack
+			if key == gtk.keysyms.a: # select or unselect all
+				if len (spriteselect) == 0:
+					select_all ()
+				else:
+					deselect_all ()
+			elif key == gtk.keysyms.a: # set base attack TODO: this never happens
 				View.collectiontype = 'attack'
 				viewcollection.direction (None)
 				the_gui.setcollection = True
-			elif key == gtk.keysyms.m: # set base walk (march)
+			elif key == gtk.keysyms.m: # set base walk (march) TODO: this never happens
 				View.collectiontype = 'walk'
 				the_gui.setcollection = True
 				viewcollection.direction (None)
@@ -868,17 +877,14 @@ class ViewMap (View): # {{{
 		return True
 	def layerkey (self, layer, ctrl):
 		if ctrl:
-			# Move all selected sprites to layer and make it active.
+			# Move all selected sprites to layer.
 			for s in spriteselect:
 				s[0].layer = layer
-			# Fall through
-		# Make layer active.
-		the_gui.active_layer = layer
-		update_editgui ()
-		viewmap.update ()
-		#current = getattr (the_gui, 'layer%d_presentation' % layer)
-		#nxt = getattr (the_gui, 'next_presentation_%s' % current)
-		#setattr (the_gui, 'layer%d_presentation' % layer, int (nxt))
+		else:
+			# Make layer active.
+			the_gui.active_layer = layer
+			update_editgui ()
+			viewmap.update ()
 	def key_layers (self, key, ctrl):
 		if key == gtk.keysyms._0:
 			self.layerkey (0, ctrl)
@@ -986,7 +992,7 @@ class ViewMap (View): # {{{
 			# Reregister all sprites, so they can pick up the new map.
 			for s in data.world.sprite:
 				s.unregister ()
-			data.world.map[n] = dink.Room (data)
+			data.world.map[n] = dink.Map (data)
 			if self.mapsource in data.world.map:
 				for y in range (8):
 					for x in range (12):
@@ -1876,10 +1882,6 @@ def update_editgui ():
 		the_gui.map_hardness = data.world.map[map].hard
 		the_gui.map_music = data.world.map[map].music
 		the_gui.indoor = data.world.map[map].indoor
-	# The layer is always the active layer; other sprites cannot be selected.
-	the_gui.layer = the_gui.active_layer
-	# But selected sprites may have changed layer. Unselect anything which isn't in the active layer.
-	spriteselect[:] = [s for s in spriteselect if s[0].layer == the_gui.active_layer]
 	# Update list of selected sprites.
 	the_gui.set_spritelist = ['All selected sprites'] + ['%s warp' % x[0].name if x[1] else x[0].name for x in spriteselect]
 	if not 0 <= viewmap.current_selection < len (spriteselect):
@@ -1902,6 +1904,7 @@ def update_editgui ():
 		the_gui.name = ''
 		the_gui.x = combine ('x', 0)
 		the_gui.y = combine ('y', 0)
+		the_gui.layer = combine ('layer', the_gui.active_layer)
 		s = combine ('seq', '')
 		if type (s) == str:
 			the_gui.seq_text = s
@@ -2169,7 +2172,7 @@ def do_edit (s):
 		data.script.data[s] = ''
 		# Create the empty file.
 		open (name, 'w')
-	os.system (the_gui.run_script.replace ('$SCRIPT', name))
+	os.system (the_gui.script_editor.replace ('$SCRIPT', name))
 
 def do_edit_hard (h, map):
 	if h == '' or map not in data.world.map:
@@ -2256,19 +2259,19 @@ def do_edit_hard (h, map):
 		image.paste (im, None, im)
 		image.paste (im, None, im)
 	image.save (name)
-	os.system (the_gui.edit_hardness.replace ('$IMAGE', name))
+	os.system (the_gui.hardness_editor.replace ('$IMAGE', name))
 	data.cache_flush_hard (h)
 	data.tile.hard[h] = (name, 0, os.stat (name).st_size)
 	sync ()
 	viewmap.update ()
 
-def edit_map_hardness (self):
+def edit_map_hardness ():
 	do_edit_hard (the_gui.map_hardness, get_map ())
 
-def edit_map_script (self):
+def edit_map_script ():
 	do_edit (the_gui.map_script)
 
-def edit_script (self):
+def edit_script ():
 	do_edit (the_gui.script)
 
 def sync ():
@@ -2397,8 +2400,8 @@ def show_about ():
 	the_gui.show_about = True
 def select_all ():
 	global spriteselect
-	spriteselect = [(s, False) for s in data.world.sprite if s.layer == the_gui.active_layer]
-	spriteselect += [(s[0], True) for s in spriteselect if s[0].warp is not None]
+	spriteselect += [(s, False) for s in data.world.sprite if s.layer == the_gui.active_layer and (s, False) not in spriteselect]
+	spriteselect += [(s, True) for s in data.world.sprite if s.layer == the_gui.active_layer and s.warp is not None and (s, True) not in spriteselect]
 	View.update (viewmap)
 def deselect_all ():
 	global spriteselect
