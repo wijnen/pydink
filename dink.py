@@ -195,7 +195,7 @@ default_globals = {
 		"missile_target": 0,
 		"enemy_sprite": 0,
 		"magic_cost": 0,
-		"missle_source": 0,
+		"missile_source": 0,
 
 		"story": 0,
 		"old_womans_duck": 0,
@@ -369,6 +369,9 @@ mangled_names = {}
 def mangle (name):
 	global next_mangled
 	if name in default_globals or name in predefined:
+		# Fix spelling mistake in original source (by inserting it in generated expressions).
+		if name == 'missile_source':
+			return '&missle_source'
 		return '&' + name
 	if name not in mangled_names:
 		mangled_names[name] = next_mangled
