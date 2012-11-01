@@ -802,7 +802,9 @@ internal_functions = {
 		'sp_code': 's',
 		'seq_code': 'q',
 		'brain_code': 's',
-		'collection_code': 'c'
+		'collection_code': 'c',
+		'sound_code': 's',
+		'music_code': 's'
 		}
 
 def make_direct (dink, name, args, used):
@@ -842,6 +844,14 @@ def make_direct (dink, name, args, used):
 		coll = dink.seq.find_collection (args[0][1:-1])
 		nice_assert (coll is not None, 'invalid collection name %s' % args[0][1:-1])
 		return coll['code']
+	elif name == 'sound_code':
+		s = dink.sound.find_sound (args[0][1:-1])
+		nice_assert (s != 0, 'invalid sound name %s' % args[0][1:-1])
+		return s
+	elif name == 'music_code':
+		m = dink.sound.find_music (args[0][1:-1])
+		nice_assert (s != 0, 'invalid music name %s' % args[0][1:-1])
+		return m
 	elif name == 'sp_code':
 		nm = args[0][1:-1]
 		sprites = [s for s in dink.world.sprite if s.name == nm]
@@ -1179,6 +1189,8 @@ def preprocess (script, dink, fname):
 	global numlabels
 	numlabels = 0
 	fs = tokenize (script, dink, fname, used = None)
+	if 'main' not in functions[fname.lower ()] and len (functions[fname.lower ()]['']) > 0:
+		fs.append (('main', (None, ()), ('{', ())))
 	return '\r\n'.join ([build_function_def (x, fname, dink) for x in fs])
 
 def build_function_def (data, fname, dink):
@@ -1187,9 +1199,12 @@ def build_function_def (data, fname, dink):
 	for a in range (len (ra[1])):
 		ret += '\tint %s = &arg%d;\r\n' % (mangle (ra[1][a]), a)
 	assert impl[0] == '{'
-	# It would be so much nicer if this could be generated in main.c, but that doesn't work.
-	if name == 'main' and fname == 'start':
-		ret += '''\
+	if name == 'main':
+		for i in range (len (functions[fname.lower ()][''])):
+			ret += '\tint %s;\n' % functions[fname.lower ()][''][i]
+		# It would be so much nicer if this could be generated in main.c, but that doesn't work.
+		if fname == 'start':
+			ret += '''\
 	set_dink_speed (3);\r
 	sp_frame_delay (1, 0);\r
 	sp_seq (1, 0);\r
