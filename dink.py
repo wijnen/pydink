@@ -3034,7 +3034,7 @@ file (info.txt).
 		put (f, 'preview', self.image.preview, '')
 		put (f, 'splash', self.image.splash, '')
 		put (f, 'start', '%d %d %d' % (self.start_map, self.start_x, self.start_y))
-		put (f, 'pointer', '%s %d' % (self.pointer_seq, self.pointer_frame))
+		put (f, 'pointer', '%s %d' % (self.pointer_seq, self.pointer_frame), 'special 8')
 		for i in range (10):
 			put (f, 'visible-%d' % i, self.layer_visible[i], i != 9)
 			put (f, 'background-%d' % i, self.layer_background[i], i in (0, 9))

@@ -79,6 +79,15 @@ map edit with ctrl-m, then press Insert while the pointer is hovering over the
 map screen you want to create. If you want to remove it again, you can press
 Delete while hovering over it. These keys only work in map edit mode.
 
+To do mapping, use t to go to the tile screens. Select tiles there with the
+left mouse button. Press t again to go back. Use the middle mouse button to
+paste the selected tiles.
+
+Alternatively, press the y button after selecting for yanking them into the
+buffer (this will also take you back to the map screen), then select a new
+region and press f there to fill it with the selection, or press r for random
+fill (useful for fields of grass, for example).
+
 Go back to sprite edit mode (ctrl-s) and add a sprite: press 0 on the numpad to
 select from a list of non-collection (see below) sequences. Select a sequence
 by clicking and holding the middle mouse button. Its frames appear and you can

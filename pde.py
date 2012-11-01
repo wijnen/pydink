@@ -218,7 +218,8 @@ class View (gtk.DrawingArea): # {{{
 		mid = [(self.offset[x] + self.screensize[x] / 2) * 50 / screenzoom for x in range (2)]
 		x, y, width, height = widget.get_allocation()
 		self.screensize = (width, height)
-		self.offset = [(mid[x] - self.screensize[x] / 2) * screenzoom / 50 for x in range (2)]
+		if self.screensize != (0, 0):
+			self.offset = [(mid[x] - self.screensize[x] / 2) * screenzoom / 50 for x in range (2)]
 		if not View.started:
 			return
 		if the_gui.nobackingstore:
@@ -1225,7 +1226,7 @@ class ViewMap (View): # {{{
 						continue
 					src = paster[0]
 					sp = data.world.add_sprite (paster[0].name, (x + src.x - avg[0], y + src.y - avg[1]), src.seq, src.frame)
-					sp.layer = the_gui.active_layer
+					sp.layer = int (the_gui.active_layer)
 					sp.size = src.size
 					sp.brain = src.brain
 					sp.script = src.script
@@ -1479,7 +1480,7 @@ class ViewSeq (View): # {{{
 		elif e.button == 2:
 			(x, y), (ox, oy), n = viewmap.newinfo
 			sp = data.world.add_sprite (None, (x, y), s[pos0], frame)
-			sp.layer = the_gui.active_layer
+			sp.layer = int (the_gui.active_layer)
 			spriteselect[:] = ((sp, False),)
 			update_editgui ()
 		else:
@@ -1657,7 +1658,7 @@ class ViewCollection (View): # {{{
 		elif e.button == 2:	# add new sprite
 			(x, y), (ox, oy), n = viewmap.newinfo
 			sp = data.world.add_sprite (None, (x, y), seq, 1)
-			sp.layer = the_gui.active_layer
+			sp.layer = int (the_gui.active_layer)
 			spriteselect[:] = ((sp, False),)
 			update_editgui ()
 		else:
@@ -1673,6 +1674,7 @@ class ViewTiles (View): # {{{
 		self.pointer_tile = (0, 0)	# Tile that the pointer is currently pointing it, in world coordinates. That is: pointer_pos / screenzoom.
 		self.tiles = (12 * 6, 8 * 7)	# Total number of tiles
 		self.set_size_request (screenzoom * 12, screenzoom * 8)
+		self.offset = (0, 0)
 	def find_tile (self, worldpos):
 		if worldpos[0] >= 0 and worldpos[0] < 6 * 12 and worldpos[1] >= 0 and worldpos[1] < 7 * 8:
 			n = (worldpos[1] / 8) * 6 + worldpos[0] / 12 + 1
@@ -1711,9 +1713,12 @@ class ViewTiles (View): # {{{
 			self.panning = False
 			return
 		elif e.keyval == gtk.keysyms.Escape:	# Abort operation
-			self.panning = False
-			self.offset = self.old_offset
-			self.update ()
+			if self.panning:
+				self.panning = False
+				self.offset = self.old_offset
+				self.update ()
+			else:
+				the_gui.setmap = True
 			return
 	def move (self, widget, e):
 		ex, ey, emask = self.get_window ().get_pointer ()
@@ -1739,12 +1744,20 @@ class ViewTiles (View): # {{{
 			if self.panning:
 				self.panning = False
 			else:
-				select.clear ()
+				x, y = self.pos_from_event ((e.x, e.y))
+				View.tileselect (self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 1)
+		elif e.button == 2:
+			self.panning = True
+			self.old_offset = self.offset
 		elif e.button == 3:
-			x, y = self.pos_from_event ((e.x, e.y))
-			View.tileselect (self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 1)
+			if self.panning:
+				self.panning = False
+				self.offset = self.old_offset
+				self.update ()
 	def button_off (self, widget, e):
 		self.selecting = False
+		if e.button == 2:
+			self.panning = False
 # }}}
 
 class ViewWorld (View): # {{{
@@ -1904,7 +1917,7 @@ def update_editgui ():
 		the_gui.name = ''
 		the_gui.x = combine ('x', 0)
 		the_gui.y = combine ('y', 0)
-		the_gui.layer = combine ('layer', the_gui.active_layer)
+		the_gui.layer = combine ('layer', int (the_gui.active_layer))
 		s = combine ('seq', '')
 		if type (s) == str:
 			the_gui.seq_text = s
@@ -2016,13 +2029,13 @@ def update_editgui ():
 
 # Update functions: change data to match gui.
 # These functions are called when the gui is changed by the user.
-def update_sprite_gui (name, action = setattr):
+def update_sprite_gui (name, action = setattr, type = int):
 	if updating:
 		return
-	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else spriteselect[viewmap.current_selection]):
+	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else (spriteselect[viewmap.current_selection],)):
 		if s[1]:
 			continue
-		action (s[0], name, getattr (the_gui, name))
+		action (s[0], name, type (getattr (the_gui, name)))
 	viewmap.update ()
 
 def update_sprite_bool (name):
@@ -2033,7 +2046,7 @@ def update_sprite_bool (name):
 	if state == None:
 		state = False
 		setattr (the_gui, name, state)
-	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else spriteselect[viewmap.current_selection]):
+	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else (spriteselect[viewmap.current_selection],)):
 		if s[1]:
 			continue
 		setattr (s[0], name, state)
@@ -2047,7 +2060,7 @@ def update_sprite_crop ():
 	if state == None:
 		state = False
 		the_gui.crop = state
-	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else spriteselect[viewmap.current_selection]):
+	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else (spriteselect[viewmap.current_selection],)):
 		if s[1]:
 			continue
 		if state:
@@ -2292,6 +2305,10 @@ def new_game (root = None):
 	reset_globals ()
 	updating = True
 	data = gtkdink.GtkDink (root, screenzoom)
+	if len (data.world.map) == 0:
+		the_gui.set_map_edit = True
+	else:
+		the_gui.set_sprite_edit = True
 	w = viewmap.get_window ()
 	if w:
 		data.set_window (w)
@@ -2373,10 +2390,10 @@ the_gui.update_sprite_left = lambda: update_sprite_gui ('left', update_sprite_cr
 the_gui.update_sprite_top = lambda: update_sprite_gui ('top', update_sprite_crop_detail)
 the_gui.update_sprite_right = lambda: update_sprite_gui ('right', update_sprite_crop_detail)
 the_gui.update_sprite_bottom = lambda: update_sprite_gui ('bottom', update_sprite_crop_detail)
-the_gui.update_sprite_sound = lambda: update_sprite_gui ('sound')
+the_gui.update_sprite_sound = lambda: update_sprite_gui ('sound', str)
 the_gui.update_sprite_frame = lambda: update_sprite_gui ('frame')
-the_gui.update_sprite_brain = lambda: update_sprite_gui ('brain')
-the_gui.update_sprite_script = lambda: update_sprite_gui ('script')
+the_gui.update_sprite_brain = lambda: update_sprite_gui ('brain', str)
+the_gui.update_sprite_script = lambda: update_sprite_gui ('script', str)
 the_gui.update_sprite_vision = lambda: update_sprite_gui ('vision')
 the_gui.update_sprite_speed = lambda: update_sprite_gui ('speed')
 the_gui.update_sprite_timing = lambda: update_sprite_gui ('timing')
