@@ -854,16 +854,20 @@ class ViewMap (View): # {{{
 			spriteselect[:] = []
 			update_editgui ()
 		# Ctrl+cursor: start crop
-		elif not ctrl and not shift and key == gtk.keysyms.Left:
+		elif ctrl and not shift and key == gtk.keysyms.Left:
+			self.start_crop ()
 			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 			self.moveinfo = 'crop', (4, p), self.make_cancel ()
-		elif not ctrl and not shift and key == gtk.keysyms.Up:
+		elif ctrl and not shift and key == gtk.keysyms.Up:
+			self.start_crop ()
 			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 			self.moveinfo = 'crop', (8, p), self.make_cancel ()
-		elif not ctrl and not shift and key == gtk.keysyms.Right:
+		elif ctrl and not shift and key == gtk.keysyms.Right:
+			self.start_crop ()
 			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 			self.moveinfo = 'crop', (6, p), self.make_cancel ()
-		elif not ctrl and not shift and key == gtk.keysyms.Down:
+		elif ctrl and not shift and key == gtk.keysyms.Down:
+			self.start_crop ()
 			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 			self.moveinfo = 'crop', (2, p), self.make_cancel ()
 		elif not ctrl and not shift and key == gtk.keysyms.t:
@@ -987,8 +991,7 @@ class ViewMap (View): # {{{
 				s[0].que -= diff[1] * 10 + diff[0]
 			update_editgui ()
 		elif self.moveinfo[0] == 'crop':
-			# TODO
-			pass
+			self.do_crop (diff)
 		self.update ()
 	def find_sprites (self, region, point):
 		rx = [region[t][0] for t in range (2)]
@@ -1041,6 +1044,18 @@ class ViewMap (View): # {{{
 						if pos[0] >= rx[0] and pos[0] < rx[1] and pos[1] >= ry[0] and pos[1] < ry[1]:
 							try_add (pos[1] - sp.que, sp, True, pos)
 		return lst
+	def start_crop (self):
+		for s in spriteselect:
+			if s[1]:
+				continue
+			if s[0].left != 0 or s[0].right != 0 or s[0].top != 0 or s[0].bottom != 0:
+				continue
+			seq = data.seq.find_seq (s[0].seq)
+			if not seq:
+				continue
+			bb = seq.frames[s[0].frame].boundingbox
+			s[0].right = bb[2] - bb[0]
+			s[0].bottom = bb[3] - bb[1]
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
@@ -1209,6 +1224,33 @@ class ViewMap (View): # {{{
 				sp.warp = ((s[1] / (8 * 50)) * 32 + (s[0] / (12 * 50)) + 1, p[0] + 20, p[1])
 				add_warptarget (sp)
 		update_editgui ()
+	def do_crop (self, diff):
+		for cropper in range (len (spriteselect)):
+			if spriteselect[cropper][1]:
+				continue
+			s = spriteselect[cropper][0]
+			s.unregister ()
+			if self.moveinfo[1][0] == 2:
+				s.bottom += diff[1]
+				if s.bottom < 0:
+					s.bottom = 0
+				elif s.bottom >= s.top:
+					s.bottom = s.top - 1
+			elif self.moveinfo[1][0] == 4:
+				s.left += diff[0]
+				if s.left < 0:
+					s.left = 0
+				elif s.left >= s.right:
+					s.left = s.right - 1
+			elif self.moveinfo[1][0] == 6:
+				s.right += diff[0]
+				if s.right <= s.left:
+					s.right = s.left + 1
+			elif self.moveinfo[1][0] == 8:
+				s.top += diff[1]
+				if s.top <= s.bottom:
+					s.top = s.bottom + 1
+			s.register ()
 	def move (self, widget, e):
 		global screenzoom
 		self.waitselect = None
@@ -1264,8 +1306,7 @@ class ViewMap (View): # {{{
 					continue
 				s[0].que -= diff[1]
 		elif self.moveinfo[0] == 'crop':
-			# TODO
-			pass
+			self.do_crop (diff)
 		elif self.moveinfo[0] == 'pan':
 			self.panned = True
 			self.offset = [self.offset[x] - diff[x] * screenzoom / 50 for x in range (2)]
