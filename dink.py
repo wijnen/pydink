@@ -505,7 +505,6 @@ def read_args (dink, script, used, current_vars):
 	return script, args
 
 def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
-	print expr	# XXX
 	assert as_bool in (False, True)
 	global current_tmp
 	eq = ('>', '<=', '>=', '<', '==', '!=')
@@ -1383,7 +1382,6 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 	elif data[0] == '()':
 		return build_function (data[1], data[2], indent, dink, fname)
 	elif data[0] == 'internal':
-		print data	# XXX
 		b, e = build_internal_function (data[1], data[2], indent, dink, fname, False)
 		# discard return value.
 		return b
@@ -1496,8 +1494,9 @@ class Sprite: #{{{
 		ret = []
 		if self.x is None or self.y is None:
 			return ret
-		if self.map is not None and self.map in world.map:
-			ret.append (self.map)
+		if self.map is not None:
+			if self.map in world.map:
+				ret.append (self.map)
 		else:
 			# Compute bounding box; add sprite wherever it is visible.
 			s = self.parent.seq.find_seq (self.seq)
@@ -1931,7 +1930,7 @@ class World: #{{{
 			editcode = 1
 			ignored = 0
 			for spr in self.map[s].sprite:
-				if not self.parent.layer_visible[spr.layer] and self.parent.layer_background[spr.layer]:
+				if not self.parent.layer_visible[spr.layer] and not self.parent.layer_background[spr.layer]:
 					ignored += 1
 					continue
 				if spr.map is not None:

@@ -1769,6 +1769,7 @@ def update_editgui ():
 				return a[0]
 			return default
 		the_gui.name = ''
+		the_gui.map = combine ('map', 0)
 		the_gui.x = combine ('x', 0)
 		the_gui.y = combine ('y', 0)
 		the_gui.layer = combine ('layer', int (the_gui.active_layer))
@@ -1835,6 +1836,7 @@ def update_editgui ():
 	else:
 		sprite = spriteselect[viewmap.current_selection][0]
 	the_gui.name = sprite.name
+	the_gui.map = sprite.map if sprite.map is not None else 0
 	the_gui.x = sprite.x
 	the_gui.y = sprite.y
 	if type (sprite.seq) == str:
@@ -1889,7 +1891,9 @@ def update_sprite_gui (name, action = setattr, type = int):
 	for s in (spriteselect if not 0 <= viewmap.current_selection < len (spriteselect) else (spriteselect[viewmap.current_selection],)):
 		if s[1]:
 			continue
+		s[0].unregister ()
 		action (s[0], name, type (getattr (the_gui, name)))
+		s[0].register ()
 	viewmap.update ()
 
 def update_sprite_bool (name):
@@ -1929,6 +1933,9 @@ def update_sprite_crop ():
 			sprite.right = 0
 			sprite.bottom = 0
 	viewmap.update ()
+
+def update_sprite_map (sprite, key, value):
+	setattr (sprite, key, value if value > 0 else None)
 
 def update_sprite_name (sprite, key, name):
 	if name != '' and name != sprite.name:
@@ -2207,7 +2214,21 @@ def map_delete ():
 	update_maps ()
 	View.update (self)
 
+def map_lock ():
+	n = viewmap.get_current_map ()[2]
+	if n not in data.world.map:
+		return
+	for s in spriteselect:
+		if s[1]:
+			continue
+		s[0].unregister ()
+		s[0].map = n
+		s[0].register ()
+
 def sync ():
+	if updating:
+		# Don't sync while updating.
+		return
 	for s in data.script.data:
 		data.script.data[s] = open (os.path.join (tmpdir, s + os.extsep + 'c')).read ()
 	data.info = open (os.path.join (tmpdir, 'info' + os.extsep + 'txt')).read ()
@@ -2216,6 +2237,9 @@ def sync ():
 		if os.path.exists (p):
 			dink.make_hard_image (p).save (p)
 			data.tile.hard[h] = (p, 0, os.stat (p).st_size)
+	for l in range (10):
+		data.layer_background[l] = bool (getattr (the_gui, 'layer%d_background' % l))
+		data.layer_visible[l] = bool (getattr (the_gui, 'layer%d_visible' % l))
 
 def clean_fs ():
 	for s in data.script.data:
@@ -2387,6 +2411,7 @@ the_gui.edit_map_script = edit_map_script
 the_gui.edit_map_hardness = edit_map_hardness
 the_gui.edit_script = edit_script
 the_gui.new_layer = new_layer
+the_gui.map_lock = map_lock
 
 the_gui.update_sprite_name = lambda: update_sprite_gui ('name', update_sprite_name)
 the_gui.update_sprite_walk = lambda: update_sprite_gui ('walk', update_sprite_collection)
@@ -2406,10 +2431,10 @@ the_gui.update_sprite_left = lambda: update_sprite_gui ('left', update_sprite_cr
 the_gui.update_sprite_top = lambda: update_sprite_gui ('top', update_sprite_crop_detail)
 the_gui.update_sprite_right = lambda: update_sprite_gui ('right', update_sprite_crop_detail)
 the_gui.update_sprite_bottom = lambda: update_sprite_gui ('bottom', update_sprite_crop_detail)
-the_gui.update_sprite_sound = lambda: update_sprite_gui ('sound', str)
+the_gui.update_sprite_sound = lambda: update_sprite_gui ('sound', type = str)
 the_gui.update_sprite_frame = lambda: update_sprite_gui ('frame')
-the_gui.update_sprite_brain = lambda: update_sprite_gui ('brain', str)
-the_gui.update_sprite_script = lambda: update_sprite_gui ('script', str)
+the_gui.update_sprite_brain = lambda: update_sprite_gui ('brain', type = str)
+the_gui.update_sprite_script = lambda: update_sprite_gui ('script', type = str)
 the_gui.update_sprite_vision = lambda: update_sprite_gui ('vision')
 the_gui.update_sprite_speed = lambda: update_sprite_gui ('speed')
 the_gui.update_sprite_timing = lambda: update_sprite_gui ('timing')
@@ -2424,6 +2449,7 @@ the_gui.update_sprite_y = lambda: update_sprite_gui ('y')
 the_gui.update_sprite_size = lambda: update_sprite_gui ('size')
 the_gui.update_sprite_que = lambda: update_sprite_gui ('que')
 the_gui.update_sprite_layer = update_sprite_layer
+the_gui.update_sprite_map = lambda: update_sprite_gui ('map')
 
 the_gui.about = {
 	'name': 'PyDink',

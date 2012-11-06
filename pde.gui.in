@@ -61,23 +61,24 @@ gtk
 						External id=viewworld set_page=setworld
 					VBox
 						Notebook show_tabs=:True switch_page=set_mode expand=:False
-							Table label=:DMod name=dmod_num set_page=set_dmod_edit columns=2
-								'Preview
-								FileChooserButton action=:open filename=preview
-								'Splash
-								FileChooserButton action=:open filename=splash
-								'Pointer
-								ComboBoxText value=pointer text=pointer_text content=set_pointer_list
-								Button right=:2 clicked=dmod_edit_info
-									'Edit DMod info
-								Button right=:2 clicked=dmod_edit_start
-									'Edit start.c
-								Button right=:2 clicked=dmod_edit_intro
-									'Edit intro.c
-								Button right=:2 clicked=dmod_edit_init
-									'Edit init.c
-								Button right=:2 clicked=dmod_play
-									'Play DMod
+							VBox label=:DMod name=dmod_num set_page=set_dmod_edit
+								Table columns=2 expand=:False
+									'Preview
+									FileChooserButton action=:open filename=preview
+									'Splash
+									FileChooserButton action=:open filename=splash
+									'Pointer
+									ComboBoxText value=pointer text=pointer_text content=set_pointer_list
+									Button right=:2 clicked=dmod_edit_info
+										'Edit DMod info
+									Button right=:2 clicked=dmod_edit_start
+										'Edit start.c
+									Button right=:2 clicked=dmod_edit_intro
+										'Edit intro.c
+									Button right=:2 clicked=dmod_edit_init
+										'Edit init.c
+									Button right=:2 clicked=dmod_play
+										'Play DMod
 							VBox label=:Sprite name=sprite_num set_page=set_sprite_edit
 								ComboBoxText changed=new_sprite value=sprite text=sprite_text content=set_spritelist expand=:False
 								Notebook show_tabs=:True expand=:False
@@ -86,6 +87,11 @@ gtk
 											Table columns=2
 												'Name
 												Entry changed=update_sprite_name value=name
+												'Map
+												HBox
+													SpinButton range=:0,768 value-changed=update_sprite_map value=map
+													Button clicked=map_lock expand=:False
+														'Current
 												'Brain
 												ComboBoxEntryText changed=update_sprite_brain value=brain text=brain_text
 													'none
@@ -291,7 +297,7 @@ gtk
 									Label value=':when building a dmod' right=:4
 							VBox label=:Map name=map_num set_page=set_map_edit
 								Table columns=2 expand=:False
-									ComboBoxText right=:2 changed=new_map value=map text=map_text content=set_map_list
+									ComboBoxText right=:2 changed=new_map value=current_map text=map_text content=set_map_list
 									'Hardness
 									HBox
 										ComboBoxEntryText changed=update_map text=map_hardness content=set_map_hardness_list
@@ -306,7 +312,8 @@ gtk
 									ComboBoxText changed=update_map text=map_music content=set_music_list
 									CheckButton right=:2 value=indoor toggled=update_map
 										'Indoor
-						HBox
+						Label expand=:True
+						HBox expand=:False
 							'Active Layer
 							SpinButton range=:0,9 value-changed=new_layer value=active_layer
 				External id=viewcollection set_page=setcollection
