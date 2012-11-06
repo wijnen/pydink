@@ -20,9 +20,10 @@ http://www.dinknetwork.com/file/gnu_freedink
 can most likely save yourself some trouble and install them with your package
 manager.)
 
-PyGtk has two versions: its own version, and the Python version that it should
-work with. Make sure that this second version matches the Python that you are
-installing.
+PyGtk has two version numbers: its own version, and the Python version that it
+should work with. Make sure that this second version matches the Python version
+that you are installing. (Check that matching versions exist before
+downloading.)
 
 Install Python before installing PyGtk or PIL.
 
@@ -30,13 +31,9 @@ You will need to edit scripts during dmod making. Don't use a lousy editor like
 notepad if you want to keep your sanity. For beginners, I recommend gedit:
 http://gedit.en.softonic.com/. If you want real power and don't mind having
 to learn how to use it first, I recommend vim: http://www.vim.org/download.php
+(and feel free to ask for help learning)
 
 *** Setting up PyDink ***
-Run makecache from this directory. Specify the location of the Dink data files,
-the freedink executable and the dmod installation directory (where it will
-build to). It will give some errors when generating the cache; these are errors
-in Dink's source code. They can be safely ignored.
-
 Edit pde.gui. It is an xml file which can be edited with your text editor. The
 Settings at the top should be changed to match you system and preferences. What
 they mean:
@@ -55,3 +52,12 @@ nobackingstore:
 	window, which is then copied to the screen. Setting this to True will
 	make the program fast and ugly. Unless you are experiencing slowness in
 	the screen drawing, leave this to False.
+
+The first time you start the PyDink Editor (pde), it will notice that there is
+no cache, and generate it. For this, it will ask you a few questions. Set up
+all the paths, then make it generate the cache. It will give some errors when
+generating the cache; these are errors in Dink's source code. They can be
+safely ignored.
+
+If you want to change these settings, either change config.txt in your
+configuration directory (~/.config/pydink/ on unix), or run makecache.py again.
