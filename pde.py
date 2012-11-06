@@ -70,7 +70,7 @@ def make_avg ():
 		# subtract the 20 pixels after computing the average.
 		avg = avg[0] + s[0].x, avg[1] + s[0].y
 		l += 1
-	return avg[0] / l - 20, avg[1] / l
+	return (avg[0] / l - 20) * screenzoom / 50, avg[1] / l * screenzoom / 50
 
 def make_dist (a, b):
 	# Make sure it cannot be 0 by adding 1.
@@ -597,9 +597,9 @@ class ViewMap (View): # {{{
 				# This is a warp target.
 				n, x, y = spr[1].warp
 				draw_target (n, x, y, True, self.selectgc)
-		# Finally, draw a line if we're resizing or zooming.
+		# Finally, draw a line if we're resizing.
 		if self.moveinfo != None and self.moveinfo[0] == 'resize':
-			avg = [self.moveinfo[1][0][t] - self.offset[t] * 50 / screenzoom for t in range (2)]
+			avg = [self.moveinfo[1][0][t] - self.offset[t] for t in range (2)]
 			self.buffer.draw_line (self.noshowgc, avg[0], avg[1], self.pointer_pos[0], self.pointer_pos[1])
 		# And a box if we're selecting.
 		if self.moveinfo != None and self.moveinfo[0] == 'spriteselect' and self.moveinfo[1][0][0] != self.moveinfo[1][1][0] and self.moveinfo[1][0][1] != self.moveinfo[1][1][1]:
@@ -735,11 +735,11 @@ class ViewMap (View): # {{{
 			viewworld.old_offset = self.offset
 			the_gui.setworld = True
 		elif ctrl and not shift and key == gtk.keysyms.Prior:		# Zoom in.
-			zoom_screen (True)
+			self.zoom_screen (True)
 		elif ctrl and not shift and key == gtk.keysyms.Next:		# Zoom out.
-			zoom_screen (False)
+			self.zoom_screen (False)
 		elif ctrl and not shift and key == gtk.keysyms.Home:		# Restore zoom.
-			zoom_screen (50)
+			self.zoom_screen (50)
 		elif not ctrl and not shift and key == gtk.keysyms.Home:	# Center map.
 			s = (12, 8)
 			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / screenzoom * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
@@ -1131,7 +1131,7 @@ class ViewMap (View): # {{{
 						# Don't paste warp points.
 						continue
 					src = paster[0]
-					sp = data.world.add_sprite (paster[0].name, (x + src.x - avg[0], y + src.y - avg[1]), src.seq, src.frame)
+					sp = data.world.add_sprite (paster[0].name, (x + src.x - avg[0] * 50 / screenzoom, y + src.y - avg[1] * 50 / screenzoom), src.seq, src.frame)
 					sp.layer = int (the_gui.active_layer)
 					sp.size = src.size
 					sp.brain = src.brain
@@ -1264,7 +1264,7 @@ class ViewMap (View): # {{{
 			pass
 		elif self.moveinfo[0] == 'pan':
 			self.panned = True
-			self.offset = [self.offset[x] - diff[x] for x in range (2)]
+			self.offset = [self.offset[x] - diff[x] * screenzoom / 50 for x in range (2)]
 			update_maps ()
 		else:
 			raise AssertionError ('invalid moveinfo type %s' % self.moveinfo[0])
@@ -1769,7 +1769,8 @@ def update_editgui ():
 				return a[0]
 			return default
 		the_gui.name = ''
-		the_gui.map = combine ('map', 0)
+		m = combine ('map', 0)
+		the_gui.map = 0 if m is None else m
 		the_gui.x = combine ('x', 0)
 		the_gui.y = combine ('y', 0)
 		the_gui.layer = combine ('layer', int (the_gui.active_layer))
@@ -2182,20 +2183,20 @@ def toggle_indoor ():
 def map_insert ():
 	n = viewmap.get_current_map ()[2]
 	if n in data.world.map:
-		self.mapsource = n
+		viewmap.mapsource = n
 		return
 	# Reregister all sprites, so they can pick up the new map.
 	for s in data.world.sprite:
 		s.unregister ()
 	data.world.map[n] = dink.Map (data)
-	if self.mapsource in data.world.map:
+	if viewmap.mapsource in data.world.map:
 		for y in range (8):
 			for x in range (12):
-				data.world.map[n].tiles[y][x] = data.world.map[self.mapsource].tiles[y][x]
+				data.world.map[n].tiles[y][x] = data.world.map[viewmap.mapsource].tiles[y][x]
 	for s in data.world.sprite:
 		s.register ()
 	update_maps ()
-	self.update ()
+	viewmap.update ()
 
 def map_delete ():
 	n = viewmap.get_current_map ()[2]
@@ -2209,10 +2210,10 @@ def map_delete ():
 	del data.world.map[n]
 	for s in spr:
 		s.register ()
-	if self.mapsource == n:
-		self.mapsource = None
+	if viewmap.mapsource == n:
+		viewmap.mapsource = None
 	update_maps ()
-	View.update (self)
+	viewmap.update ()
 
 def map_lock ():
 	n = viewmap.get_current_map ()[2]

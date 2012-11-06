@@ -59,7 +59,7 @@ gtk
 					Notebook show_tabs=:False
 						External id=viewmap set_page=setmap2
 						External id=viewworld set_page=setworld
-					VBox
+					VBox expand=:False
 						Notebook show_tabs=:True switch_page=set_mode expand=:False
 							VBox label=:DMod name=dmod_num set_page=set_dmod_edit
 								Table columns=2 expand=:False
