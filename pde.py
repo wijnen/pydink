@@ -404,7 +404,7 @@ class View (gtk.DrawingArea): # {{{
 		if not ctrl and not shift and key == gtk.keysyms.Home:	# center map
 			s = (12, 8)
 			# Find screen where center is.
-			m = self.get_current_map ()
+			m = self.get_pointed_map ()
 			self.offset = [(m[t] * s[t] + s[t] / 2) * screenzoom - self.screensize[t] / 2 for t in range (2)]
 			self.update ()
 			return True
@@ -618,9 +618,13 @@ class ViewMap (View): # {{{
 		self.offset = [pos[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range (2)]
 		self.update ()
 		viewworld.update ()
-	def get_current_map (self):
-		ret = [(self.offset[x] + self.screensize[x] / 2) / ((12, 8)[x] * screenzoom) for x in range (2)]
+	def get_pointed_map (self, pos = None):
+		if pos is None:
+			pos = self.pointer_pos
+		ret = [(self.offset[x] + pos[x]) / ((12, 8)[x] * screenzoom) for x in range (2)]
 		return (ret[0], ret[1], ret[0] + ret[1] * 32 + 1)
+	def get_current_map (self):
+		return self.get_pointed_map ([self.screensize[t] / 2 for t in range (2)])
 	def make_cancel (self):
 		ret = [self.offset, [], screenzoom]
 		for s in spriteselect:
@@ -644,7 +648,7 @@ class ViewMap (View): # {{{
 			screenzoom -= 10
 		elif screenzoom > 1:
 			screenzoom -= 1
-		self.offset = [(mid[x] - self.screensize[x] / 2) * screenzoom / 50 for x in range (2)]
+		self.offset = [mid[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range (2)]
 		data.set_scale (screenzoom)
 		update_maps ()
 	def abort_move (self):
@@ -2174,14 +2178,14 @@ def toggle_hard ():
 	update_editgui ()
 
 def toggle_indoor ():
-	n = viewmap.get_current_map ()[2]
+	n = viewmap.get_pointed_map ()[2]
 	if n not in data.world.map:
 		return
 	data.world.map[n].indoor = not data.world.map[n].indoor
 	update_editgui ()
 
 def map_insert ():
-	n = viewmap.get_current_map ()[2]
+	n = viewmap.get_pointed_map ()[2]
 	if n in data.world.map:
 		viewmap.mapsource = n
 		return
@@ -2199,7 +2203,7 @@ def map_insert ():
 	viewmap.update ()
 
 def map_delete ():
-	n = viewmap.get_current_map ()[2]
+	n = viewmap.get_pointed_map ()[2]
 	if n not in data.world.map:
 		return
 	spr = list (data.world.map[n].sprite)
@@ -2215,13 +2219,18 @@ def map_delete ():
 	update_maps ()
 	viewmap.update ()
 
-def map_lock ():
-	n = viewmap.get_current_map ()[2]
-	if n not in data.world.map:
-		return
+def map_lock (map = None):
 	for s in spriteselect:
 		if s[1]:
 			continue
+		if map is None:
+			sx = (s[0].x - 20) / 50 / 12
+			sy = s[0].y / 50 / 8
+			n = sy * 32 + sx + 1
+			if n not in data.world.map:
+				continue
+		else:
+			n = map
 		s[0].unregister ()
 		s[0].map = n
 		s[0].register ()

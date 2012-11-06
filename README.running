@@ -230,8 +230,6 @@ functions.
 
 *** Bugs ***
 Currently known bugs:
-- Screen zoom does not work.
-
 - Interactive cropping does not work.
 
 - Error messages are sent to standard error or standard output. They are
