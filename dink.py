@@ -64,9 +64,12 @@ import pickle
 import glib
 # }}}
 # {{{ Error handling
+error_message = ''
 def error (message):
-	sys.stderr.write ('%s: Error: %s\n' % (filename, message))
-	#raise AssertionError ('assertion failed')
+	global error_message
+	msg = '%s: Error: %s\n' % (filename, message)
+	sys.stderr.write (msg)
+	error_message += msg
 
 def nice_assert (test, message):
 	if test:
@@ -1015,7 +1018,8 @@ def tokenize (script, dink, fname, used):
 			else:
 				my_statics.add (name)
 			continue
-		nice_assert (t in ('void', 'int'), 'invalid token at top level; only extern, static, void or int allowed (not %s)' % t)
+		if not nice_assert (t in ('void', 'int'), 'invalid token at top level; only extern, static, void or int allowed (not %s)' % t):
+			continue
 		t, script, isname = token (script)
 		nice_assert (isname, 'function name required after top level void or int (not %s)' % t)
 		name = t
@@ -2851,7 +2855,8 @@ void click ()
 					if nice_assert (name not in my_globals, "duplicate declaration of global variable"):
 						my_globals += (name,)
 				continue
-			nice_assert (t == 'int' or t == 'void', 'syntax error while searching for function (found %s): ' % t + script)
+			if not nice_assert (t == 'int' or t == 'void', 'syntax error while searching for function (found %s): ' % t + script):
+				continue
 			rettype = t
 			t, script, isname = token (script)
 			nice_assert (isname, 'missing function name')
@@ -2920,6 +2925,8 @@ void click ()
 			functions[name.lower ()] = {}
 			filename = name
 			self.find_functions (self.data[name], functions[name.lower ()])
+		if error_message != '':
+			return
 		for i in the_globals:
 			newmangle (i)
 		for name in self.data:
@@ -3107,6 +3114,8 @@ file (info.txt).
 		self.sound.rename (old, new)
 		self.seq.rename (old, new)
 	def build (self, root = None):
+		global error_message
+		error_message = ''
 		if root is None:
 			if self.root is None:
 				return
@@ -3131,7 +3140,10 @@ file (info.txt).
 		self.script.build (root)
 		# Write the rest
 		open (os.path.join (root, 'dmod' + os.extsep + 'diz'), 'w').write (self.info)
+		return error_message
 	def play (self, map = None, x = None, y = None):
+		global error_message
+		error_message = ''
 		if y is not None:
 			tmp = self.start_map, self.start_x, self.start_y, (None if 'intro.c' not in self.script.data else self.script.data['intro']), self.script.data['start']
 			self.start_map = map
@@ -3149,7 +3161,8 @@ file (info.txt).
 				d = os.path.dirname (os.path.dirname (self.config['dinkdir']))
 			else:
 				d = os.path.dirname (self.config['dinkdir'])
-			os.spawnl (os.P_WAIT, self.config['dinkprog'], self.config['dinkprog'], '-g', builddir, '-r', d, '-w')
+			if error_message == '':
+				os.spawnl (os.P_WAIT, self.config['dinkprog'], self.config['dinkprog'], '-g', builddir, '-r', d, '-w')
 		finally:
 			self.root = oldroot
 			shutil.rmtree (builddir)
@@ -3157,4 +3170,5 @@ file (info.txt).
 				self.script.start_map, self.script.start_x, self.script.start_y, intro, self.script.data['start'] = tmp
 				if intro is not None:
 					self.script.data['intro'] = intro
+		return error_message
 # }}}

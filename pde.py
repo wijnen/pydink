@@ -701,7 +701,7 @@ class ViewMap (View): # {{{
 			sync ()
 			p = [(self.pointer_pos[x] + self.offset[x]) * 50 / screenzoom for x in range (2)]
 			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
-			data.play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
+			play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
 		# Edit actions (select + view).
 		elif ctrl and not shift and key == gtk.keysyms.c:	# Copy.
 			self.copy ()
@@ -1735,6 +1735,12 @@ class ViewWorld (View): # {{{
 # }}}
 
 # {{{ Gui utility functions
+def show_error (message):
+	if message == '':
+		return
+	the_gui.error = message
+	the_gui.show_error = True
+
 def visibility (layer):
 	return 2 - getattr (the_gui, 'layer%d_presentation' % layer)
 
@@ -2350,7 +2356,8 @@ def new_game (root = None):
 	viewmap.update ()
 
 def new_layer ():
-	the_gui.statusbar = 'Active layer: %d' % the_gui.active_layer
+	#the_gui.statusbar = 'Active layer: %d' % the_gui.active_layer
+	pass
 
 def save (dirname = None):
 	sync ()
@@ -2422,6 +2429,16 @@ def jump_next ():
 			viewmap.goto ([spr.x, spr.y])
 		update_editgui ()
 
+def play (n = None, x = None, y = None):
+	the_gui.statusbar = 'Building and play-testing DMod; please wait'
+	the_gui (1)
+	if y is None:
+		err = data.play ()
+	else:
+		err = data.play (n, x, y)
+	show_error (err)
+	the_gui.statusbar = 'Done play-testing'
+
 
 # Menubar
 the_gui.file_new = new_game
@@ -2438,8 +2455,8 @@ the_gui.dmod_edit_info = lambda: do_edit ('info', 'txt')
 the_gui.dmod_edit_start = lambda: do_edit ('start')
 the_gui.dmod_edit_intro = lambda: do_edit ('intro')
 the_gui.dmod_edit_init = lambda: do_edit ('init')
-the_gui.dmod_build = lambda: None if not data else data.build ()
-the_gui.dmod_play = lambda: None if not data else data.play ()
+the_gui.dmod_build = lambda: data.build ()
+the_gui.dmod_play = play
 the_gui.sprite_edit = edit_sprite_scripts
 the_gui.sprite_nohit = toggle_nohit
 the_gui.sprite_toggle_warp = toggle_warp
