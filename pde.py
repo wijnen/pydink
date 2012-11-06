@@ -2237,7 +2237,11 @@ def new_game (root = None):
 		the_gui.title = os.path.basename (root) + ' - Python Dink Editor'
 	reset_globals ()
 	updating = True
-	data = gtkdink.GtkDink (root, screenzoom)
+	try:
+		data = gtkdink.GtkDink (root, screenzoom)
+	except:
+		os.system (os.path.join (os.path.dirname (os.path.abspath (sys.argv[0])), 'makecache' + os.extsep + 'py'))
+		data = gtkdink.GtkDink (root, screenzoom)
 	if len (data.world.map) == 0:
 		the_gui.set_map_edit = True
 	else:
