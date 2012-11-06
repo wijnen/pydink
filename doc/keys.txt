@@ -1,0 +1,63 @@
+Sprite/tile edit: tab
+
+File:
+open: ctrl+o
+save: ctrl+s
+save as: ctrl+shift+s
+quit: ctrl+q
+
+DMod:
+set preview, splash: no key
+set pointer: no key
+edit info: no key
+edit start.c: no key
+edit intro.c: no key
+edit init.c: no key
+test dmod: no key
+quick test dmod: ctrl+p
+
+Select+view:
+Unselect all: ctrl+shift+a
+select all in active layer: ctrl+a
+invert selection in active layer: ctrl+i
+Goto selected: j
+Goto next selected: n
+Pan view: cursor/scroll
+Zoom view: ctrl+pgup/pgdn / ctrl+scroll
+Restore zoom: ctrl+home
+Center map: home
+
+Sprite:
+name, brain, script, vision, speed, timing, sound, hitpoints, strength, defense, experience, touch damage, gold: no key
+script edit: e
+layer: ctrl+[0-9]
+nohit toggle: shift+h
+x, y move: m
+seq, frame: numpad [0-9]
+size: s
+que: q
+set warp: ctrl+w
+clear warp: ctrl+shift+w
+toggle select warp or object: w
+is hard toggle: h
+crop: ctrl+cursor
+
+Layer:
+active layer: num
+layer visibility: no key
+
+Map:
+Tile screen selection: t
+edit hardness: ctrl+h
+edit script: ctrl+e
+music: no key
+indoor: shift+i
+create map: ctrl+insert
+delete map: ctrl+delete
+
+In collection select:
+walk: w
+idle: i
+attack: a
+die: d
+touch seq: t

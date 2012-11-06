@@ -1,0 +1,57 @@
+This is PyDink, an alternative engine and editor for Dink Smallwood. It
+requires the (free) artwork of the original game (or new artwork, but that
+isn't provided).
+
+The engine is currently not functional and will not be entirely bug-compatible.
+Several choices have been made which make things work differently from the
+original game.
+
+The editor creates games for both the original as well as this new engine.
+
+*** Setting up the system ***
+First make sure you have Python, PyGtk, the Python Imaging Library and FreeDink
+installed. You can get them here:
+http://python.org/download
+http://pygtk.org/downloads.html
+http://www.pythonware.com/products/pil/
+http://www.dinknetwork.com/file/gnu_freedink
+
+(They're all free software, which means that if you're not using Windows, you
+can most likely save yourself some trouble and install them with your package
+manager.)
+
+PyGtk has two versions: its own version, and the Python version that it should
+work with. Make sure that this second version matches the Python that you are
+installing.
+
+Install Python before installing PyGtk or PIL.
+
+You will need to edit scripts during dmod making. Don't use a lousy editor like
+notepad if you want to keep your sanity. For beginners, I recommend gedit:
+http://gedit.en.softonic.com/. If you want real power and don't mind having
+to learn how to use it first, I recommend vim: http://www.vim.org/download.php
+
+*** Setting up PyDink ***
+Run makecache from this directory. Specify the location of the Dink data files,
+the freedink executable and the dmod installation directory (where it will
+build to). It will give some errors when generating the cache; these are errors
+in Dink's source code. They can be safely ignored.
+
+Edit pde.gui. It is an xml file which can be edited with your text editor. The
+Settings at the top should be changed to match you system and preferences. What
+they mean:
+script_editor:
+	The command to run for editing a script. The default value starts a new
+	terminal with vi in the directory of the script on a unix system. It
+	will not work on Windows. Change it for example to "gedit '$SCRIPT'".
+hardness_editor:
+	The command to run for editing hardness. The default value starts the
+	gimp, which should work if you have installed it. Change it to your
+	preferred image editor if you don't.
+*_gc:
+	Colours of many elements in the gui. Feel free to change them.
+nobackingstore:
+	On slow systems, draw directly to the screen instead of an off-screen
+	window, which is then copied to the screen. Setting this to True will
+	make the program fast and ugly. Unless you are experiencing slowness in
+	the screen drawing, leave this to False.

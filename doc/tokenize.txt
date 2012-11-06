@@ -1,0 +1,60 @@
+Statements and expressions are tokenized. This tokenized form can be executed
+by the PyDink engine, or compiled into DinkC code. This file describes the
+tokenized format.
+
+The function tokenize is used to tokenize a script file. It is called for all
+files by compile (when tokenizing for running the code) and preprocess (when
+tokenizing for builing a dmod.
+
+tokenize returns a list of functions, which is a 3-tuple:
+(name, (rettype, args), implementation)
+	name is a string: the function's name.
+	rettype is a string: 'int' or 'void'.
+	args is a sequence of strings: the argument names (all must be int).
+	implementation is a tokenized compound statement.
+
+# TODO: describe find_functions, globals, statics
+
+The following statements are tokenized as described. The words STATEMENT and
+EXPRESSION are tokenizations themselves. Lists with ... as last element are
+variable length. ... in the input means there is some code there.
+
+{ ... }			('{', [STATEMENT, ...])
+return			('return', None)
+return ...		('return', EXPRESSION)
+break			('break',)
+continue		('continue',)
+while (...) ...		('while', EXPRESSION, STATEMENT)
+for (...; ...; ...) ...	('for', EXPRESSION, EXPRESSION, EXPRESSION, STATEMENT)
+if (...) ...		('if', EXPRESSION, STATEMENT, None
+if (...) ... else ...	('if', EXPRESSION, STATEMENT, STATEMENT
+int ...			('int', [(NAME, EXPRESSION), ...])
+NAME = ...		('=', EXPRESSION)
+NAME += ...		('+=', EXPRESSION)
+NAME -= ...		('-=', EXPRESSION)
+NAME *= ...		('*=', EXPRESSION)
+NAME /= ...		('/=', EXPRESSION)
+NAME (...)		('internal', NAME, [EXPRESSION, ...])
+NAME (...)		('()', NAME, [EXPRESSION, ...])
+FNAME.NAME (...)	('()', (FNAME, NAME), [EXPRESSION, ...])
+choice_title (...)
+choice (...)		('choice', [EXPRESSION, ...], TITLE)
+
+Expressions are tokenized by tokenize_expr. The result is a single operator
+with expressions, or a value. Possible values are:
+
+an int						a literal value.
+('"', [STRING, NAME, ...])			a literal string.
+('local', NAME)					a local variable reference.
+('static', NAME)				a static variable reference.
+('global', NAME)				a global variable reference.
+('()', NAME, [EXPRESSION, ...])			a local function call.
+('()', (FNAME, NAME), [EXPRESSION, ...])	a remote function call.
+('internal', NAME, [EXPRESSION, ...])		a call to an internal function.
+
+An operator with expressions is a 2-sequence, the first being the operator,
+which can be '||', '&&', '==', '>=', '<=', '>', '<', '+', '-', '*', '/' for
+binary operators or '+', '-', '!' for unary operators.
+
+Whether '+' or '-' are binary or unary must be inferred from the length of the
+second element.

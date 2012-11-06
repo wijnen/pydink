@@ -132,7 +132,7 @@ dinkprog	%s
 		image.save (os.path.join (savedir, 'hard-%02d' % (n + 1) + os.extsep + 'png'))
 	# }}}
 
-	pickle.dump ((tilefiles, collections, sequences, codes, musics, sounds), open (os.path.join (savedir, 'data'), 'w'))
+	pickle.dump ((tilefiles, collections, sequences, codes, musics, sounds), open (os.path.join (savedir, 'data'), 'wb'))
 
 	if not with_gui:
 		break

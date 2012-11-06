@@ -1,0 +1,41 @@
+ 1 (misc)
+ 2 (grass rocks 1)
+ 3 (grass rocks 2)
+ 4 (grass rocks 3)
+ 5 grass bumps
+ 6 (wall)
+ 7 (wall)
+ 8 water 1
+ 9 water 2
+10 water 3
+11 water shallow
+12 water drops
+13 dry (double upper left corner)
+14 (beach 1)
+15 (beach 2)
+16 (beach 3)
+17 modder (met Yeah! Rock on!)
+18 spikes
+19 fire 1
+20 fire 2
+21 fire 3
+22 fire 4
+23 fire 5
+24 cave solid
+25 cave void
+26 (cave rocks 1)
+27 (cave rocks 2)
+28 (cave rocks 3)
+29 snow
+30 ice
+31 (snow rocks 1)
+32 (snow rocks 2)
+33 (snow rocks 3)
+34 (building right)
+35 (building left)
+36 (vloer)
+37 (vloer)
+38 (vloer)
+39 (vloer)
+40 cave border (up != down)
+41 (grass patterns)

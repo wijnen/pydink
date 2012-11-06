@@ -171,7 +171,8 @@ def make_brain (name):
 	return ret
 
 predefined = [
-		"current_sprite"
+		"current_sprite",
+		"savegameinfo"
 	]
 default_globals = {
 		"exp": 0,
@@ -195,52 +196,8 @@ default_globals = {
 		"missile_target": 0,
 		"enemy_sprite": 0,
 		"magic_cost": 0,
-		"missile_source": 0,
-
-		"story": 0,
-		"old_womans_duck": 0,
-		"nuttree": 0,
-		"letter": 0,
-		"little_girl": 0,
-		"farmer_quest": 0,
-		"save_x": 0,
-		"save_y": 0,
-		"safe": 0,
-		"pig_story": 0,
-		"wizard_see": 0,
-		"mlibby": 0,
-		"wizard_again": 0,
-		"snowc": 0,
-		"duckgame": 0,
-
-		"gossip": 0,
-		"robbed": 0,
-		"dinklogo": 0,
-		"rock_placement": 0,
-		"temphold": 0,
-		"temp1hold": 0,
-		"temp2hold": 0,
-		"temp3hold": 0,
-		"temp4hold": 0,
-		"temp5hold": 0,
-		"temp6hold": 0,
-		"town1": 0,
-		"s2-milder": 0,
-		"thief": 0,
-		"caveguy": 0,
-		"s2-aunt": 0,
-		"tombob": 0,
-		"mayor": 0,
-		"hero": 0,
-		"s2-nad": 0,
-		"gobpass": 0,
-		"bowlore": 0,
-		"s4-duck": 0,
-		"s5-jop": 0,
-		"s7-boat": 0,
-		"s2-map": 0
+		"missile_source": 0
 	}
-the_locals = {}
 the_globals = {}
 for i in default_globals:
 	the_globals[i] = default_globals[i]
@@ -350,11 +307,11 @@ def push (ret, operators):
 	ret = ret[:-args]
 	op = operators.pop ()[0]
 	# Precompute constant expressions.
-	if sum ([not isinstance (x, int) for x in r]) == 0:
+	if all ([x[0] == 'const' for x in r]):
 		if len (r) == 1:
-			ret += (int (eval ('%s%d' % (op, r[0]))),)
+			ret += (('const', int (eval ('%s%d' % (op, r[0][1])))),)
 		else:
-			ret += (int (eval ('%d %s %d' % (r[0], op, r[1]))),)
+			ret += (('const', int (eval ('%d %s %d' % (r[0][1], op, r[1][1])))),)
 	else:
 		ret += ([op, r],)
 	return ret, operators
@@ -367,16 +324,33 @@ next_mangled = 0
 mangled_names = {}
 
 def mangle (name):
-	global next_mangled
+	nice_assert (name != 'missle_source', 'misspelling of missile_source must not be used.')
 	if name in default_globals or name in predefined:
 		# Fix spelling mistake in original source (by inserting it in generated expressions).
 		if name == 'missile_source':
 			return '&missle_source'
 		return '&' + name
-	if name not in mangled_names:
+	if not nice_assert (name in mangled_names, 'trying to mangle unknown name %s' % name):
+		print 'known names:', mangled_names
+		raise AssertionError ('yo!')
+		return '<<broken>>'
+	return '&m%d%s' % (mangled_names[name], name)
+
+def newmangle (name):
+	global next_mangled
+	if name in default_globals or name in predefined:
+		return
+	if nice_assert (name not in mangled_names, 'duplicate mangling request for %s' % name):
 		mangled_names[name] = next_mangled
 		next_mangled += 1
-	return '&m%d%s' % (mangled_names[name], name)
+
+def clear_mangled (which):
+	for name in which:
+		if name in default_globals or name in predefined:
+			continue
+		if not nice_assert (name in mangled_names, "trying to clear mangled %s, which isn't in mangled_names" % name):
+			continue
+		del mangled_names[name]
 
 def build_internal_function (name, args, indent, dink, fname, use_retval):
 	'''\
@@ -408,11 +382,12 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	a = list (args)
 	nice_assert (len (a) == 0 or a[-1] != -1 or internal_functions[name][-1] not in 'SI', 'last argument of %s may be omitted, but must not be -1' % name)
 	if len (a) < len (internal_functions[name]):
-		a += (-1,)
+		a += (('const', -1),)
+	nice_assert (name != 'sp_hard', 'use sp_nohard instead of sp_hard, to match its meaning')
 	if name == 'start_game':
 		# Start_game is a generated function (not internal) when a dmod is built.
 		name = 'spawn'
-		a = ['"_start_game"']
+		a = [('"', ['_start_game'])]
 	elif name == 'load_game':
 		# Set up everything for loading a game.
 		tmp = current_tmp
@@ -420,56 +395,65 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		b, e = build_expr (dink, fname, a[0], indent, as_bool = False)
 		return b + indent + 'int &tmp%d = game_exist(%s);\r\n' % (tmp, e) + indent + 'if (&tmp%d != 0)\r\n' % tmp + indent + '{\r\n' + indent + '\tstopmidi();\r\n' + indent + '\tstopcd();\r\n' + indent + '\tsp_brain(1, 1);\r\n' + indent + '\tsp_que(1, 0);\r\n' + indent + '\tsp_noclip(1, 0);\r\n' + indent + '\tset_mode(2);\r\n' + indent + '\tload_game(%s);\r\n' % e + indent + '}\r\n', ''
 	elif name == 'add_item' or name == 'add_magic':
-		a[1] = dink.seq.find_seq (a[1][1:-1]).code
+		s = dink.seq.find_seq (a[1][1][0])
+		if not nice_assert (s is not None, 'undefined seq %s' % a[1][1][0]):
+			return '', ''
+		a[1] = ('const', dink.seq.find_seq (a[1][1][0]).code)
 	elif name == 'create_sprite':
-		a[2] = make_brain (a[2][1:-1])
-		if isinstance (a[3], str) and a[3][0] == '"':
-			s = dink.seq.find_seq (a[3][1:-1])
-			nice_assert (s is not None, 'invalid sequence in create_sprite: %s' % a[3][1:-1])
-			a[3] = s.code
+		a[2] = ('const', make_brain (a[2][1][0]))
+		if a[3][0] == '"':
+			s = dink.seq.find_seq (a[3][1][0])
+			if not nice_assert (s is not None, 'invalid sequence in create_sprite: %s' % a[3][1][0]):
+				return '', ''
+			a[3] = ('const', s.code)
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
-		a[0] = make_brain (a[0][1:-1])
+		a[0] = ('const', make_brain (a[0][1][0]))
 	elif name == 'playmidi':
-		a[0] = dink.sound.find_music (a[0][1:-1])
+		a[0] = ('const', dink.sound.find_music (a[0][1][0]))
 	elif name == 'playsound':
-		a[0] = dink.sound.find_sound (a[0][1:-1])
+		a[0] = ('const', dink.sound.find_sound (a[0][1][0]))
 	elif name == 'preload_seq':
-		a[0] = dink.seq.find_seq (a[0][1:-1]).code
+		s = dink.seq.find_seq (a[0][1][0])
+		if not nice_assert (s is not None, 'seq %s not found' % s):
+			return '', ''
+		a[0] = ('const', dink.seq.find_seq (a[0][1][0]).code)
 	elif name == 'sp':
-		nm = a[0][1:-1]
+		nm = a[0][1][0]
 		sprites = [s for s in dink.world.sprite if s.name == nm]
-		nice_assert (len (sprites) == 1, 'referenced sprite %s not found' % nm)
+		if not nice_assert (len (sprites) == 1, 'referenced sprite %s not found' % nm):
+			return '', ''
 		sprite = sprites[0]
 		# Sprite names used with sp () must be locked to their map, because the script doesn't know from which map it's called.
-		nice_assert (sprite.map is not None, 'referenced sprite %s is not locked to a map' % nm)
-		a[0] = sprite.editcode
+		if not nice_assert (sprite.map is not None, 'referenced sprite %s is not locked to a map' % nm):
+			return '', ''
+		a[0] = ('const', sprite.editcode)
 	elif name == 'sp_base_attack' or name == 'sp_base_death' or name == 'sp_base_idle' or name == 'sp_base_walk':
-		if isinstance (a[1], str) and a[1][0] == '"':
-			a[1] = dink.seq.collection_code (a[1][1:-1])
+		if a[1][0] == '"':
+			a[1] = ('const', dink.seq.collection_code (a[1][1][0]))
 	elif name == 'sp_brain':
-		if isinstance (a[1], str) and a[1][0] == '"':
-			a[1] = make_brain (a[1][1:-1])
+		if a[1][0] == '"':
+			a[1] = ('const', make_brain (a[1][1][0]))
 	elif name == 'sp_sound':
-		if isinstance (a[1], str) and a[1][0] == '"':
-			a[1] = dink.sound.find_sound (a[1][1:-1])
+		if a[1][0] == '"':
+			a[1] = ('const', dink.sound.find_sound (a[1][1][0]))
 	elif name == 'sp_seq' or name == 'sp_pseq':
-		if a[1] == '""':
-			a[1] = 0
-		elif isinstance (a[1], str) and a[1][0] == '"':
-			s = dink.seq.find_seq (a[1][1:-1])
-			nice_assert (s is not None, 'sequence %s not found' % a[1])
-			a[1] = s.code
+		if a[1][0] == '"':
+			if a[1][1][0] == '':
+				a[1] = ('const', 0)
+			else:
+				s = dink.seq.find_seq (a[1][1][0])
+				if not nice_assert (s is not None, 'sequence %s not found' % a[1][1][0]):
+					a[1] = ('const', 0)
+				else:
+					a[1] = ('const', s.code)
 	elif name == 'sp_nohard':
 		name = 'sp_hard'
 	bt = ''
 	at = []
 	for i in a:
-		if isinstance (i, str) and i[0] == '"':
-			at += (i,)
-		else:
-			b, e = build_expr (dink, fname, i, indent, as_bool = False)
-			bt += b
-			at += (e,)
+		b, e = build_expr (dink, fname, i, indent, as_bool = False)
+		bt += b
+		at += (e,)
 	if use_retval:
 		t = current_tmp
 		current_tmp += 1
@@ -477,7 +461,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	else:
 		return bt + indent + name + '(' + ', '.join (at) + ');\r\n', ''
 
-def read_args (dink, script, used):
+def read_args (dink, script, used, current_vars):
 	args = []
 	b = ''
 	if script[0] == ')':
@@ -487,31 +471,32 @@ def read_args (dink, script, used):
 			if script[0] == '"':
 				p = script.find ('"', 1)
 				nice_assert (p >= 0, 'unterminated string')
-				# mangle variable references.
-				s = script[:p + 1]
+				# encode variable references.
+				s = script[1:p]
 				pos = 0
-				sp = ''
+				sp = ['']
 				while True:
 					pos = s.find ('&')
 					if pos < 0:
-						sp += s
+						sp[-1] += s
 						break
-					sp += s[:pos]
+					sp[-1] += s[:pos]
 					s = s[pos + 1:]
 					e = s.find (';')
-					nice_assert (e >= 0, 'incomplete reference in string %s' % s)
+					if not nice_assert (e >= 0, 'incomplete reference in string %s' % s):
+						break
 					var = s[:e]
 					s = s[e + 1:]
 					if var == '':
 						# empty variable is escape for & itself.
-						sp += '&'
+						sp[-1] += '&'
 					else:
-						# variable found: mangle.
-						sp += mangle (var)
-				args += (sp,)
+						# variable found: add it.
+						sp += (var, '')
+				args += (('"', sp),)
 				script = script[p + 1:]
 			else:
-				script, a = tokenize_expr (dink, script, used = used)
+				script, a = tokenize_expr (dink, script, used, current_vars)
 				args += (a,)
 			t, script, isname = token (script)
 			if t != ',':
@@ -520,39 +505,42 @@ def read_args (dink, script, used):
 	return script, args
 
 def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
+	print expr	# XXX
 	assert as_bool in (False, True)
 	global current_tmp
 	eq = ('>', '<=', '>=', '<', '==', '!=')
-	if isinstance (expr, int):
+	if expr[0] == 'const':
 		if as_bool:
 			if invert:
-				return '', '%d == 0' % expr
+				return '', '%d == 0' % expr[1]
 			else:
-				return '', '%d != 0' % expr
+				return '', '%d != 0' % expr[1]
 		else:
 			if invert:
 				tmp = current_tmp
 				current_tmp = tmp + 1
-				return indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (%d == 0)\r\n' % expr + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
+				return indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (%d == 0)\r\n' % expr[1] + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
 			else:
-				return '', str (expr)
-	elif isinstance (expr, str):
-		if expr[0] == '"':
-			nice_assert (not as_bool and not invert, 'string (%s) cannot be inverted or used as boolean expression' % expr)
-			return '', mangle (expr)
+				return '', str (expr[1])
+	elif expr[0] == '"':
+		nice_assert (not as_bool and not invert, 'string (%s) cannot be inverted or used as boolean expression' % expr[0])
+		ret = ''
+		for i in range (0, len (expr[1]) - 1, 2):
+			ret += expr[1][i] + '&' + mangle (expr[1][i + 1])
+		return '', '"' + ret + expr[1][-1] + '"'
+	elif expr[0] in ('local', 'static', 'global'):
+		if as_bool:
+			if invert:
+				return '', '%s == 0' % mangle (expr[1])
+			else:
+				return '', '%s != 0' % mangle (expr[1])
 		else:
-			if as_bool:
-				if invert:
-					return '', '%s == 0' % mangle (expr)
-				else:
-					return '', '%s != 0' % mangle (expr)
+			if invert:
+				tmp = current_tmp
+				current_tmp = tmp + 1
+				return indent + 'int &tmp%d;' % tmp + indent + 'if (%s != 0)\r\n' % mangle (expr[1]) + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
 			else:
-				if invert:
-					tmp = current_tmp
-					current_tmp = tmp + 1
-					return indent + 'int &tmp%d;' % tmp + indent + 'if (%s != 0)\r\n' % mangle (expr) + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n', '&tmp%d' % tmp
-				else:
-					return '', mangle (expr)
+				return '', mangle (expr[1])
 	elif expr[0] in eq:
 		if invert:
 			op = eq[eq.index (expr[0]) ^ 1]
@@ -616,7 +604,7 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 				b += b2 + indent + '\tif (' + e2 + ')\r\n' + indent + '\t{\r\n' + indent + '\t\t&tmp%d = 1;\r\n' % tmp + indent + '\t}\r\n' + indent + '}\r\n'
 			return b, '&tmp%d' % tmp
 	elif expr[0] == '!':
-		return build_expr (dink, fname, ['==', [0, expr[1][0]]], indent, invert, as_bool = as_bool)
+		return build_expr (dink, fname, ['==', [('const', 0), expr[1][0]]], indent, invert, as_bool = as_bool)
 	elif expr[0] == 'choice':
 		tmp = current_tmp
 		current_tmp += 1
@@ -633,30 +621,33 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 				return b, '&tmp%d != 0' % tmp
 		else:
 			return b, e
-	elif len (expr[1]) == 1:	# function call in same file
-		tmp = current_tmp
-		current_tmp = tmp + 1
-		b = build_function (expr[1][0], expr[2], indent, dink, fname)
-		if as_bool:
-			b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' % e + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
-			if invert:
-				return b, '&tmp%d == 0' % tmp
+	else:
+		if not nice_assert (expr[0] == '()', 'unknown thing %s' % expr[0]):
+			return '', ''
+		if len (expr[1]) == 1:	# function call in same file
+			tmp = current_tmp
+			current_tmp = tmp + 1
+			b = build_function (expr[1][0], expr[2], indent, dink, fname)
+			if as_bool:
+				b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' % e + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
+				if invert:
+					return b, '&tmp%d == 0' % tmp
+				else:
+					return b, '&tmp%d != 0' % tmp
 			else:
-				return b, '&tmp%d != 0' % tmp
-		else:
-			return b + indent + 'int &tmp%d;\r\n' % tmp + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
-	else:				# remote function call
-		tmp = current_tmp
-		current_tmp = tmp + 1
-		b = build_function (expr[1][1], expr[2], indent, dink, expr[1][0])
-		if as_bool:
-			b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
-			if invert:
-				return b, '&tmp%d == 0' % tmp
+				return b + indent + 'int &tmp%d;\r\n' % tmp + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
+		else:				# remote function call
+			tmp = current_tmp
+			current_tmp = tmp + 1
+			b = build_function (expr[1][1], expr[2], indent, dink, expr[1][0])
+			if as_bool:
+				b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
+				if invert:
+					return b, '&tmp%d == 0' % tmp
+				else:
+					return b, '&tmp%d != 0' % tmp
 			else:
-				return b, '&tmp%d != 0' % tmp
-		else:
-			return b + indent + 'int &tmp%d;\r\n' % tmp + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
+				return b + indent + 'int &tmp%d;\r\n' % tmp + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
 
 internal_functions = {
 		'activate_bow': '',
@@ -813,55 +804,66 @@ def make_direct (dink, name, args, used):
 	ia = internal_functions[name]
 	a = list (args)
 	if len (a) < len (ia) and (ia.endswith ('I') or ia.endswith ('S') or ia.endswith ('Q')):
-		a += (None,)
-	nice_assert (len (a) == len (ia), 'incorrect number of arguments for %s (must be %d; is %d)' % (name, len (ia), len (a)))
+		a += ((None,),)
+	if not nice_assert (len (a) == len (ia), 'incorrect number of arguments for %s (must be %d; is %d)' % (name, len (ia), len (a))):
+		return None
 	for i in range (len (ia)):
 		if ia[i] in ('i', 'I'):
-			nice_assert (not isinstance (a[i], str) or a[i][0] != '"', 'argument %d of %s must not be a string' % (i, name))
+			if not nice_assert (a[i][0] != '"', 'argument %d of %s must not be a string' % (i, name)):
+				return None
 		elif ia[i] == 's':
-			nice_assert (isinstance (a[i], str) and a[i][0] == '"', 'argument %d of %s must be a string' % (i, name))
+			if not nice_assert (a[i][0] == '"', 'argument %d of %s must be a string' % (i, name)):
+				return None
 		elif ia[i] in ('*', 'S'):
 			pass
 		elif ia[i] == 'b':
-			nice_assert (isinstance (a[i], str) and a[i][0] == '"', 'argument %d of %s must be a bitmap filename' % (i, name))
+			if not nice_assert (a[i][0] == '"', 'argument %d of %s must be a bitmap filename' % (i, name)):
+				return None
 		elif ia[i] == 'c':
-			if used is not None and isinstance (a[i], str) and a[i][0] == '"' and a[i] != '""':
-				used[0].add (a[i][1:-1])
+			if used is not None and a[i][0] == '"' and a[i][1] != ['']:
+				used[0].add (a[i][1][0])
 		elif ia[i] in ('q', 'Q'):
 			if a[i] is not None:
-				if used is not None and isinstance (a[i], str) and a[i][0] == '"' and a[i] != '""':
-					used[1].add (a[i][1:-1])
+				if used is not None and a[i][0] == '"' and a[i][1] != ['']:
+					used[1].add (a[i][1][0])
 		else:
 			raise AssertionError ('invalid character in internal_functions %s' % ia)
 	# Find direct functions.
 	if name == 'brain_code':
-		return make_brain (args[0][1:-1])
+		return 'const', make_brain (args[0][1][0])
 	elif name == 'seq_code':
-		seq = dink.seq.find_seq (args[0][1:-1])
-		nice_assert (seq is not None, 'invalid sequence name %s' % args[0][1:-1])
-		return seq.code
+		seq = dink.seq.find_seq (args[0][1][0])
+		if not nice_assert (seq is not None, 'invalid sequence name %s' % args[0][1][0]):
+			return None
+		return 'const', seq.code
 	elif name == 'collection_code':
-		coll = dink.seq.find_collection (args[0][1:-1])
-		nice_assert (coll is not None, 'invalid collection name %s' % args[0][1:-1])
-		return coll['code']
+		coll = dink.seq.find_collection (args[0][1][0])
+		if not nice_assert (coll is not None, 'invalid collection name %s' % args[0][1][0]):
+			return None
+		return 'const', coll['code']
 	elif name == 'sound_code':
-		s = dink.sound.find_sound (args[0][1:-1])
-		nice_assert (s != 0, 'invalid sound name %s' % args[0][1:-1])
-		return s
+		s = dink.sound.find_sound (args[0][1][0])
+		if not nice_assert (s != 0, 'invalid sound name %s' % args[0][1][0]):
+			return None
+		return 'const', s
 	elif name == 'music_code':
-		m = dink.sound.find_music (args[0][1:-1])
-		nice_assert (s != 0, 'invalid music name %s' % args[0][1:-1])
-		return m
+		m = dink.sound.find_music (args[0][1][0])
+		if not nice_assert (s != 0, 'invalid music name %s' % args[0][1][0]):
+			return None
+		return 'const', m
 	elif name == 'sp_code':
-		nm = args[0][1:-1]
+		nm = args[0][1][0]
 		sprites = [s for s in dink.world.sprite if s.name == nm]
-		nice_assert (len (sprites) == 1, "referenced sprite %s doesn't exist" % nm)
-		nice_assert (sprites[0].map is not None, "referenced sprite %s is not locked to a map" % nm)
+		if not nice_assert (len (sprites) == 1, "referenced sprite %s doesn't exist" % nm):
+			return None
+		if not nice_assert (sprites[0].map is not None, "referenced sprite %s is not locked to a map" % nm):
+			return None
 		if used is not None:
 			# When looking for used sequences, editcodes are not initialized yet. This is no problem, because that part isn't used anyway.
-			return 1
-		nice_assert (hasattr (sprites[0], 'editcode'), 'sprite %s has no editcode' % nm)
-		return sprites[0].editcode
+			return 'const', 1
+		if not nice_assert (hasattr (sprites[0], 'editcode'), 'sprite %s has no editcode' % nm):
+			return None
+		return 'const', sprites[0].editcode
 	else:
 		# Nothing special.
 		return None
@@ -870,18 +872,18 @@ def choice_args (args):
 	i = 0
 	ret = []
 	while i < len (args):
-		if not isinstance (args[i], str) or args[i][0] != '"':
+		if args[i][0] != '"':
 			expr = args[i]
 			i += 1
-			nice_assert (isinstance (args[i], str) and args[i][0] == '"', 'Only one expression is allowed per choice option (got %s)' % str (args[i]))
+			nice_assert (args[i][0] == '"', 'Only one expression is allowed per choice option (got %s)' % str (args[i]))
 		else:
 			expr = None
-		ret += ((expr, args[i][1:-1]),)
+		ret += ((expr, args[i]),)
 		i += 1
 	nice_assert (ret != [], 'A choice must have at least one option.')
 	return ret
 
-def tokenize_expr (parent, script, used):
+def tokenize_expr (parent, script, used, current_vars):
 	need_operator = False
 	ret = []
 	operators = []
@@ -896,7 +898,7 @@ def tokenize_expr (parent, script, used):
 				nice_assert (['(', 0, 100] not in operators, 'incomplete subexpression')
 				while operators != []:
 					ret, operators = push (ret, operators)
-				assert len (ret) == 1
+				nice_assert (len (ret) == 1, 'expression does not resolve to one value: %s' % repr (ret))
 				return t + ' ' + script, ret[0]
 			elif t == '||':
 				while operators != [] and operators[-1][2] < 5:
@@ -942,7 +944,7 @@ def tokenize_expr (parent, script, used):
 					if script.startswith ('('):
 						# Read away the opening parenthesis.
 						t, script, isname = token (script)
-						script, args = read_args (parent, script, used)
+						script, args = read_args (parent, script, used, current_vars)
 						if isinstance (name, str):
 							if filename.lower () in functions and name in functions[filename.lower ()]:
 								# local function.
@@ -954,7 +956,7 @@ def tokenize_expr (parent, script, used):
 									ret += (['choice', choice_args (args), choice_title[0]],)
 									choice_title[:] = [None, False]
 								else:
-									direct = make_direct (parent, name, args, used = used)
+									direct = make_direct (parent, name, args, used)
 									if direct is not None:
 										ret += (direct,)
 									else:
@@ -966,19 +968,29 @@ def tokenize_expr (parent, script, used):
 						need_operator = True
 						continue
 					# variable reference.
-					ret += (t,)
+					if t in current_vars[0]:
+						ret += (('local', t),)
+					elif t in current_vars[1]:
+						ret += (('static', t),)
+					elif t in default_globals or t in predefined or t in current_vars[2]:
+						ret += (('global', t),)
+					else:
+						error ('using undefined variable %s. locals: %s, statics: %s, globals: %s' % ((t,) + tuple ([str (x) for x in current_vars])))
 				else:
 					# numerical constant.
-					ret += (int (t),)
+					ret += (('const', int (t)),)
 				need_operator = True
 
-def check_exists (the_locals, name):
-	return name in the_locals or name in the_globals
+def check_exists (current_vars, name):
+	if name in predefined or name in default_globals:
+		return True
+	return any ([name in x for x in current_vars])
 
 def tokenize (script, dink, fname, used):
 	'''Tokenize a script completely. Return a list of functions (name, (rettype, args), definition-statement).'''
-	global the_locals
-	the_locals = []
+	my_locals = set ()	# Local variables currently in scope.
+	my_statics = set ()
+	my_globals = set ()
 	ret = []
 	indent = []
 	numlabels = 0
@@ -987,21 +999,26 @@ def tokenize (script, dink, fname, used):
 		t, script, isname = token (script)
 		if not t:
 			break
-		if t == 'extern':
+		if t in ('extern', 'static'):
+			is_static = t == 'static'
 			t, script, isname = token (script)
-			if t == 'int':
+			if nice_assert (t == 'int', 'extern or static must be followed by int'):
 				t, script, isname = token (script)
-			nice_assert (isname, 'invalid argument for extern')
+			nice_assert (isname, 'invalid argument for extern or static')
 			name = t
 			t, script, isname = token (script)
 			nice_assert (t == ';', 'junk after extern')
-			nice_assert (name not in the_locals, 'global variable %s already defined as local' % name)
-			if name not in the_globals:
-				the_globals[name] = 0
+			nice_assert (not check_exists ((my_locals, my_statics, my_globals), name), 'duplicate definition of static or global variable %s' % name)
+			if not is_static:
+				if name not in the_globals:
+					the_globals[name] = 0
+				my_globals.add (name)
+			else:
+				my_statics.add (name)
 			continue
-		nice_assert (t in ('void', 'int'), 'invalid token at top level; only extern, void or int allowed (not %s)' % t)
+		nice_assert (t in ('void', 'int'), 'invalid token at top level; only extern, static, void or int allowed (not %s)' % t)
 		t, script, isname = token (script)
-		nice_assert (isname, 'function name required after top level void (not %s)' % t)
+		nice_assert (isname, 'function name required after top level void or int (not %s)' % t)
 		name = t
 		t, script, isname = token (script)
 		nice_assert (t == '(', '(possibly empty) argument list required for function definition (not %s)' % t)
@@ -1010,14 +1027,16 @@ def tokenize (script, dink, fname, used):
 			t, script, isname = token (script)
 			if t == ')':
 				break
+		for i in functions[fname][name][1]:
+			my_locals.add (i)
 		t, script, isname = token (script)
 		nice_assert (t == '{', 'function body not defined')
-		script, s = tokenize_statement ('{ ' + script, dink, fname, name, used = used)
+		script, s = tokenize_statement ('{ ' + script, dink, fname, name, used, (my_locals, my_statics, my_globals))
 		ret += ((name, functions[fname][name], s),)
+		my_locals.clear ()
 	return ret
 
-def tokenize_statement (script, dink, fname, own_name, used):
-	global the_locals
+def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 	t, script, isname = token (script, False)
 	nice_assert (t is not None, 'missing statement')
 	need_semicolon = True
@@ -1030,14 +1049,14 @@ def tokenize_statement (script, dink, fname, own_name, used):
 				ret = '{', statements
 				need_semicolon = False
 				break
-			script, s = tokenize_statement (t + ' ' + script, dink, fname, own_name, used)
+			script, s = tokenize_statement (t + ' ' + script, dink, fname, own_name, used, current_vars)
 			statements += (s,)
 	elif t == ';':
 		ret = None
 		need_semicolon = False
 	elif t == 'return':
 		if functions[fname][own_name][0] == 'int':
-			script, e = tokenize_expr (dink, script, used)
+			script, e = tokenize_expr (dink, script, used, current_vars)
 			ret = 'return', e
 		else:
 			ret = 'return', None
@@ -1048,10 +1067,10 @@ def tokenize_statement (script, dink, fname, own_name, used):
 	elif t == 'while':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after while')
-		script, e = tokenize_expr (dink, script, used)
+		script, e = tokenize_expr (dink, script, used, current_vars)
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for while not closed')
-		script, s = tokenize_statement (script, dink, fname, own_name, used)
+		script, s = tokenize_statement (script, dink, fname, own_name, used, current_vars)
 		need_semicolon = False
 		ret = 'while', e, s
 	elif t == 'for':
@@ -1062,14 +1081,14 @@ def tokenize_statement (script, dink, fname, own_name, used):
 			nice_assert (isname, 'first for-expression must be empty or assignment (not %s)' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'first for-expression must be empty or assignment (not %s)' % a)
-			script, e = tokenize_expr (dink, script, used)
+			script, e = tokenize_expr (dink, script, used, current_vars)
 			f1 = (a, n, e)
-			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
+			nice_assert (check_exists (current_vars, n), 'use of undefined variable %s in for loop' % n)
 		else:
 			f1 = None
 		t, script, isname = token (script)
 		nice_assert (t == ';', 'two semicolons required in for argument')
-		script, f2 = tokenize_expr (dink, script, used)
+		script, f2 = tokenize_expr (dink, script, used, current_vars)
 		t, script, isname = token (script)
 		nice_assert (t == ';', 'two semicolons required in for argument')
 		if script[0] != ')':
@@ -1077,26 +1096,26 @@ def tokenize_statement (script, dink, fname, own_name, used):
 			nice_assert (isname, 'third for-expression must be empty or assignment (not %s)' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'third for-expression must be empty or assignment (not %s)' % a)
-			script, e = tokenize_expr (dink, script, used)
-			nice_assert (n in the_locals or n in the_globals, 'use of undefined variable %s in for loop' % n)
+			script, e = tokenize_expr (dink, script, used, current_vars)
+			nice_assert (check_exists (current_vars, n), 'use of undefined variable %s in for loop' % n)
 			f3 = (a, n, e)
 		else:
 			f3 = None
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for for not closed')
-		script, s = tokenize_statement (script, dink, fname, own_name, used)
+		script, s = tokenize_statement (script, dink, fname, own_name, used, current_vars)
 		need_semicolon = False
 		ret = 'for', f1, f2, f3, s
 	elif t == 'if':
 		t, script, isname = token (script)
 		nice_assert (t == '(', 'parenthesis required after if')
-		script, e = tokenize_expr (dink, script, used)
+		script, e = tokenize_expr (dink, script, used, current_vars)
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis not closed for if')
-		script, s1 = tokenize_statement (script, dink, fname, own_name, used)
+		script, s1 = tokenize_statement (script, dink, fname, own_name, used, current_vars)
 		t, script, isname = token (script)
 		if t == 'else':
-			script, s2 = tokenize_statement (script, dink, fname, own_name, used)
+			script, s2 = tokenize_statement (script, dink, fname, own_name, used, current_vars)
 		else:
 			script = t + ' ' + script
 			s2 = None
@@ -1106,13 +1125,15 @@ def tokenize_statement (script, dink, fname, own_name, used):
 		ret = []
 		while True:
 			t, script, isname = token (script)
-			nice_assert (isname, 'local definition without name')
+			if not nice_assert (isname, 'local definition without name'):
+				script = t + ' ' + script
+				continue
 			name = t
-			if name not in the_locals:
-				the_locals += (name,)
+			if nice_assert (not check_exists (current_vars, name), 'duplicate definition of local variable %s' % name):
+				current_vars[0].add (name)
 			t, script, isname = token (script)
 			if t == '=':
-				script, e = tokenize_expr (dink, script, used)
+				script, e = tokenize_expr (dink, script, used, current_vars)
 				t, script, isname = token (script)
 			else:
 				e = None
@@ -1121,22 +1142,14 @@ def tokenize_statement (script, dink, fname, own_name, used):
 				script = t + ' ' + script
 				break
 		ret = 'int', ret
-	elif t == 'goto':
-		t, script, isname = token (script)
-		nice_assert (isname, 'goto without target')
-		print (filename + ": Warning: script is using goto; DON'T DO THAT!")
-		ret = 'goto', t
 	else:
 		nice_assert (isname, 'syntax error')
 		name = t
 		t, script, isname = token (script)
-		if t == ':':
-			print (filename + ": Warning: defining a label is only useful for goto; DON'T DO THAT!")
-			ret = ':', name
-		elif t in ['=', '+=', '-=', '*=', '/=']:
-			nice_assert (check_exists (the_locals, name), 'use of undefined variable %s' % name)
+		if t in ['=', '+=', '-=', '*=', '/=']:
+			nice_assert (check_exists (current_vars, name), 'use of undefined variable %s' % name)
 			op = t
-			script, e = tokenize_expr (dink, script, used)
+			script, e = tokenize_expr (dink, script, used, current_vars)
 			ret = op, name, e
 		else:
 			if t == '.':
@@ -1149,31 +1162,31 @@ def tokenize_statement (script, dink, fname, own_name, used):
 			if name == 'choice_title':
 				nice_assert (choice_title[1] == False, 'duplicate choice_title without a choice')
 				choice_title[1] = True
-				script, args = read_args (dink, script, used)
+				script, args = read_args (dink, script, used, current_vars)
 				nice_assert (len (args) >= 1 and len (args) <= 3 and args[0][0] == '"', 'invalid argument list for %s' % name)
 				choice_title[0] = args
 				ret = None
 			elif name == 'choice':
 				choices = []
-				script, args = read_args (dink, script, used)
+				script, args = read_args (dink, script, used, current_vars)
 				choices = choice_args (args)
 				ret = 'choice', choice_args (args), choice_title[0]
 				choice_title[:] = [None, False]
 			else:
-				script, args = read_args (dink, script, used)
+				script, args = read_args (dink, script, used, current_vars)
 				if isinstance (name, str):
 					if name in functions[fname]:
 						nice_assert (len (args) == len (functions[fname][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[fname][name][1])))
 						ret = '()', (fname, name), args
 					else:
-						direct = make_direct (dink, name, args, used = used)
+						direct = make_direct (dink, name, args, used)
 						if direct is not None:
 							ret = direct
 						else:
 							ret = 'internal', name, args
 				else:
 					if not nice_assert (name[0] in functions and name[1] in functions[name[0]], 'function %s not found in file %s' % (name[1], name[0])):
-						print functions
+						print functions[name[0]]
 					nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1])))
 					ret = '()', name, args
 	nice_assert (choice_title[1] == False or choice_title[0] is None, 'unused choice_title')
@@ -1189,19 +1202,28 @@ def preprocess (script, dink, fname):
 	global numlabels
 	numlabels = 0
 	fs = tokenize (script, dink, fname, used = None)
-	if 'main' not in functions[fname.lower ()] and len (functions[fname.lower ()]['']) > 0:
-		fs.append (('main', (None, ()), ('{', ())))
-	return '\r\n'.join ([build_function_def (x, fname, dink) for x in fs])
+	my_statics, my_globals = functions[fname.lower ()]['']
+	for i in my_statics:
+		newmangle (i)
+	if 'main' not in functions[fname.lower ()] and len (my_statics) > 0:
+		fs.append (('main', ('void', ()), ('{', ())))
+	ret = '\r\n'.join ([build_function_def (x, fname, dink, my_statics, my_globals) for x in fs])
+	clear_mangled (my_statics)
+	return ret
 
-def build_function_def (data, fname, dink):
+def build_function_def (data, fname, dink, my_statics, my_globals):
+	'''Build a function definition.'''
 	name, ra, impl = data
 	ret = 'void %s (void)\r\n{\r\n' % name
+	my_locals = set ()
 	for a in range (len (ra[1])):
+		newmangle (ra[1][a])
+		my_locals.add (ra[1][a])
 		ret += '\tint %s = &arg%d;\r\n' % (mangle (ra[1][a]), a)
 	assert impl[0] == '{'
 	if name == 'main':
-		for i in range (len (functions[fname.lower ()][''])):
-			ret += '\tint %s;\n' % functions[fname.lower ()][''][i]
+		for i in my_statics:
+			ret += '\tint %s;\n' % mangle (i)
 		# It would be so much nicer if this could be generated in main.c, but that doesn't work.
 		if fname == 'start':
 			ret += '''\
@@ -1215,10 +1237,12 @@ def build_function_def (data, fname, dink):
 	sp_noclip (1, 1);\r
 ''' % (make_brain ('pointer'), dink.seq.find_seq (dink.pointer_seq).code, dink.pointer_frame)
 	for s in impl[1]:
-		ret += build_statement (s, ra[0], '\t', fname, dink, None, None)
+		ret += build_statement (s, ra[0], '\t', fname, dink, None, None, (my_locals, my_statics, my_globals))
+	clear_mangled (my_locals)
 	return ret + '}\r\n'
 
 def build_function (name, args, indent, dink, fname):
+	'''Build a function call. Return (before, expression).'''
 	global current_tmp
 	if isinstance (name, str):
 		f = functions[fname][name]
@@ -1257,17 +1281,19 @@ def build_choice (dink, fname, choices, title, indent):
 			b, e = build_expr (dink, fname, i[0], indent, as_bool = True)
 			tb += b
 			ret += '(%s) ' % e
-		ret += '"' + i[1] + '"\r\n'
+		b, e = build_expr (dink, fname, i[1], indent, as_bool = False)
+		tb += b
+		ret += e + '\r\n'
 	return tb + ret + indent + 'choice_end()\r\n'
 
-def build_statement (data, retval, indent, fname, dink, continue_label, break_label):
+def build_statement (data, retval, indent, fname, dink, continue_label, break_label, vars):
 	global numlabels
 	global current_tmp
 	current_tmp = 0
 	if data[0] == '{':
 		ret = ''
 		for s in data[1]:
-			ret += build_statement (s, retval, indent + '\t', fname, dink, continue_label, break_label)
+			ret += build_statement (s, retval, indent + '\t', fname, dink, continue_label, break_label, vars)
 		return ret
 	elif data[0] == 'break':
 		nice_assert (break_label is not None, 'break not inside loop')
@@ -1288,7 +1314,7 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 		b, e = build_expr (dink, fname, data[1], indent, invert = True, as_bool = True)
 		ret = start + ':\r\n'
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
-		ret += build_statement (data[2], retval, indent, fname, dink, start, end)
+		ret += build_statement (data[2], retval, indent, fname, dink, start, end, vars)
 		ret += indent + 'goto ' + start + ';\r\n' + end + ':\r\n'
 		return ret
 	elif data[0] == 'for':
@@ -1315,7 +1341,7 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 		ret += start + ':\r\n'
 		b, e = build_expr (dink, fname, data[2], indent, invert = True, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
-		ret += build_statement (data[4], retval, indent, fname, dink, start, continueend)
+		ret += build_statement (data[4], retval, indent, fname, dink, start, continueend, vars)
 		ret += continueend + ':\r\n'
 		if data[3] is not None:
 			a, n, te = data[3]
@@ -1329,18 +1355,20 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 		ret = ''
 		b, e = build_expr (dink, fname, data[1], indent, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n'
-		ret += build_statement (data[2], retval, indent + '\t', fname, dink, continue_label, break_label)
+		ret += build_statement (data[2], retval, indent + '\t', fname, dink, continue_label, break_label, vars)
 		if data[3] is None:
 			ret += indent + '}\r\n'
 		else:
 			ret += indent + '} else\r\n' + indent + '{\r\n'
-			ret += build_statement (data[3], retval, indent + '\t', fname, dink, continue_label, break_label)
+			ret += build_statement (data[3], retval, indent + '\t', fname, dink, continue_label, break_label, vars)
 			ret += indent + '}\r\n'
 		return ret
 	elif data[0] == 'int':
 		tb = ''
 		ret = ''
 		for v in data[1]:
+			newmangle (v[0])
+			vars[0].add (v[0])
 			if v[1] is not None:
 				b, e = build_expr (dink, fname, v[1], indent, as_bool = False)
 				tb += b
@@ -1348,8 +1376,6 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 			else:
 				ret += indent + 'int ' + mangle (v[0]) + ';\r\n'
 		return tb + ret
-	elif data[0] == 'goto':
-		return indent + 'goto ' + data[1] + ';\r\n'
 	elif data[0] == 'choice':
 		b, e = build_choice (dink, fname, data[1], data[2], indent)
 		# discard return value
@@ -1357,6 +1383,7 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 	elif data[0] == '()':
 		return build_function (data[1], data[2], indent, dink, fname)
 	elif data[0] == 'internal':
+		print data	# XXX
 		b, e = build_internal_function (data[1], data[2], indent, dink, fname, False)
 		# discard return value.
 		return b
@@ -1452,6 +1479,9 @@ class Sprite: #{{{
 		if self.name is not None:
 			world.spritenames.remove (self.name)
 		if name in world.spritenames:
+			r = re.match ('(.*)-(\d+)', name)
+			if r:
+				name = r.group (1)
 			i = 0
 			n = name
 			while n in world.spritenames:
@@ -1475,9 +1505,9 @@ class Sprite: #{{{
 				# Sequence not found: no maps.
 				return ret
 			boundingbox = s.frames[self.frame].boundingbox
-			minx = (self.x + boundingbox[0]) / (50 * 12)
+			minx = (self.x - 20 + boundingbox[0]) / (50 * 12)
 			miny = (self.y + boundingbox[1]) / (50 * 8)
-			maxx = (self.x + boundingbox[2]) / (50 * 12)
+			maxx = (self.x - 20 + boundingbox[2]) / (50 * 12)
 			maxy = (self.y + boundingbox[3]) / (50 * 8)
 			ret += [r for r in (y * 32 + x + 1 for y in range (miny, maxy + 1) for x in range (minx, maxx + 1)) if r in world.map]
 		return ret
@@ -1804,13 +1834,16 @@ class World: #{{{
 		seqs.update (('treefire', 'explode', 'smallheart', 'heart', 'spray', 'blast', 'coin', 'button-ordering', 'button-quit', 'button-start', 'button-continue', 'startme1', 'startme3', 'startme7', 'startme9', 'food', 'seed4', 'seed6', 'shadow', 'die', 'item-m', 'item-w', 'fishx', 'crawl', 'horngoblinattackswing'))
 		for c in cols:
 			col = self.parent.seq.find_collection (c)
+			if col is None:
+				continue
 			for d in (1,2,3,4,'die',6,7,8,9):
 				if d in col:
 					col[d].used = True
 		for s in seqs:
 			seq = self.parent.seq.find_seq (s)
-			nice_assert (seq is not None, "used sequence %s doesn't exist" % str (s))
-			self.parent.seq.find_seq (s).used = True
+			if not nice_assert (seq is not None, "used sequence %s doesn't exist" % str (s)):
+				continue
+			seq.used = True
 		return cols, seqs
 	def build (self, root):
 		used_cols, used_seqs = self.find_used_sprites ()
@@ -1818,7 +1851,7 @@ class World: #{{{
 		remove = set ()
 		for i in used_cols:
 			collection = self.parent.seq.find_collection (i)
-			if collection['code'] is not None:
+			if collection is not None and collection['code'] is not None:
 				for c in (1,2,3,4,'die',6,7,8,9):
 					used_codes.add (collection['code'] + (5 if c == 'die' else c))
 				remove.add (i)
@@ -1826,13 +1859,15 @@ class World: #{{{
 		remove.clear ()
 		for i in used_seqs:
 			seq = self.parent.seq.find_seq (i)
-			if seq.code:
+			if seq is not None and seq.code:
 				used_codes.add (seq.code)
 				remove.add (i)
 		used_seqs.difference_update (remove)
 		next_code = 0
 		for i in used_cols:
 			collection = self.parent.seq.find_collection (i)
+			if collection is None:
+				continue
 			while True:
 				for d in (1,2,3,4,'die',6,7,8,9):
 					if (next_code + (5 if d == 'die' else d)) in used_codes:
@@ -1848,6 +1883,8 @@ class World: #{{{
 		next_code = 1
 		for i in used_seqs:
 			seq = self.parent.seq.find_seq (i)
+			if seq is None:
+				continue
 			while next_code in used_codes:
 				next_code += 1
 			seq.code = next_code
@@ -2170,10 +2207,10 @@ class Seq: #{{{
 				filename = os.path.join (fname, 'info' + os.extsep + 'txt')
 				if os.path.exists (filename):
 					info = readlines (open (filename))
-					info, collection['brain'] = get (info, 'brain', collection['brain'])
-					info, collection['script'] = get (info, 'script', collection['script'])
-					info, collection['attack'] = get (info, 'attack', collection['attack'])
-					info, collection['death'] = get (info, 'death', collection['death'])
+					info, self.collection[base]['brain'] = get (info, 'brain', self.collection[base]['brain'])
+					info, self.collection[base]['script'] = get (info, 'script', self.collection[base]['script'])
+					info, self.collection[base]['attack'] = get (info, 'attack', self.collection[base]['attack'])
+					info, self.collection[base]['death'] = get (info, 'death', self.collection[base]['death'])
 					nice_assert (info == {}, 'unused data in collection definition')
 				for direction in (1, 2, 3, 4, 'die', 6, 7, 8, 9):
 					filename = os.path.join (fname, str (direction))
@@ -2186,7 +2223,7 @@ class Seq: #{{{
 		ret = {}
 		ret['name'] = base
 		ret['code'] = None
-		ret['brain'] = ''
+		ret['brain'] = 'none'
 		ret['script'] = ''
 		ret['attack'] = ''
 		ret['death'] = ''
@@ -2341,9 +2378,10 @@ class Seq: #{{{
 				8: (8, 7, 9, 2),
 				9: (9, 6, 8, 1)
 			}
-		for option in order[dir]:
-			if option in c:
-				return c[option]
+		if dir in order:
+			for option in order[dir]:
+				if option in c:
+					return c[option]
 		# There's nothing usable. Get whatever exists.
 		return c[[x for x in c if isinstance (x, int)][0]]
 	def as_collection (self, name):
@@ -2444,7 +2482,7 @@ class Seq: #{{{
 		put (f, 'frames', 0 if seq.frames[-1].source is None else len (seq.frames), 0)
 		for frame in range (1, len (seq.frames)):
 			if seq.frames[frame].source is None:
-				open (os.path.join (d, seq.name, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (seq.frames[frame].cache[0], 'rb').read ())
+				open (os.path.join (d, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (seq.frames[frame].cache[0], 'rb').read ())
 			put (f, 'position-%d' % frame, '' if seq.frames[frame].position == seq.position else '%d %d' % tuple (seq.frames[frame].position), '')
 			put (f, 'hardbox-%d' % frame, '' if seq.frames[frame].hardbox == seq.hardbox else '%d %d %d %d' % tuple (seq.frames[frame].hardbox), '')
 			put (f, 'delay-%d' % frame, -1 if seq.frames[frame].delay == seq.delay else seq.frames[frame].delay, -1)
@@ -2454,27 +2492,29 @@ class Seq: #{{{
 			d = os.path.join (self.parent.root, 'seq')
 			os.mkdir (d)
 			for s in self.custom_seqs:
-				os.mkdir (os.path.join (d, s.name))
-				f = open (os.path.join (d, s.name, 'info' + os.extsep + 'txt'), 'w')
+				sd = os.path.join (d, s.name)
+				os.mkdir (sd)
+				f = open (os.path.join (sd, 'info' + os.extsep + 'txt'), 'w')
 				put (f, 'brain', s.brain, 'none')
 				put (f, 'script', s.script, '')
 				put (f, 'hard', s.hard, True)
-				self.save_seq (d, f, s)
+				self.save_seq (sd, f, s)
 		if len (self.custom_collections) > 0:
 			d = os.path.join (self.parent.root, 'collection')
 			os.mkdir (d)
 			for c in self.custom_collections:
 				cd = os.path.join (d, c['name'])
+				os.mkdir (cd)
 				f = open (os.path.join (cd, 'info' + os.extsep + 'txt'), 'w')
 				put (f, 'brain', c['brain'], 'none')
 				put (f, 'script', c['script'], '')
 				put (f, 'attack', c['attack'], '')
 				put (f, 'death', c['death'], '')
-				os.mkdir (os.path.join (d, c['name']))
 				for dir in (1,2,3,4,'die',6,7,8,9):
 					if dir not in c:
 						continue
 					cdd = os.path.join (cd, str (dir))
+					os.mkdir (cdd)
 					f = open (os.path.join (cdd, 'info' + os.extsep + 'txt'), 'w')
 					self.save_seq (cdd, f, c[dir])
 		# TODO: write changes to standard graphics.
@@ -2790,7 +2830,8 @@ void click ()
 				open (os.path.join (d, s + os.extsep + 'c'), 'w').write (self.data[s])
 	def find_functions (self, script, funcs):
 		global max_args
-		the_statics = []
+		my_statics = []
+		my_globals = []
 		while True:
 			t, script, isname = token (script)
 			if t is None:
@@ -2798,14 +2839,18 @@ void click ()
 			if t in ('static', 'extern'):
 				is_static = t == 'static'
 				t, script, isname = token (script)
-				nice_assert (t == 'int', 'missing "int" for global variable declaration')
-				name, script, isname = token (script)
+				if nice_assert (t == 'int', 'missing "int" for global variable declaration'):
+					name, script, isname = token (script)
 				nice_assert (isname, 'missing variable name for global variable declaration')
 				t, script, isname = token (script)
-				nice_assert (t == ';', 'missing semicolon after global variable declaration');
+				if not nice_assert (t == ';', 'missing semicolon after global variable declaration'):
+					script = t + ' ' + script
 				if is_static:
-					nice_assert (name not in the_statics, "duplicate declaration of static variable")
-					the_statics += (name,)
+					if nice_assert (name not in my_statics, "duplicate declaration of static variable"):
+						my_statics += (name,)
+				else:
+					if nice_assert (name not in my_globals, "duplicate declaration of global variable"):
+						my_globals += (name,)
 				continue
 			nice_assert (t == 'int' or t == 'void', 'syntax error while searching for function (found %s): ' % t + script)
 			rettype = t
@@ -2817,13 +2862,11 @@ void click ()
 			# Read argument names
 			args = []
 			t, script, isname = token (script)
-			while True:
-				if t == ')':
-					break
-				nice_assert (t == 'int', 'missing argument type')
-				t, script, isname = token (script)
-				nice_assert (isname, 'missing argument name')
-				args += (t,)
+			while t != ')':
+				if nice_assert (t == 'int', 'missing argument type'):
+					t, script, isname = token (script)
+				if nice_assert (isname, 'missing argument name'):
+					args += (t,)
 				t, script, isname = token (script)
 				nice_assert (t in (')', ','), 'syntax error in argument list')
 				if t == ',':
@@ -2843,7 +2886,7 @@ void click ()
 			funcs[name] = [rettype, args]
 			if max_args < len (args):
 				max_args = len (args)
-		funcs[''] = the_statics
+		funcs[''] = my_statics, my_globals
 	def compile (self, used = None):
 		'''Compile all scripts. Return a dictionary of files, each value in it is a dictionary of functions, each value is a sequence of statements.
 		It also fills the functions dictionary, which has fnames as keys and a dict of name:(retval, args) as values, plus '':[statics].
@@ -2878,6 +2921,8 @@ void click ()
 			functions[name.lower ()] = {}
 			filename = name
 			self.find_functions (self.data[name], functions[name.lower ()])
+		for i in the_globals:
+			newmangle (i)
 		for name in self.data:
 			filename = name
 			f = open (os.path.join (d, name + os.extsep + 'c'), 'w')
@@ -2888,6 +2933,8 @@ void click ()
 		nice_assert (len (the_globals) + max_args <= 248, 'too many global variables (%d, max is 248)' % (len (the_globals) + max_args))
 		for v in the_globals:
 			s.write ('\tmake_global_int ("%s", %d);\r\n' % (mangle (v), the_globals[v]))
+		clear_mangled (the_globals)
+		nice_assert (len (mangled_names) == 0, 'mangled names remaining: %s' % repr (mangled_names))
 		for a in range (max_args):
 			s.write ('\tmake_global_int ("&arg%d", 0);\r\n' % a)
 		for snd in self.parent.sound.sound:
@@ -2973,7 +3020,6 @@ class Dink: #{{{
 			self.root = None
 		else:
 			self.root = os.path.abspath (os.path.normpath (root))
-			p = os.path.join (self.root, 'info' + os.extsep + 'txt')
 			filename = os.path.join (self.root, 'info' + os.extsep + 'txt')
 		self.image = Images (self)
 		if root is not None and os.path.exists (filename):
@@ -3015,9 +3061,6 @@ file (info.txt).
 		self.sound = Sound (self)
 		self.world = World (self)
 		self.script = Script (self)
-		if root is None:
-			self.info = ''
-			return
 	def save (self, root = None):
 		if root is not None:
 			self.root = os.path.abspath (os.path.normpath (root))
