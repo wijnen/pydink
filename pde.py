@@ -651,6 +651,7 @@ class ViewMap (View): # {{{
 		self.offset = [mid[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range (2)]
 		data.set_scale (screenzoom)
 		update_maps ()
+		the_gui.statusbar = 'Screen zoom changed'
 	def abort_move (self):
 		if self.moveinfo is None:
 			return
@@ -670,6 +671,7 @@ class ViewMap (View): # {{{
 			spriteselect[s][0].register ()
 		update_editgui ()
 		self.moveinfo = None
+		the_gui.statusbar = 'Operation cancelled'
 	def keypress (self, widget, e):
 		global copystart
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
@@ -686,17 +688,26 @@ class ViewMap (View): # {{{
 		if ctrl and not shift and key == gtk.keysyms.o:		# Open.
 			show_open ()
 		elif ctrl and not shift and key == gtk.keysyms.s:	# Save.
-			save ()
+			if data.root is not None:
+				the_gui.statusbar = 'Saving as ' + data.root
+				save ()
+				the_gui.statusbar = 'Saved as ' + data.root
+			else:
+				show_save_as ()
 		elif ctrl and shift and key == gtk.keysyms.S:		# Save as.
 			show_save_as ()
 		elif ctrl and not shift and key == gtk.keysyms.q:	# Quit.
 			the_gui (False)
 		# DMod actions.
 		elif ctrl and not shift and key == gtk.keysyms.b:	# Build.
+			the_gui.statusbar = 'Syncing for build'
 			os.system (the_gui.sync)
 			sync ()
+			the_gui.statusbar = 'Building DMod'
 			data.build ()
+			the_gui.statusbar = 'Built DMod'
 		elif ctrl and not shift and key == gtk.keysyms.p:	# Play.
+			the_gui.statusbar = 'Syncing for playtest'
 			os.system (the_gui.sync)
 			sync ()
 			p = [(self.pointer_pos[x] + self.offset[x]) * 50 / screenzoom for x in range (2)]
@@ -705,8 +716,10 @@ class ViewMap (View): # {{{
 		# Edit actions (select + view).
 		elif ctrl and not shift and key == gtk.keysyms.c:	# Copy.
 			self.copy ()
+			the_gui.statusbar = 'Copied tiles to buffer'
 		elif ctrl and not shift and key == gtk.keysyms.v:	# Paste.
 			self.paste ([(self.pointer_pos[x] + self.offset[x]) / screenzoom for x in range (2)])
+			the_gui.statusbar = 'Pasted tiles from buffer'
 		elif not ctrl and not shift and key == gtk.keysyms.Escape: # Abort current action
 			# Panning is done with pointer button 2, and should not respond to keys.
 			if self.moveinfo is not None and self.moveinfo[0] != 'pan':
@@ -716,16 +729,22 @@ class ViewMap (View): # {{{
 			# Panning is done with pointer button 2, and should not respond to keys.
 			if self.moveinfo is not None and self.moveinfo[0] != 'pan':
 				self.moveinfo = None
+			the_gui.statusbar = 'Operation finished'
 		elif ctrl and shift and key == gtk.keysyms.A:
 			deselect_all ()
+			the_gui.statusbar = 'Deselected all sprites'
 		elif ctrl and not shift and key == gtk.keysyms.a:
 			select_all ()
+			the_gui.statusbar = 'Selected all sprites'
 		elif ctrl and not shift and key == gtk.keysyms.i:
 			select_invert ()
+			the_gui.statusbar = 'Inverted sprite selection'
 		elif not ctrl and not shift and key == gtk.keysyms.j:
 			jump ()
+			the_gui.statusbar = 'Jumped to sprite selection'
 		elif not ctrl and not shift and key == gtk.keysyms.n:
 			jump_next ()
+			the_gui.statusbar = 'Jumped to next selected sprite'
 		elif not ctrl and not shift and key == gtk.keysyms.Left:
 			self.handle_cursor ((-1, 0))
 		elif not ctrl and not shift and key == gtk.keysyms.Up:
@@ -738,6 +757,7 @@ class ViewMap (View): # {{{
 			self.moveinfo = None
 			viewworld.old_offset = self.offset
 			the_gui.setworld = True
+			the_gui.statusbar = 'Select area to view'
 		elif ctrl and not shift and key == gtk.keysyms.Prior:		# Zoom in.
 			self.zoom_screen (True)
 		elif ctrl and not shift and key == gtk.keysyms.Next:		# Zoom out.
@@ -747,9 +767,11 @@ class ViewMap (View): # {{{
 		elif not ctrl and not shift and key == gtk.keysyms.Home:	# Center map.
 			s = (12, 8)
 			self.goto ([(self.pointer_pos[x] + self.offset[x]) / s[x] / screenzoom * s[x] * 50 + s[x] / 2 * 50 for x in range (2)])
+			the_gui.statusbar = 'Map centered on screen'
 		# Sprite actions.
 		elif not ctrl and not shift and key == gtk.keysyms.e:		# Edit script(s).
 			edit_sprite_scripts ()
+			the_gui.statusbar = 'Editing sprite scripts'
 		elif not shift and key == gtk.keysyms._0:
 			self.layerkey (0, ctrl)
 		elif not shift and key == gtk.keysyms._1:
@@ -774,6 +796,7 @@ class ViewMap (View): # {{{
 			toggle_nohit ()
 		elif not ctrl and not shift and key == gtk.keysyms.m:		# move selected sprites
 			self.moveinfo = 'move', None, self.make_cancel ()
+			the_gui.statusbar = 'Starting move operation'
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert):	# new sprite from sequence
 			self.newinfo = p, (ox, oy), n
 			viewseq.update ()
@@ -824,8 +847,36 @@ class ViewMap (View): # {{{
 				dist = make_dist (avg, p)
 				size = [x[0].size for x in spriteselect]
 				self.moveinfo = 'resize', (avg, dist, size), self.make_cancel ()
+			the_gui.statusbar = 'Starting scale operation'
 		elif not ctrl and not shift and key == gtk.keysyms.q:
 			self.moveinfo = 'que', None, self.make_cancel ()
+			the_gui.statusbar = 'Starting que move operation'
+		elif ctrl and not shift and key == gtk.keysyms.l:		# Lock to pointed map
+			p = viewmap.get_pointed_map ()[2]
+			if p not in data.world.map:
+				the_gui.statusbar = 'Not locking to nonexistent map'
+			else:
+				n = 0
+				for s in spriteselect:
+					if s[1]:
+						continue
+					n += 1
+					s[0].unregister ()
+					s[0].map = p
+					s[0].register ()
+				update_editgui ()
+				the_gui.statusbar = 'Locked %d sprite(s) to map %d' % (n, p)
+		elif ctrl and shift and key == gtk.keysyms.L:			# Unlock
+			n = 0
+			for s in spriteselect:
+				if s[1]:
+					continue
+				n += 1
+				s[0].unregister ()
+				s[0].map = None
+				s[0].register ()
+			update_editgui ()
+			the_gui.statusbar = 'Unlocked %d sprite(s)' % n
 		elif ctrl and not shift and key == gtk.keysyms.w:		# Set warp.
 			for spr in spriteselect:
 				if spr[1]:
@@ -835,17 +886,26 @@ class ViewMap (View): # {{{
 				spr[0].warp = (n, p[0] % (50 * 12) + 20, p[1] % (50 * 8))
 				add_warptarget (spr[0])
 			update_editgui ()
+			the_gui.statusbar = 'Set warp target'
 		elif ctrl and shift and key == gtk.keysyms.W:			# Clear warp.
 			clear_warp ()
+			the_gui.statusbar = 'Cleared warp target'
 		elif not ctrl and not shift and key == gtk.keysyms.w:		# Toggle select warp or object.
 			toggle_warp ()
+			the_gui.statusbar = 'Toggled warp target selection'
 		elif not ctrl and not shift and key == gtk.keysyms.h:		# Toggle sprite hardness.
 			toggle_hard ()
+			the_gui.statusbar = 'Toggled sprite hardness'
 		elif not ctrl and not shift and key == gtk.keysyms.Delete:	# Delete sprite(s)
+			s = 0
+			w = 0
 			for killer in spriteselect:
+				if killer[0].warp is not None:
+					w += 1
 				# Remove warp target in any case.
 				remove_warptarget (killer[0])
 				if not killer[1]:
+					s += 1
 					killer[0].unregister ()
 					data.world.sprite.remove (killer[0])
 				else:
@@ -853,6 +913,7 @@ class ViewMap (View): # {{{
 					killer[0].warp = None
 			spriteselect[:] = []
 			update_editgui ()
+			the_gui.statusbar = 'Deleted %d sprite(s) and %d warp target(s)' % (s, w)
 		# Ctrl+cursor: start crop
 		elif ctrl and not shift and key == gtk.keysyms.Left:
 			self.start_crop ()
@@ -874,10 +935,13 @@ class ViewMap (View): # {{{
 			the_gui.settiles = True
 		elif ctrl and not shift and key == gtk.keysyms.h:
 			edit_map_hardness ()
+			the_gui.statusbar = 'Editing map hardness'
 		elif ctrl and not shift and key == gtk.keysyms.e:
 			edit_map_script ()
+			the_gui.statusbar = 'Editing map script'
 		elif not ctrl and shift and key == gtk.keysyms.I:
 			toggle_indoor ()
+			the_gui.statusbar = 'Toggled indoor state'
 		elif ctrl and not shift and key == gtk.keysyms.Insert:
 			map_insert ()
 		elif ctrl and not shift and key == gtk.keysyms.Delete:
@@ -891,11 +955,13 @@ class ViewMap (View): # {{{
 			# Move all selected sprites to layer.
 			for s in spriteselect:
 				s[0].layer = layer
+			the_gui.statusbar = 'Moved sprites to layer %d' % layer
 		else:
 			# Make layer active.
 			the_gui.active_layer = layer
 			update_editgui ()
 			viewmap.update ()
+			the_gui.statusbar = 'Active layer changed to %d' % layer
 	def copy (self):
 		copybuffer.clear ()
 		for i in select.data:
@@ -2204,6 +2270,7 @@ def toggle_nohit ():
 			continue
 		s[0].nohit = not s[0].nohit
 	update_editgui ()
+	the_gui.statusbar = 'Toggled nohit property'
 
 def clear_warp ():
 	for spr in spriteselect:
