@@ -1235,10 +1235,10 @@ def build_function_def (data, fname, dink, my_statics, my_globals):
 	sp_seq (1, 0);\r
 	sp_brain (1, %d);\r
 	sp_pseq (1, %d);\r
-	sp_pframe (1, %d);\r
+	sp_pframe (1, 8);\r
 	sp_que (1, 20000);\r
 	sp_noclip (1, 1);\r
-''' % (make_brain ('pointer'), dink.seq.find_seq (dink.pointer_seq).code, dink.pointer_frame)
+''' % (make_brain ('pointer'), dink.seq.find_seq ('special').code)
 	for s in impl[1]:
 		ret += build_statement (s, ra[0], '\t', fname, dink, None, None, (my_locals, my_statics, my_globals))
 	clear_mangled (my_locals)
@@ -3036,9 +3036,6 @@ class Dink: #{{{
 			info, self.image.splash = get (info, 'splash', '')
 			info, s = get (info, 'start')
 			self.start_map, self.start_x, self.start_y = [int (x) for x in s.split ()]
-			info, p = get (info, 'pointer', 'special 8')
-			p = p.rsplit (None, 1)
-			self.pointer_seq, self.pointer_frame = p[0], int (p[1])
 			self.layer_visible = [None] * 10
 			self.layer_background = [None] * 10
 			for i in range (10):
@@ -3051,8 +3048,6 @@ class Dink: #{{{
 			self.start_map = 400
 			self.start_x = 320
 			self.start_y = 200
-			self.pointer_seq = 'special'
-			self.pointer_frame = 8
 			self.layer_visible = [i != 9 for i in range (10)]
 			self.layer_background = [i in (0, 9) for i in range (10)]
 			self.info = '''\
@@ -3101,7 +3096,6 @@ file (info.txt).
 		put (f, 'preview', self.image.preview, '')
 		put (f, 'splash', self.image.splash, '')
 		put (f, 'start', '%d %d %d' % (self.start_map, self.start_x, self.start_y))
-		put (f, 'pointer', '%s %d' % (self.pointer_seq, self.pointer_frame), 'special 8')
 		for i in range (10):
 			put (f, 'visible-%d' % i, self.layer_visible[i], i != 9)
 			put (f, 'background-%d' % i, self.layer_background[i], i in (0, 9))

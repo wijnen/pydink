@@ -2249,18 +2249,28 @@ def edit_map_hardness ():
 def edit_map_script ():
 	do_edit (the_gui.map_script)
 
-def edit_script ():
-	do_edit (the_gui.script)
-
 def edit_sprite_scripts ():
 	scripts = set ()
+	newscript = None
 	for s in spriteselect:
 		if s[1]:
 			continue
 		spr = s[0]
 		if not spr.script:
-			continue
+			if newscript is None:
+				if spr.name not in data.script.data:
+					newscript = spr.name
+				else:
+					n = 0
+					while True:
+						newscript = '%s-%03d' % (spr.name, n)
+						if newscript not in data.script.data:
+							break
+						n += 1
+			spr.script = newscript
 		scripts.add (spr.script)
+	if newscript is not None:
+		update_editgui ()
 	for s in scripts:
 		do_edit (s)
 
@@ -2544,7 +2554,7 @@ the_gui.new_sprite = new_sprite
 the_gui.new_map = new_map
 the_gui.edit_map_script = edit_map_script
 the_gui.edit_map_hardness = edit_map_hardness
-the_gui.edit_script = edit_script
+the_gui.edit_script = edit_sprite_scripts
 the_gui.new_layer = new_layer
 the_gui.map_lock = map_lock
 

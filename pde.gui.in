@@ -70,8 +70,6 @@ gtk
 									FileChooserButton action=:open filename=preview
 									'Splash
 									FileChooserButton action=:open filename=splash
-									'Pointer
-									ComboBoxText value=pointer text=pointer_text content=set_pointer_list
 									Button right=:2 clicked=dmod_edit_info
 										'Edit DMod info
 									Button right=:2 clicked=dmod_edit_start
