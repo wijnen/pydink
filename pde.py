@@ -159,6 +159,8 @@ class View (gtk.DrawingArea): # {{{
 		View.pastegc = self.make_gc (the_gui.paste_gc)
 		View.emptygc = self.make_gc (the_gui.empty_gc)
 		View.whitegc = self.make_gc (the_gui.white_gc)
+		View.pathgc = self.make_gc (the_gui.path_gc)
+		View.pathgc.set_line_attributes (5, gtk.gdk.LINE_SOLID, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
 		View.started = True
 		View.configure (self, self)
 		View.update (self)
@@ -357,7 +359,9 @@ class View (gtk.DrawingArea): # {{{
 			self.buffer.draw_rectangle (self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 			self.buffer.draw_pixbuf (None, self.make_pixbuf50 (pixbuf, self.tilesize), 0, 0, dpos[0], dpos[1])
 	def key_global (self, key, ctrl, shift):
-		if not ctrl and not shift and key == gtk.keysyms.Escape: # Cancel operation.
+		if ctrl and not shift and key == gtk.keysyms.q:	# Quit.
+			the_gui (False)
+		elif not ctrl and not shift and key == gtk.keysyms.Escape: # Cancel operation.
 			the_gui.setmap = True
 		else:
 			return False
@@ -410,6 +414,7 @@ class View (gtk.DrawingArea): # {{{
 			return True
 		return False
 	def key_tiles (self, key, ctrl, shift):
+		global copystart
 		if self.key_home (key, ctrl, shift):
 			pass
 		elif key == gtk.keysyms.t:		# return to map
@@ -457,7 +462,7 @@ class ViewMap (View): # {{{
 	def draw_tile (self, screenpos, worldpos):
 		View.draw_tile (self, screenpos, worldpos, False)
 		if not self.selecting:
-			if (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
+			if self.moveinfo is None and (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
 				self.buffer.draw_rectangle (self.pastegc, False, screenpos[0] + 1, screenpos[1] + 1, screenzoom - 2, screenzoom - 2)
 	def update (self):
 		if self.buffer is None:
@@ -608,6 +613,18 @@ class ViewMap (View): # {{{
 			x.sort ()
 			y.sort ()
 			self.buffer.draw_rectangle (self.selectgc, False, x[0], y[0], x[1] - x[0], y[1] - y[0])
+		# And a hooked line if we're making a path.
+		if self.moveinfo is not None and self.moveinfo[0] == 'path':
+			tileset, origin, is_horizontal = self.moveinfo[1]
+			origin = tuple ([origin[t] * screenzoom - self.offset[t] for t in range (2)])
+			ap = [(self.pointer_pos[t] + self.offset[t]) * 50 / screenzoom for t in range (2)]
+			pos = tuple ([(ap[t] + 25) / 50 * screenzoom - self.offset[t] for t in range (2)])
+			if is_horizontal:
+				# First horizontal, then vertical.
+				self.buffer.draw_lines (self.pathgc, (origin, (pos[0], origin[1]), pos))
+			else:
+				# First vertical, then horizontal.
+				self.buffer.draw_lines (self.pathgc, (origin, (origin[0], pos[1]), pos))
 		if not the_gui.nobackingstore:
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def make_global (self, map, pos):
@@ -652,6 +669,116 @@ class ViewMap (View): # {{{
 		data.set_scale (screenzoom)
 		update_maps ()
 		the_gui.statusbar = 'Screen zoom changed'
+	def finish_move (self):
+		# Panning is done with pointer button 2, and should not respond to keys.
+		if self.moveinfo is None or self.moveinfo[0] == 'pan':
+			return
+		if self.moveinfo[0] == 'path':
+			def put_tile (pos, tile):
+				n = (pos[1] / 8) * 32 + (pos[0] / 12) + 1
+				if n not in data.world.map:
+					return
+				data.world.map[n].tiles[pos[1] % 8][pos[0] % 12] = tile
+			def put_corner (pos, tileset, tiles):
+				x, y = pos
+				tx, ty = tiles
+				for yy in range (2):
+					for xx in range (2):
+						put_tile ((x - 1 + xx, y - 1 + yy), (tileset, tx + xx, ty + yy))
+			# Put the tiles on the path.
+			tileset, origin, is_horizontal = self.moveinfo[1]
+			ap = [((self.pointer_pos[t] + self.offset[t]) * 50 / screenzoom + 25) / 50 for t in range (2)]
+			# There are three seqments, all of which may be length 0: the first leg, the corner, and the second leg.
+			if is_horizontal:
+				hleg = [origin, ap[0] - origin[0]]
+				vleg = [(ap[0], origin[1]), ap[1] - origin[1]]
+				if vleg[1] == 0:
+					# No corner and no vleg.
+					vleg = None
+				else:
+					if hleg[1] == 0:
+						hleg = None
+					else:
+						put_corner (vleg[0], tileset, (((0, 4), (6, 0)), ((8, 2), (4, 0)))[hleg[1] > 0][vleg[1] > 0])
+						if abs (vleg[1]) == 1:
+							# No vleg.
+							vleg = None
+						else:
+							if vleg[1] < 0:
+								# Going up.
+								vleg[0] = (vleg[0][0], vleg[0][1] - 1)
+								vleg[1] += 1
+							else:
+								# Going down.
+								vleg[0] = (vleg[0][0], vleg[0][1] + 1)
+								vleg[1] -= 1
+						if abs (hleg[1]) == 1:
+							# No hleg.
+							hleg = None
+						else:
+							if hleg[1] < 0:
+								# Going left.
+								hleg[1] += 1
+							else:
+								# Going right.
+								hleg[1] -= 1
+			else:
+				vleg = [origin, ap[1] - origin[1]]
+				hleg = [(origin[0], ap[1]), ap[0] - origin[0]]
+				if hleg[1] == 0:
+					# No corner and no hleg.
+					hleg = None
+				else:
+					if vleg[1] == 0:
+						vleg = None
+					else:
+						put_corner (hleg[0], tileset, (((8, 0), (0, 0)), ((4, 4), (6, 2)))[vleg[1] > 0][hleg[1] > 0])
+						if abs (hleg[1]) == 1:
+							# No hleg.
+							hleg = None
+						else:
+							if hleg[1] < 0:
+								# Going left.
+								hleg[0] = (hleg[0][0] - 1, hleg[0][1])
+								hleg[1] += 1
+							else:
+								# Going right.
+								hleg[0] = (hleg[0][0] + 1, hleg[0][1])
+								hleg[1] -= 1
+						if abs (vleg[1]) == 1:
+							# No vleg.
+							vleg = None
+						else:
+							if vleg[1] < 0:
+								# Going up.
+								vleg[1] += 1
+							else:
+								# Going down.
+								vleg[1] -= 1
+			if hleg is not None:
+				if hleg[1] < 0:
+					# Going left.
+					for t in range (-hleg[1]):
+						put_tile ((hleg[0][0] - t - 1, hleg[0][1] - 1), [tileset, 2 + t % 2, 4])
+						put_tile ((hleg[0][0] - t - 1, hleg[0][1]), [tileset, 2 + t % 2, 5])
+				else:
+					# Going right.
+					for t in range (hleg[1]):
+						put_tile ((hleg[0][0] + t, hleg[0][1] - 1), [tileset, 2 + t % 2, 0])
+						put_tile ((hleg[0][0] + t, hleg[0][1]), [tileset, 2 + t % 2, 1])
+			if vleg is not None:
+				if vleg[1] < 0:
+					# Going up.
+					for t in range (-vleg[1]):
+						put_tile ((vleg[0][0] - 1, vleg[0][1] - t - 1), [tileset, 0, 2 + t % 2])
+						put_tile ((vleg[0][0], vleg[0][1] - t - 1), [tileset, 1, 2 + t % 2])
+				else:
+					# Going down.
+					for t in range (vleg[1]):
+						put_tile ((vleg[0][0] - 1, vleg[0][1] + t), [tileset, 4, 2 + t % 2])
+						put_tile ((vleg[0][0], vleg[0][1] + t), [tileset, 5, 2 + t % 2])
+		self.moveinfo = None
+		the_gui.statusbar = 'Operation finished'
 	def abort_move (self):
 		if self.moveinfo is None:
 			return
@@ -675,10 +802,11 @@ class ViewMap (View): # {{{
 	def keypress (self, widget, e):
 		global copystart
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-		sx = p[0] / (12 * screenzoom)
-		sy = p[1] / (8 * screenzoom)
-		ox = p[0] - sx * 12 * 50 + 20
-		oy = p[1] - sy * 8 * 50
+		ap = [p[t] * 50 / screenzoom for t in range (2)]
+		sx = ap[0] / (12 * 50)
+		sy = ap[1] / (8 * 50)
+		ox = ap[0] - sx * 12 * 50 + 20
+		oy = ap[1] - sy * 8 * 50
 		n = sy * 32 + sx + 1
 		self.selecting = False
 		ctrl = e.state & gtk.gdk.CONTROL_MASK
@@ -726,10 +854,7 @@ class ViewMap (View): # {{{
 				# Reset change.
 				self.abort_move ()
 		elif not ctrl and not shift and key == gtk.keysyms.Return: # Confirm operation.
-			# Panning is done with pointer button 2, and should not respond to keys.
-			if self.moveinfo is not None and self.moveinfo[0] != 'pan':
-				self.moveinfo = None
-			the_gui.statusbar = 'Operation finished'
+			self.finish_move ()
 		elif ctrl and shift and key == gtk.keysyms.A:
 			deselect_all ()
 			the_gui.statusbar = 'Deselected all sprites'
@@ -848,6 +973,16 @@ class ViewMap (View): # {{{
 				size = [x[0].size for x in spriteselect]
 				self.moveinfo = 'resize', (avg, dist, size), self.make_cancel ()
 			the_gui.statusbar = 'Starting scale operation'
+		elif not ctrl and not shift and key == gtk.keysyms.p:
+			tileset = viewtiles.find_tile (select.start[:2])[0]
+			if select.start[2] != 1 or select.start not in select.data or tileset < 0:
+				the_gui.statusbar = 'Not starting path, because no tile screen is selected'
+			else:
+				origin = [(ap[t] + 25) / 50 for t in range (2)]
+				offset = [ap[t] - origin[t] * 50 for t in range(2)]
+				is_horizontal = abs (offset[0]) > abs (offset[1])
+				self.moveinfo = 'path', (tileset, origin, is_horizontal), self.make_cancel ()
+				the_gui.statusbar = 'Starting path operation for tileset %d' % tileset
 		elif not ctrl and not shift and key == gtk.keysyms.q:
 			self.moveinfo = 'que', None, self.make_cancel ()
 			the_gui.statusbar = 'Starting que move operation'
@@ -946,6 +1081,55 @@ class ViewMap (View): # {{{
 			map_insert ()
 		elif ctrl and not shift and key == gtk.keysyms.Delete:
 			map_delete ()
+		elif not ctrl and not shift and key == gtk.keysyms.y: # yank (copy) selected tiles into buffer
+			self.copy ()
+		elif not ctrl and not shift and key == gtk.keysyms.minus: # unselect all
+			select.clear ()
+		elif not ctrl and not shift and key == gtk.keysyms.f: # fill selected tiles with buffer
+			if len (copybuffer) == 0:
+				return
+			tiles = list (copybuffer)
+			min = [None, None]
+			max = [None, None]
+			for i in copybuffer:
+				if i[2] != copystart[2]:
+					continue
+				for x in range (2):
+					if min[x] == None or i[x] < min[x]:
+						min[x] = i[x]
+					if max[x] == None or i[x] > max[x]:
+						max[x] = i[x]
+			for i in select.data:
+				# Don't try to paste into tile screens.
+				if i[2] != 0:
+					continue
+				n = (i[1] / 8) * 32 + (i[0] / 12) + 1
+				if n not in data.world.map:
+					continue
+				tile = None
+				if min[0] == None:
+					continue
+				size = [max[x] - min[x] + 1 for x in range (2)]
+				p = [(i[x] - select.start[x] + copystart[x]) % size[x] for x in range (2)]
+				for b in copybuffer:
+					if b[2] == copystart[2] and (b[0] - copystart[0]) % size[0] == p[0] and (b[1] - copystart[1]) % size[1] == p[1]:
+						tile = b[3:6]
+				if tile == None:
+					tile = tiles[random.randrange (len (copybuffer))][3:6]
+				data.world.map[n].tiles[i[1] % 8][i[0] % 12] = tile
+		elif not ctrl and not shift and key == gtk.keysyms.r: # random fill tiles
+			if len (copybuffer) == 0:
+				return
+			tiles = list (copybuffer)
+			for i in select.data:
+				# Don't try to paste into tile screens.
+				if i[2] != 0:
+					continue
+				n = (i[1] / 8) * 32 + (i[0] / 12) + 1
+				if n not in data.world.map:
+					continue
+				tile = tiles[random.randrange (len (copybuffer))][3:6]
+				data.world.map[n].tiles[i[1] % 8][i[0] % 12] = tile
 		else:
 			return False
 		self.update ()
@@ -963,6 +1147,7 @@ class ViewMap (View): # {{{
 			viewmap.update ()
 			the_gui.statusbar = 'Active layer changed to %d' % layer
 	def copy (self):
+		global copystart
 		copybuffer.clear ()
 		for i in select.data:
 			s = View.find_tile (self, i, i[2])
@@ -976,57 +1161,6 @@ class ViewMap (View): # {{{
 				continue
 			p = [t[x] + select.start[x] for x in range (2)]
 			data.world.map[n].tiles[target[1] % 8][target[0] % 12] = View.find_tile (self, p, select.start[2])
-	def key_tiles (self, key, ctrl):
-			if key == gtk.keysyms.t: # show tilescreen
-				the_gui.settiles = True
-			elif key == gtk.keysyms.y: # yank (copy) selected tiles into buffer
-				self.copy ()
-			elif key == gtk.keysyms.minus: # unselect all
-				select.clear ()
-			elif key == gtk.keysyms.f: # fill selected tiles with buffer
-				if len (copybuffer) == 0:
-					return
-				tiles = list (copybuffer)
-				min = [None, None]
-				max = [None, None]
-				for i in copybuffer:
-					if i[2] != copystart[2]:
-						continue
-					for x in range (2):
-						if min[x] == None or i[x] < min[x]:
-							min[x] = i[x]
-						if max[x] == None or i[x] > max[x]:
-							max[x] = i[x]
-				for i in select.data:
-					# Don't try to paste into tile screens.
-					if i[2] != 0:
-						continue
-					n = (i[1] / 8) * 32 + (i[0] / 12) + 1
-					if n not in data.world.map:
-						continue
-					tile = None
-					if min[0] != None:
-						size = [max[x] - min[x] + 1 for x in range (2)]
-						p = [(i[x] - select.start[x] + copystart[x]) % size[x] for x in range (2)]
-						for b in copybuffer:
-							if b[2] == copystart[2] and (b[0] - copystart[0]) % size[0] == p[0] and (b[1] - copystart[1]) % size[1] == p[1]:
-								tile = b[3:6]
-					if tile == None:
-						tile = tiles[random.randrange (len (copybuffer))][3:6]
-					data.world.map[n].tiles[i[1] % 8][i[0] % 12] = tile
-			elif key == gtk.keysyms.r: # random fill tiles
-				if len (copybuffer) == 0:
-					return
-				tiles = list (copybuffer)
-				for i in select.data:
-					# Don't try to paste into tile screens.
-					if i[2] != 0:
-						continue
-					n = (i[1] / 8) * 32 + (i[0] / 12) + 1
-					if n not in data.world.map:
-						continue
-					tile = tiles[random.randrange (len (copybuffer))][3:6]
-					data.world.map[n].tiles[i[1] % 8][i[0] % 12] = tile
 	def handle_cursor (self, diff):
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 		if self.moveinfo == None:
@@ -1130,7 +1264,7 @@ class ViewMap (View): # {{{
 			return
 		if self.moveinfo is not None and e.button == 1:
 			# Finish operation.
-			self.moveinfo = None
+			self.finish_move ()
 			return
 		if e.button == 3:
 			if self.moveinfo is not None and self.moveinfo[0] != 'pan':
@@ -1377,6 +1511,9 @@ class ViewMap (View): # {{{
 			self.panned = True
 			self.offset = [self.offset[x] - diff[x] * screenzoom / 50 for x in range (2)]
 			update_maps ()
+		elif self.moveinfo[0] == 'path':
+			# Path is made at confirm, so nothing to do here.
+			pass
 		else:
 			raise AssertionError ('invalid moveinfo type %s' % self.moveinfo[0])
 		update_editgui ()

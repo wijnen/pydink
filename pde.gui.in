@@ -14,6 +14,7 @@ gtk
 	Setting name=paste_gc value="cyan"
 	Setting name=empty_gc value="#eee"
 	Setting name=white_gc value="white"
+	Setting name=path_gc value="green"
 	Setting name=nobackingstore value=False type=bool
 	Dialog title="PyDink error" show=:False buttons=1 run=show_error
 		'Ok
