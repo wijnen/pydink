@@ -1985,7 +1985,7 @@ class Tile: #{{{
 					else:
 						self.tile[n] = (tilefiles[n - 1], hardfile, 2)
 		ext = os.extsep + 'bmp'
-		for n in range (1, 41):
+		for n in range (1, 42):
 			if n not in self.tile:
 				if self.parent.root is not None:
 					t = os.path.join (d, str (n) + ext)
@@ -2370,7 +2370,7 @@ class Seq: #{{{
 				if seq.frames[f].boundingbox[3] > seq.boundingbox[3]:
 					seq.boundingbox[3] = seq.frames[f].boundingbox[3]
 		nice_assert (info == {}, 'unused data in %s' % infofile)
-	def get_dir_seq (self, collection, dir):
+	def get_dir_seq (self, collection, dir, num = False):
 		c = self.find_collection (collection)
 		order = {	1: (1, 4, 2, 9),
 				2: (2, 3, 1, 8),
@@ -2384,9 +2384,10 @@ class Seq: #{{{
 		if dir in order:
 			for option in order[dir]:
 				if option in c:
-					return c[option]
+					return option if num else c[option]
 		# There's nothing usable. Get whatever exists.
-		return c[[x for x in c if isinstance (x, int)][0]]
+		n = [x for x in c if isinstance (x, int)][0]
+		return n if num else c[n]
 	def as_collection (self, name):
 		if not name:
 			return None

@@ -143,6 +143,8 @@ class View (gtk.DrawingArea): # {{{
 		data.set_scale (screenzoom)
 		View.gc = self.make_gc (the_gui.default_gc)
 		View.gridgc = self.make_gc (the_gui.grid_gc)
+		View.gridgc.set_line_attributes (1, gtk.gdk.LINE_ON_OFF_DASH, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		View.gridgc.set_dashes (0, (2, 3))
 		View.bordergc = self.make_gc (the_gui.border_gc)
 		View.invalidgc = self.make_gc (the_gui.invalid_gc)
 		View.selectgc = self.make_gc (the_gui.select_gc)
@@ -167,6 +169,7 @@ class View (gtk.DrawingArea): # {{{
 	def __init__ (self):
 		gtk.DrawingArea.__init__ (self)
 		View.components += (self,)
+		self.firstconfigure = True
 		self.buffer = None		# Backing store for the screen.
 		self.pointer_pos = (0, 0)	# Current position of pointer.
 		self.selecting = False		# Whether tiles are being selected, or a sequence is being moved at this moment.
@@ -200,6 +203,19 @@ class View (gtk.DrawingArea): # {{{
 		if View.started == True:
 			self.move (None, None)
 			View.update (self)
+		if self.firstconfigure:
+			self.firstconfigure = False
+			self.reset ()
+		self.clamp_offset ()
+		self.update ()
+	def reset (self):
+		pass
+	def clamp_offset (self):
+		for t in range (2):
+			if self.offset[t] + self.screensize[t] > self.tiles[t] * screenzoom:
+				self.offset[t] = self.tiles[t] * screenzoom - self.screensize[t]
+			if self.offset[t] < 0:
+				self.offset[t] = 0
 	def expose (self, widget, e):
 		if the_gui.nobackingstore:
 			self.update ()
@@ -211,7 +227,7 @@ class View (gtk.DrawingArea): # {{{
 		if tiles != None:
 			w, h = tiles.get_size ()
 			if b[1] * screenzoom >= w or b[2] * screenzoom >= h:
-				self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0] + 1, screenpos[1] + 1, screenzoom, screenzoom)
+				self.buffer.draw_rectangle (View.invalidgc, True, screenpos[0], screenpos[1], screenzoom, screenzoom)
 			else:
 				self.buffer.draw_drawable (View.gc, tiles, b[1] * screenzoom, b[2] * screenzoom, screenpos[0], screenpos[1], screenzoom, screenzoom)
 		else:
@@ -311,6 +327,7 @@ class View (gtk.DrawingArea): # {{{
 		self.pointer_pos = pos
 		if self.panning:
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
+			self.clamp_offset ()
 		self.update ()
 	def pos_from_event (self, e):
 		return [(self.offset[x] + int (e[x])) / screenzoom for x in range (2)]
@@ -366,7 +383,7 @@ class View (gtk.DrawingArea): # {{{
 		else:
 			return False
 		return True
-	def key_seq (self):
+	def key_seq (self, key, ctrl, shift):
 		if not ctrl and not shift and key == gtk.keysyms.t: # set touch sequence.
 			for s in spriteselect:
 				if s[1]:
@@ -376,7 +393,7 @@ class View (gtk.DrawingArea): # {{{
 		else:
 			return False
 		return True
-	def key_collection (self):
+	def key_collection (self, key, ctrl, shift):
 		if not ctrl and not shift and key == gtk.keysyms.a: # set base attack.
 			for s in spriteselect:
 				if s[1]:
@@ -410,6 +427,7 @@ class View (gtk.DrawingArea): # {{{
 			# Find screen where center is.
 			m = self.get_pointed_map ()
 			self.offset = [(m[t] * s[t] + s[t] / 2) * screenzoom - self.screensize[t] / 2 for t in range (2)]
+			self.clamp_offset ()
 			self.update ()
 			return True
 		return False
@@ -441,26 +459,21 @@ class ViewMap (View): # {{{
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
 		self.current_selection = 0	# Index of "current" sprite in selection.
 		self.set_size_request (50 * 12, 50 * 8)
-		self.firstconfigure = True
 	def reset (self):
 		# Initial offset is centered on dink starting map.
 		map = data.start_map
 		sc = ((map - 1) % 32, (map - 1) / 32)
 		s = (12, 8)
 		self.offset = [(sc[x] * s[x] + s[x] / 2) * screenzoom - self.screensize[x] / 2 for x in range (2)]
+		self.clamp_offset ()
 		update_maps ()
-	def configure (self, widget, e):
-		View.configure (self, widget, e)
-		if self.firstconfigure:
-			self.firstconfigure = False
-			self.reset ()
 	def find_tile (self, worldpos):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.map:
 			return data.world.map[n].tiles[worldpos[1] % 8][worldpos[0] % 12]
 		return [-1, -1, -1]
 	def draw_tile (self, screenpos, worldpos):
-		View.draw_tile (self, screenpos, worldpos, False)
+		View.draw_tile (self, screenpos, worldpos, True)
 		if not self.selecting:
 			if self.moveinfo is None and (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
 				self.buffer.draw_rectangle (self.pastegc, False, screenpos[0] + 1, screenpos[1] + 1, screenzoom - 2, screenzoom - 2)
@@ -633,6 +646,7 @@ class ViewMap (View): # {{{
 		return [pos[x] + s[x] * spos[x] * 50 for x in range (2)]
 	def goto (self, pos):
 		self.offset = [pos[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range (2)]
+		self.clamp_offset ()
 		self.update ()
 		viewworld.update ()
 	def get_pointed_map (self, pos = None):
@@ -667,6 +681,7 @@ class ViewMap (View): # {{{
 			screenzoom -= 1
 		self.offset = [mid[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range (2)]
 		data.set_scale (screenzoom)
+		self.clamp_offset ()
 		update_maps ()
 		the_gui.statusbar = 'Screen zoom changed'
 	def finish_move (self):
@@ -695,9 +710,16 @@ class ViewMap (View): # {{{
 				if vleg[1] == 0:
 					# No corner and no vleg.
 					vleg = None
+					if hleg[1] == 0:
+						hleg = None
+					hoffset = 0
 				else:
 					if hleg[1] == 0:
 						hleg = None
+						if vleg[1] < 0:
+							voffset = 1
+						else:
+							voffset = 0
 					else:
 						put_corner (vleg[0], tileset, (((0, 4), (6, 0)), ((8, 2), (4, 0)))[hleg[1] > 0][vleg[1] > 0])
 						if abs (vleg[1]) == 1:
@@ -706,10 +728,12 @@ class ViewMap (View): # {{{
 						else:
 							if vleg[1] < 0:
 								# Going up.
+								voffset = 1
 								vleg[0] = (vleg[0][0], vleg[0][1] - 1)
 								vleg[1] += 1
 							else:
 								# Going down.
+								voffset = 0
 								vleg[0] = (vleg[0][0], vleg[0][1] + 1)
 								vleg[1] -= 1
 						if abs (hleg[1]) == 1:
@@ -722,15 +746,23 @@ class ViewMap (View): # {{{
 							else:
 								# Going right.
 								hleg[1] -= 1
+							hoffset = hleg[1]
 			else:
 				vleg = [origin, ap[1] - origin[1]]
 				hleg = [(origin[0], ap[1]), ap[0] - origin[0]]
 				if hleg[1] == 0:
 					# No corner and no hleg.
 					hleg = None
+					if vleg[0] == 0:
+						vleg = None
+					voffset = 0
 				else:
 					if vleg[1] == 0:
 						vleg = None
+						if hleg[1] < 0:
+							hoffset = 1
+						else:
+							hoffset = 0
 					else:
 						put_corner (hleg[0], tileset, (((8, 0), (0, 0)), ((4, 4), (6, 2)))[vleg[1] > 0][hleg[1] > 0])
 						if abs (hleg[1]) == 1:
@@ -739,10 +771,12 @@ class ViewMap (View): # {{{
 						else:
 							if hleg[1] < 0:
 								# Going left.
+								hoffset = 1
 								hleg[0] = (hleg[0][0] - 1, hleg[0][1])
 								hleg[1] += 1
 							else:
 								# Going right.
+								hoffset = 0
 								hleg[0] = (hleg[0][0] + 1, hleg[0][1])
 								hleg[1] -= 1
 						if abs (vleg[1]) == 1:
@@ -755,28 +789,29 @@ class ViewMap (View): # {{{
 							else:
 								# Going down.
 								vleg[1] -= 1
+							voffset = vleg[1]
 			if hleg is not None:
 				if hleg[1] < 0:
 					# Going left.
 					for t in range (-hleg[1]):
-						put_tile ((hleg[0][0] - t - 1, hleg[0][1] - 1), [tileset, 2 + t % 2, 4])
-						put_tile ((hleg[0][0] - t - 1, hleg[0][1]), [tileset, 2 + t % 2, 5])
+						put_tile ((hleg[0][0] - t - 1, hleg[0][1] - 1), [tileset, 2 + (t + hoffset) % 2, 4])
+						put_tile ((hleg[0][0] - t - 1, hleg[0][1]), [tileset, 2 + (t + hoffset) % 2, 5])
 				else:
 					# Going right.
 					for t in range (hleg[1]):
-						put_tile ((hleg[0][0] + t, hleg[0][1] - 1), [tileset, 2 + t % 2, 0])
-						put_tile ((hleg[0][0] + t, hleg[0][1]), [tileset, 2 + t % 2, 1])
+						put_tile ((hleg[0][0] + t, hleg[0][1] - 1), [tileset, 2 + (t + hoffset) % 2, 0])
+						put_tile ((hleg[0][0] + t, hleg[0][1]), [tileset, 2 + (t + hoffset) % 2, 1])
 			if vleg is not None:
 				if vleg[1] < 0:
 					# Going up.
 					for t in range (-vleg[1]):
-						put_tile ((vleg[0][0] - 1, vleg[0][1] - t - 1), [tileset, 0, 2 + t % 2])
-						put_tile ((vleg[0][0], vleg[0][1] - t - 1), [tileset, 1, 2 + t % 2])
+						put_tile ((vleg[0][0] - 1, vleg[0][1] - t - 1), [tileset, 0, 2 + (t + voffset) % 2])
+						put_tile ((vleg[0][0], vleg[0][1] - t - 1), [tileset, 1, 2 + (t + voffset) % 2])
 				else:
 					# Going down.
 					for t in range (vleg[1]):
-						put_tile ((vleg[0][0] - 1, vleg[0][1] + t), [tileset, 4, 2 + t % 2])
-						put_tile ((vleg[0][0], vleg[0][1] + t), [tileset, 5, 2 + t % 2])
+						put_tile ((vleg[0][0] - 1, vleg[0][1] + t), [tileset, 4, 2 + (t + voffset) % 2])
+						put_tile ((vleg[0][0], vleg[0][1] + t), [tileset, 5, 2 + (t + voffset) % 2])
 		self.moveinfo = None
 		the_gui.statusbar = 'Operation finished'
 	def abort_move (self):
@@ -785,6 +820,7 @@ class ViewMap (View): # {{{
 		self.offset = self.moveinfo[2][0]
 		screenzoom = self.moveinfo[2][2]
 		data.set_scale (screenzoom)
+		self.clamp_offset ()
 		for s in range (len (spriteselect)):
 			spriteselect[s][0].unregister ()
 			spr = spriteselect[s][0]
@@ -880,7 +916,7 @@ class ViewMap (View): # {{{
 			self.handle_cursor ((0, 1))
 		elif not ctrl and not shift and key == gtk.keysyms.equal:	# Map select.
 			self.moveinfo = None
-			viewworld.old_offset = self.offset
+			viewworld.update ()
 			the_gui.setworld = True
 			the_gui.statusbar = 'Select area to view'
 		elif ctrl and not shift and key == gtk.keysyms.Prior:		# Zoom in.
@@ -923,43 +959,43 @@ class ViewMap (View): # {{{
 			self.moveinfo = 'move', None, self.make_cancel ()
 			the_gui.statusbar = 'Starting move operation'
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert):	# new sprite from sequence
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewseq.update ()
 			the_gui.setseq = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_1 or key == gtk.keysyms.KP_End):		# new sprite with direction 1
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (1)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_2 or key == gtk.keysyms.KP_Down):	# new sprite with direction 2
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (2)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_3 or key == gtk.keysyms.KP_Next):	# new sprite with direction 3
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (3)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_4 or key == gtk.keysyms.KP_Left):	# new sprite with direction 4
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (4)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_5 or key == gtk.keysyms.KP_Begin):	# new sprite with direction die
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction ('die')
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_6 or key == gtk.keysyms.KP_Right):	# new sprite with direction 6
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (6)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_7 or key == gtk.keysyms.KP_Home):	# new sprite with direction 7
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (7)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_8 or key == gtk.keysyms.KP_Up):		# new sprite with direction 8
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (8)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_9 or key == gtk.keysyms.KP_Prior):	# new sprite with direction 9
-			self.newinfo = p, (ox, oy), n
+			self.newinfo = p
 			viewcollection.direction (9)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and key == gtk.keysyms.s:
@@ -1165,6 +1201,7 @@ class ViewMap (View): # {{{
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
 		if self.moveinfo == None:
 			self.offset = [self.offset[t] - diff[t] * self.screensize[t] / 4 for t in range (2)]
+			self.clamp_offset ()
 		elif self.moveinfo[0] == 'tileselect':
 			# No response to cursor keys.
 			pass
@@ -1510,6 +1547,7 @@ class ViewMap (View): # {{{
 		elif self.moveinfo[0] == 'pan':
 			self.panned = True
 			self.offset = [self.offset[x] - diff[x] * screenzoom / 50 for x in range (2)]
+			self.clamp_offset ()
 			update_maps ()
 		elif self.moveinfo[0] == 'path':
 			# Path is made at confirm, so nothing to do here.
@@ -1524,6 +1562,7 @@ class ViewSeq (View): # {{{
 	def __init__ (self):
 		View.__init__ (self)
 		self.selected_seq = None
+		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
 	def update (self):
 		if self.buffer == None:
 			return
@@ -1629,7 +1668,7 @@ class ViewSeq (View): # {{{
 					spr[0].frame = frame
 			update_editgui ()
 		elif e.button == 2:
-			(x, y), (ox, oy), n = viewmap.newinfo
+			x, y = viewmap.newinfo
 			sp = data.world.add_sprite (None, (x, y), s[pos0], frame)
 			sp.layer = int (the_gui.active_layer)
 			spriteselect[:] = ((sp, False),)
@@ -1647,6 +1686,7 @@ class ViewCollection (View): # {{{
 		View.__init__ (self)
 		self.available = []
 		self.selected_seq = None
+		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
 	def update (self):
 		if self.buffer == None:
 			return
@@ -1700,7 +1740,7 @@ class ViewCollection (View): # {{{
 			if d in data.seq.collection[c]:
 				self.available += ((c, d),)
 			elif d != 'die':
-				self.available += ((c, data.seq.get_dir_seq (c, d)),)
+				self.available += ((c, data.seq.get_dir_seq (c, d, num = True)),)
 		self.update ()
 	def get_selected_sequence (self):
 		x, y = self.pointer_pos
@@ -1757,9 +1797,6 @@ class ViewCollection (View): # {{{
 		elif e.button == 2:	# add new sprite
 			if View.collectiontype != None or seq == '':
 				return
-			if viewmap.newinfo[2] not in data.world.map:
-				# TODO: add for selected map.
-				return
 			self.selected_seq = self.pointer_tile
 			self.update ()
 	def button_off (self, widget, e):
@@ -1797,7 +1834,7 @@ class ViewCollection (View): # {{{
 				spr[0].frame = frame
 			update_editgui ()
 		elif e.button == 2:	# add new sprite
-			(x, y), (ox, oy), n = viewmap.newinfo
+			x, y = viewmap.newinfo
 			sp = data.world.add_sprite (None, (x, y), seq, 1)
 			sp.layer = int (the_gui.active_layer)
 			spriteselect[:] = ((sp, False),)
@@ -1823,7 +1860,7 @@ class ViewTiles (View): # {{{
 				return [n, worldpos[0] % 12, worldpos[1] % 8]
 		return [-1, -1, -1]
 	def draw_tile (self, screenpos, worldpos):
-		View.draw_tile (self, screenpos, worldpos, False)
+		View.draw_tile (self, screenpos, worldpos, True)
 	def update (self):
 		if self.buffer == None:
 			return
@@ -1845,6 +1882,7 @@ class ViewTiles (View): # {{{
 			return
 		if self.panning:
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
+			self.clamp_offset ()
 		if self.selecting:
 			View.select_tiles (self, tile, 1)
 		self.update ()
@@ -1862,12 +1900,6 @@ class ViewTiles (View): # {{{
 				View.tileselect (self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 1)
 		elif e.button == 2:
 			self.panning = True
-			self.old_offset = self.offset
-		elif e.button == 3:
-			if self.panning:
-				self.panning = False
-				self.offset = self.old_offset
-				self.update ()
 	def button_off (self, widget, e):
 		self.selecting = False
 		if e.button == 2:
@@ -1878,6 +1910,7 @@ class ViewWorld (View): # {{{
 	def __init__ (self):
 		View.__init__ (self)
 		self.set_size_request (32 * 12, 24 * 8)
+		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
 	def update (self):
 		if not self.buffer:
 			return
@@ -1917,6 +1950,7 @@ class ViewWorld (View): # {{{
 		tsize = min ([self.screensize[x] / s[x] for x in range (2)])
 		off = [(self.screensize[x] - s[x] * tsize) / 2 for x in range (2)]
 		viewmap.offset = [(self.pointer_pos[x] - off[x]) * screenzoom * scrsize[x] / tsize - viewmap.screensize[x] / 2 for x in range (2)]
+		viewmap.clamp_offset ()
 		viewmap.update ()
 		self.update ()
 		update_maps ()
