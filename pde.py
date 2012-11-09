@@ -837,12 +837,7 @@ class ViewMap (View): # {{{
 		if ctrl and not shift and key == gtk.keysyms.o:		# Open.
 			show_open ()
 		elif ctrl and not shift and key == gtk.keysyms.s:	# Save.
-			if data.root is not None:
-				the_gui.statusbar = 'Saving as ' + data.root
-				save ()
-				the_gui.statusbar = 'Saved as ' + data.root
-			else:
-				show_save_as ()
+			save ()
 		elif ctrl and shift and key == gtk.keysyms.S:		# Save as.
 			show_save_as ()
 		elif ctrl and not shift and key == gtk.keysyms.q:	# Quit.
@@ -2055,7 +2050,7 @@ def update_editgui ():
 			the_gui.seq_text = '%s %d' % s
 		the_gui.frame = combine ('frame', 0)
 		the_gui.size = combine ('size', 0)
-		the_gui.brain_text = combine ('brain', '-')
+		the_gui.brain = combine ('brain', '-')
 		the_gui.script = combine ('script', '-')
 		the_gui.speed = combine ('speed', 0)
 		the_gui.basewalk_text = combine ('base_walk', '')
@@ -2120,7 +2115,7 @@ def update_editgui ():
 		the_gui.seq_text = '%s %d' % sprite.seq
 	the_gui.frame = sprite.frame
 	the_gui.size = sprite.size
-	the_gui.brain_text = sprite.brain
+	the_gui.brain = sprite.brain
 	the_gui.script = sprite.script
 	the_gui.speed = sprite.speed
 	the_gui.basewalk_text = sprite.base_walk
@@ -2401,7 +2396,10 @@ def do_edit_hard (h, map):
 	viewmap.update ()
 
 def edit_map_hardness ():
-	do_edit_hard (the_gui.map_hardness, get_map ())
+	map = get_map ()
+	if the_gui.map_hardness == '':
+		the_gui.map_hardness = '%03d' % map
+	do_edit_hard (the_gui.map_hardness, map)
 
 def edit_map_script ():
 	do_edit (the_gui.map_script)
@@ -2515,6 +2513,7 @@ def map_lock (map = None):
 		s[0].unregister ()
 		s[0].map = n
 		s[0].register ()
+	update_editgui ()
 
 def sync ():
 	if updating:
@@ -2557,10 +2556,6 @@ def new_game (root = None):
 	except:
 		os.system (os.path.join (os.path.dirname (os.path.abspath (sys.argv[0])), 'makecache' + os.extsep + 'py'))
 		data = gtkdink.GtkDink (root, screenzoom)
-	if len (data.world.map) == 0:
-		the_gui.set_map_edit = True
-	else:
-		the_gui.set_sprite_edit = True
 	w = viewmap.get_window ()
 	if w:
 		data.set_window (w)
@@ -2595,8 +2590,15 @@ def new_layer ():
 	pass
 
 def save (dirname = None):
-	sync ()
-	data.save (dirname)
+	if dirname is None and data.root is None:
+		show_save_as ()
+	else:
+		sync ()
+		if data.save (dirname):
+			the_gui.statusbar = 'Saved DMod to %s' % data.root
+		else:
+			the_gui.statusbar = 'Not saved, because there was something wrong (please report as a bug)'
+		the_gui.title = os.path.basename (data.root) + ' - Python Dink Editor'
 # }}}
 
 # {{{ Main program
@@ -2665,6 +2667,7 @@ def jump_next ():
 		update_editgui ()
 
 def play (n = None, x = None, y = None):
+	sync ()
 	the_gui.statusbar = 'Building and play-testing DMod; please wait'
 	the_gui (1)
 	if y is None:
@@ -2680,6 +2683,7 @@ the_gui.file_new = new_game
 the_gui.file_open = show_open
 the_gui.file_save = save
 the_gui.file_save_as = show_save_as
+the_gui.save_as = save_as
 the_gui.file_quit = lambda: the_gui (False)
 the_gui.edit_deselect_all = deselect_all
 the_gui.edit_select_all = select_all
@@ -2772,6 +2776,7 @@ new_game (root)
 update_maps ()
 updating = False
 
+the_gui.set_sprite_edit = True
 # Make sure the map is realized before showing the world.
 the_gui.setmap = True
 the_gui (1)

@@ -396,7 +396,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		tmp = current_tmp
 		current_tmp = tmp + 1
 		b, e = build_expr (dink, fname, a[0], indent, as_bool = False)
-		return b + indent + 'int &tmp%d = game_exist(%s);\r\n' % (tmp, e) + indent + 'if (&tmp%d != 0)\r\n' % tmp + indent + '{\r\n' + indent + '\tstopmidi();\r\n' + indent + '\tstopcd();\r\n' + indent + '\tsp_brain(1, 1);\r\n' + indent + '\tsp_que(1, 0);\r\n' + indent + '\tsp_noclip(1, 0);\r\n' + indent + '\tset_mode(2);\r\n' + indent + '\tload_game(%s);\r\n' % e + indent + '}\r\n', ''
+		return b + indent + 'int &tmp%d = game_exist(%s);\r\n' % (tmp, e) + indent + 'if (&tmp%d != 0)\r\n' % tmp + indent + '{\r\n' + indent + '\tstopmidi();\r\n' + indent + '\tstopcd();\r\n' + indent + '\tsp_brain(1, 1);\r\n' + indent + '\tsp_que(1, 0);\r\n' + indent + '\tsp_noclip(1, 0);\r\n' + indent + '\tset_mode(2);\r\n' + indent + '\twait(1);\r\n' + indent + '\tload_game(%s);\r\n' % e + indent + '}\r\n', ''
 	elif name == 'add_item' or name == 'add_magic':
 		s = dink.seq.find_seq (a[1][1][0])
 		if not nice_assert (s is not None, 'undefined seq %s' % a[1][1][0]):
@@ -2705,10 +2705,17 @@ class Sound: #{{{
 
 class Script: #{{{
 	def create_defaults (self):
-		if 'start' in self.data:
-			self.have_start = True
-		else:
-			self.have_start = False
+		if 'intro' not in self.data:
+			self.data['intro'] = '''\
+void main ()
+{
+	// The intro script must put Dink at his starting position.
+	player_map = 400;
+	sp_x (1, 320);
+	sp_y (1, 200);
+}
+'''
+		if 'start' not in self.data:
 			self.data['start'] = '''\
 int make_button (int button)
 {
@@ -2719,15 +2726,13 @@ int make_button (int button)
 
 void main ()
 {
+	fill_screen (0);
 	sp_script (make_button (create_sprite (76, 40, "button", "button-start", 1)), "game-start");
 	sp_script (make_button (create_sprite (524, 40, "button", "button-continue", 1)), "game-continue");
 	sp_script (make_button (create_sprite (560, 440, "button", "button-quit", 1)), "game-quit");
 }
 '''
-			if 'game-start' in self.data:
-				self.have_game_start = True
-			else:
-				self.have_game_start = False
+			if 'game-start' not in self.data:
 				self.data['game-start'] = '''\
 void buttonon ()
 {
@@ -2745,10 +2750,7 @@ void click ()
 	kill_this_task ();
 }
 '''
-			if 'game-continue' in self.data:
-				self.have_game_continue = True
-			else:
-				self.have_game_continue = False
+			if 'game-continue' not in self.data:
 				self.data['game-continue'] = '''\
 void buttonon ()
 {
@@ -2781,10 +2783,7 @@ void click ()
 	kill_this_task ();
 }
 '''
-			if 'game-quit' in self.data:
-				self.have_game_quit = True
-			else:
-				self.have_game_quit = False
+			if 'game-quit' not in self.data:
 				self.data['game-quit'] = '''\
 void buttonon ()
 {
@@ -2820,14 +2819,6 @@ void click ()
 	def save (self):
 		d = os.path.join (self.parent.root, "script")
 		k = set (self.data.keys ())
-		if not self.have_start:
-			k.remove ('start')
-			if not self.have_game_start:
-				k.remove ('game-start')
-			if not self.have_game_continue:
-				k.remove ('game-continue')
-			if not self.have_game_quit:
-				k.remove ('game-quit')
 		if len (k) > 0:
 			os.mkdir (d)
 			for s in k:
@@ -2958,6 +2949,7 @@ void main ()\r
 	sp_base_attack (1, %d);\r
 	set_dink_speed (3);\r
 	set_mode (2);\r
+	wait (1);\r
 	reset_timer ();\r
 	sp_dir (1, 4);\r
 	sp_brain (1, %d);\r
@@ -3055,6 +3047,8 @@ file (info.txt).
 	def save (self, root = None):
 		if root is not None:
 			self.root = os.path.abspath (os.path.normpath (root))
+		if self.root is None:
+			return False
 		backup = None
 		if os.path.exists (self.root):
 			d = os.path.dirname (self.root)
@@ -3091,6 +3085,7 @@ file (info.txt).
 		f.write ('\r\n' + self.info)
 		if backup is not None:
 			self.rename (backup, self.root)
+		return True
 	def rename (self, old, new):
 		self.image.rename (old, new)
 		self.tile.rename (old, new)

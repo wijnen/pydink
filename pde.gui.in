@@ -95,7 +95,7 @@ gtk
 													Button clicked=map_lock expand=:False
 														'Current
 												'Brain
-												ComboBoxEntryText changed=update_sprite_brain value=brain text=brain_text
+												ComboBoxEntryText changed=update_sprite_brain text=brain
 													'none
 													'dink
 													'bounce
