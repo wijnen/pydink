@@ -232,7 +232,7 @@ class View (gtk.DrawingArea): # {{{
 			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0] + screenzoom - 1, screenpos[1])
 		if worldpos[0] % 12 == 0:
 			self.buffer.draw_line (View.bordergc, screenpos[0], screenpos[1], screenpos[0], screenpos[1] + screenzoom - 1)
-		if screen_lines:
+		if screen_lines and screenzoom >= 10:
 			if worldpos[1] % 8 != 0:
 				self.buffer.draw_line (View.gridgc, screenpos[0], screenpos[1], screenpos[0] + screenzoom - 1, screenpos[1])
 			if worldpos[0] % 12 != 0:
@@ -543,7 +543,7 @@ class ViewMap (View): # {{{
 			for x in range (offset[0] / screenzoom, (self.screensize[0] + offset[0] + screenzoom) / screenzoom):
 				if (origin[0] + x < 0 or origin[0] + x >= self.tiles[0]) or (origin[1] + y < 0 or origin[1] + y >= self.tiles[1]):
 					continue
-				self.draw_tile_hard ((x * 50 - offset[0] * 50 / screenzoom, y * 50 - offset[1] * 50 / screenzoom), (origin[0] + x, origin[1] + y))
+				self.draw_tile_hard ((x * screenzoom - offset[0], y * screenzoom - offset[1]), (origin[0] + x, origin[1] + y))
 		# Sprite hardness.
 		for spr in lst:
 			vis = visibility (spr[1].layer)
