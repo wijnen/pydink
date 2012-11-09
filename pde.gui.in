@@ -1,6 +1,6 @@
 gtk
 	Setting name=script_editor value="cd `dirname '$SCRIPT'` ; x-terminal-emulator -e vi `basename '$SCRIPT'`"
-	Setting name=hardness_editor value="eog '$IMAGE'"
+	Setting name=hardness_editor value="gimp '$IMAGE'"
 	Setting name=sync value=""
 	Setting name=default_gc value="black"
 	Setting name=grid_gc value="gray"
@@ -321,4 +321,6 @@ gtk
 				External id=viewcollection set_page=setcollection
 				External id=viewseq set_page=setseq
 				External id=viewtiles set_page=settiles
-			Statusbar text=statusbar expand=:False
+			HBox expand=:False
+				Label value=statuslabel expand=:False
+				Statusbar text=statusbar expand=:True

@@ -440,6 +440,35 @@ class View (gtk.DrawingArea): # {{{
 		else:
 			return False
 		return True
+	def get_offsets (self, x0, y0, frames):
+		if x0 + frames - 1 <= self.width:
+			off = x0				# Start frames at x0 if it fits.
+		else:
+			off = max (0, self.width - (frames - 1))	# Otherwise, start as high as possible.
+		rows = (off + frames - 1 + self.width - 1) / self.width	# Number of rows for frame list.
+		if y0 + rows >= self.height:
+			yoff = y0 - rows - 1
+		else:
+			yoff = y0
+		return off, yoff
+	def get_info (self, list):
+		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range (2)]	# Position of pointer in tiles.
+		x0, y0 = self.selected_seq			# Position of seq that was clicked.
+		pos0 = y0 * self.width + x0			# Position in list of selected seq.
+		frames = data.seq.seq[list[pos0]].frames	# Number of frames in selected seq.
+		off, yoff = self.get_offsets (x0, y0, len (frames))
+		lx = self.pointer_tile[0]
+		ly = self.pointer_tile[1] - yoff - 1
+		lframe = ly * self.width + lx + 1 - off
+		if self.pointer_tile[0] == x0 and self.pointer_tile[1] == y0:
+			frame = 1
+		elif lframe >= 0 and lframe < len (frames):
+			frame = lframe
+		else:
+			# Selected nothing; return to selection.
+			self.selected_seq = None
+			return None, None, None, None
+		return list[y0 * self.width + x0], frame, x0, y0
 # }}}
 
 class ViewMap (View): # {{{
@@ -1476,6 +1505,10 @@ class ViewMap (View): # {{{
 		pos = int (ex), int (ey)
 		diff = [(pos[t] - self.pointer_pos[t]) * 50 / screenzoom for t in range (2)]
 		self.pointer_pos = pos
+		apos = [(self.pointer_pos[t] + self.offset[t]) * 50 / screenzoom for t in range (2)]
+		sx = apos[0] / (50 * 12)
+		sy = apos[1] / (50 * 8)
+		the_gui.statuslabel = '%03d/%03d,%03d' % (sx + 32 * sy + 1, apos[0] - sx * 50 * 12 + 20, apos[1] - sy * 50 * 8)
 		self.pointer_tile = [(self.pointer_pos[t] + self.offset[t]) / screenzoom for t in range (2)]
 		if self.moveinfo == None:
 			if not select.empty ():
@@ -1558,6 +1591,7 @@ class ViewSeq (View): # {{{
 				if ns * self.tilesize <= self.screensize[1]:
 					break
 			self.tilesize -= 1
+		self.height = ns
 		if self.selected_seq == None:
 			for y in range (ns):
 				for x in range (self.width):
@@ -1574,13 +1608,10 @@ class ViewSeq (View): # {{{
 			self.draw_seq (self.selected_seq, pb)
 			# Draw selectable frames.
 			frames = data.seq.seq[s[pos0]].frames
-			if x0 + len (frames) - 1 <= self.width:
-				off = x0
-			else:
-				off = max (0, self.width - (len (frames) - 1))
+			off, yoff = self.get_offsets (x0, y0, len (frames))
 			for f in range (1, len (frames)):
 				pb = data.get_seq (data.seq.seq[s[pos0]], f)
-				y = y0 + 1 + (f - 1 + off) / self.width
+				y = yoff + 1 + (f - 1 + off) / self.width
 				x = (f - 1 + off) % self.width
 				self.draw_seq ((x, y), pb)
 		if not the_gui.nobackingstore:
@@ -1617,26 +1648,11 @@ class ViewSeq (View): # {{{
 	def button_off (self, widget, e):
 		if self.selected_seq == None:
 			return
-		self.pointer_pos = int (e.x), int (e.y)
-		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range (2)]
-		s = seqlist ()
-		x0, y0 = self.selected_seq
-		pos0 = y0 * self.width + x0
-		frames = data.seq.seq[s[pos0]].frames
-		if x0 + len (frames) - 1 <= self.width:
-			off = x0
-		else:
-			off = max (0, self.width - (len (frames) - 1))
-		lx = self.pointer_tile[0]
-		ly = self.pointer_tile[1] - y0 - 1
-		lframe = ly * self.width + lx + 1 - off
-		if self.pointer_tile[0] == x0 and self.pointer_tile[1] == y0:
-			frame = 1
-		elif lframe >= 0 and lframe < len (frames):
-			frame = lframe
-		else:
-			# Selected nothing; return to selection.
-			self.selected_seq = None
+		# Find clicked frame and change sprite or create new.
+		self.pointer_pos = int (e.x), int (e.y)	# Position of pointer in pixels.
+		s = seqlist ()					# List of available sequences.
+		seq, frame, x0, y0 = self.get_info (s)
+		if frame is None:
 			return
 		if e.button == 1:
 			for spr in spriteselect:
@@ -1644,12 +1660,12 @@ class ViewSeq (View): # {{{
 				if spr[1]:
 					spr[0].touch_seq = seq
 				else:
-					spr[0].seq = s[y0 * self.width + x0]
+					spr[0].seq = seq
 					spr[0].frame = frame
 			update_editgui ()
 		elif e.button == 2:
 			x, y = viewmap.newinfo
-			sp = data.world.add_sprite (None, (x, y), s[pos0], frame)
+			sp = data.world.add_sprite (None, (x, y), s[y0 * self.width + x0], frame)
 			sp.layer = int (the_gui.active_layer)
 			spriteselect[:] = ((sp, False),)
 			update_editgui ()
@@ -1682,6 +1698,7 @@ class ViewCollection (View): # {{{
 				if nc * self.tilesize <= self.screensize[1]:
 					break
 			self.tilesize -= 1
+		self.height = nc
 		if self.selected_seq == None:
 			for y in range (nc):
 				for x in range (self.width):
@@ -1702,13 +1719,10 @@ class ViewCollection (View): # {{{
 			self.draw_seq (self.selected_seq, pb)
 			# Draw selectable frames.
 			frames = data.seq.collection[seq[0]][seq[1]].frames
-			if x0 + len (frames) - 1 <= self.width:
-				off = x0
-			else:
-				off = max (0, self.width - (len (frames) - 1))
+			off, yoff = self.get_offsets (x0, y0, len (frames))
 			for f in range (1, len (frames)):
 				pb = data.get_seq (data.seq.collection[seq[0]][seq[1]], f)
-				y = y0 + 1 + (f - 1 + off) / self.width
+				y = yoff + 1 + (f - 1 + off) / self.width
 				x = (f - 1 + off) % self.width
 				self.draw_seq ((x, y), pb)
 		if not the_gui.nobackingstore:
@@ -1785,24 +1799,8 @@ class ViewCollection (View): # {{{
 		self.pointer_pos = int (e.x), int (e.y)
 		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range (2)]
 		c = self.available
-		x0, y0 = self.selected_seq
-		pos0 = y0 * self.width + x0
-		seq = c[pos0]
-		frames = data.seq.collection[seq[0]][seq[1]].frames
-		if x0 + len (frames) - 1 <= self.width:
-			off = x0
-		else:
-			off = max (0, self.width - (len (frames) - 1))
-		lx = self.pointer_tile[0]
-		ly = self.pointer_tile[1] - y0 - 1
-		lframe = ly * self.width + lx + 1 - off
-		if self.pointer_tile[0] == x0 and self.pointer_tile[1] == y0:
-			frame = 1
-		elif lframe >= 0 and lframe < len (frames):
-			frame = lframe
-		else:
-			# Selected nothing; return to selection.
-			self.selected_seq = None
+		seq, frame, x0, y0 = self.get_info (c)
+		if frame is None:
 			return
 		if e.button == 1:
 			for spr in spriteselect:
@@ -2720,13 +2718,13 @@ the_gui.edit_script = edit_sprite_scripts
 the_gui.new_layer = new_layer
 the_gui.map_lock = map_lock
 
-the_gui.update_sprite_name = lambda: update_sprite_gui ('name', update_sprite_name)
-the_gui.update_sprite_walk = lambda: update_sprite_gui ('walk', update_sprite_collection)
-the_gui.update_sprite_idle = lambda: update_sprite_gui ('idle', update_sprite_collection)
-the_gui.update_sprite_attack = lambda: update_sprite_gui ('attack', update_sprite_collection)
-the_gui.update_sprite_die = lambda: update_sprite_gui ('die', update_sprite_collection)
-the_gui.update_sprite_seq = lambda: update_sprite_gui ('seq', update_sprite_seq)
-the_gui.update_sprite_touchseq = lambda: update_sprite_gui ('touchseq', update_sprite_seq)
+the_gui.update_sprite_name = lambda: update_sprite_gui ('name', update_sprite_name, type = str)
+the_gui.update_sprite_walk = lambda: update_sprite_gui ('walk', update_sprite_collection, type = str)
+the_gui.update_sprite_idle = lambda: update_sprite_gui ('idle', update_sprite_collection, type = str)
+the_gui.update_sprite_attack = lambda: update_sprite_gui ('attack', update_sprite_collection, type = str)
+the_gui.update_sprite_die = lambda: update_sprite_gui ('die', update_sprite_collection, type = str)
+the_gui.update_sprite_seq = lambda: update_sprite_gui ('seq', update_sprite_seq, type = str)
+the_gui.update_sprite_touchseq = lambda: update_sprite_gui ('touchseq', update_sprite_seq, type = str)
 the_gui.update_sprite_warp = lambda: update_sprite_gui ('warp', update_sprite_warp)
 the_gui.update_sprite_warpmap = lambda: update_sprite_gui ('warpmap', update_sprite_warp_detail)
 the_gui.update_sprite_warpx = lambda: update_sprite_gui ('warpx', update_sprite_warp_detail)
