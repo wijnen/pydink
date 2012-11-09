@@ -451,11 +451,11 @@ class View (gtk.DrawingArea): # {{{
 		else:
 			yoff = y0
 		return off, yoff
-	def get_info (self, list):
+	def get_info (self, list, get_seq):
 		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range (2)]	# Position of pointer in tiles.
 		x0, y0 = self.selected_seq			# Position of seq that was clicked.
 		pos0 = y0 * self.width + x0			# Position in list of selected seq.
-		frames = data.seq.seq[list[pos0]].frames	# Number of frames in selected seq.
+		frames = get_seq (list[pos0]).frames		# Number of frames in selected seq.
 		off, yoff = self.get_offsets (x0, y0, len (frames))
 		lx = self.pointer_tile[0]
 		ly = self.pointer_tile[1] - yoff - 1
@@ -826,6 +826,10 @@ class ViewMap (View): # {{{
 					for t in range (vleg[1]):
 						put_tile ((vleg[0][0] - 1, vleg[0][1] + t), [tileset, 4, 2 + (t + voffset) % 2])
 						put_tile ((vleg[0][0], vleg[0][1] + t), [tileset, 5, 2 + (t + voffset) % 2])
+			# Auto-restart path from new start point
+			self.moveinfo = 'path', (tileset, ap, not is_horizontal), self.moveinfo[2]
+			the_gui.statusbar = 'Added path segment'
+			return
 		self.moveinfo = None
 		the_gui.statusbar = 'Operation finished'
 	def abort_move (self):
@@ -968,42 +972,52 @@ class ViewMap (View): # {{{
 			self.moveinfo = 'move', None, self.make_cancel ()
 			the_gui.statusbar = 'Starting move operation'
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert):	# new sprite from sequence
+			select.clear ()
 			self.newinfo = p
 			viewseq.update ()
 			the_gui.setseq = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_1 or key == gtk.keysyms.KP_End):		# new sprite with direction 1
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (1)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_2 or key == gtk.keysyms.KP_Down):	# new sprite with direction 2
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (2)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_3 or key == gtk.keysyms.KP_Next):	# new sprite with direction 3
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (3)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_4 or key == gtk.keysyms.KP_Left):	# new sprite with direction 4
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (4)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_5 or key == gtk.keysyms.KP_Begin):	# new sprite with direction die
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction ('die')
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_6 or key == gtk.keysyms.KP_Right):	# new sprite with direction 6
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (6)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_7 or key == gtk.keysyms.KP_Home):	# new sprite with direction 7
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (7)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_8 or key == gtk.keysyms.KP_Up):		# new sprite with direction 8
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (8)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_9 or key == gtk.keysyms.KP_Prior):	# new sprite with direction 9
+			select.clear ()
 			self.newinfo = p
 			viewcollection.direction (9)
 			the_gui.setcollection = True
@@ -1376,6 +1390,8 @@ class ViewMap (View): # {{{
 		self.update ()
 	def button_off (self, widget, e):
 		if e.button == 1:
+			if self.moveinfo is not None and self.moveinfo[0] == 'path':
+				return
 			self.selecting = False
 			self.moveinfo = None
 			if self.waitselect != None:
@@ -1651,7 +1667,7 @@ class ViewSeq (View): # {{{
 		# Find clicked frame and change sprite or create new.
 		self.pointer_pos = int (e.x), int (e.y)	# Position of pointer in pixels.
 		s = seqlist ()					# List of available sequences.
-		seq, frame, x0, y0 = self.get_info (s)
+		seq, frame, x0, y0 = self.get_info (s, lambda x: data.seq.seq[x])
 		if frame is None:
 			return
 		if e.button == 1:
@@ -1799,7 +1815,7 @@ class ViewCollection (View): # {{{
 		self.pointer_pos = int (e.x), int (e.y)
 		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range (2)]
 		c = self.available
-		seq, frame, x0, y0 = self.get_info (c)
+		seq, frame, x0, y0 = self.get_info (c, lambda x: data.seq.collection[x[0]][x[1]])
 		if frame is None:
 			return
 		if e.button == 1:
@@ -2403,6 +2419,11 @@ def edit_map_script ():
 	do_edit (the_gui.map_script)
 
 def edit_sprite_scripts ():
+	if len (spriteselect) == 0:
+		s = the_gui.script
+		if s != '':
+			do_edit (s)
+		return
 	scripts = set ()
 	newscript = None
 	for s in spriteselect:
