@@ -192,20 +192,17 @@ class View (gtk.DrawingArea): # {{{
 		x, y, width, height = widget.get_allocation()
 		self.screensize = (width, height)
 		if self.screensize != (0, 0):
-			self.offset = [(mid[x] - self.screensize[x] / 2) * screenzoom / 50 for x in range (2)]
+			self.offset = [mid[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range (2)]
 		if not View.started:
 			return
 		if the_gui.nobackingstore:
 			self.buffer = self.get_window ()
 		else:
 			self.buffer = gtk.gdk.Pixmap (self.get_window (), width, height)
+		self.clamp_offset ()
 		if View.started == True:
 			self.move (None, None)
-			View.update (self)
-		self.clamp_offset ()
-		self.update ()
-	def reset (self):
-		pass
+		View.update (self)
 	def clamp_offset (self):
 		for t in range (2):
 			if self.offset[t] + self.screensize[t] > self.tiles[t] * screenzoom:
@@ -1950,6 +1947,7 @@ class ViewWorld (View): # {{{
 		if e.button == 1:
 			self.select ()
 	def button_off (self, widget, e):
+		self.selecting = False
 		the_gui.setmap2 = True
 	def move (self, widget, e):
 		ex, ey, emask = self.get_window ().get_pointer ()
@@ -2773,6 +2771,12 @@ new_game (root)
 
 update_maps ()
 updating = False
+
+# Make sure the map is realized before showing the world.
+the_gui.setmap = True
+the_gui (1)
+viewmap.realize ()
+the_gui.setworld = True
 the_gui ()
 
 clean_fs ()
