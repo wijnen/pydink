@@ -169,7 +169,6 @@ class View (gtk.DrawingArea): # {{{
 	def __init__ (self):
 		gtk.DrawingArea.__init__ (self)
 		View.components += (self,)
-		self.firstconfigure = True
 		self.buffer = None		# Backing store for the screen.
 		self.pointer_pos = (0, 0)	# Current position of pointer.
 		self.selecting = False		# Whether tiles are being selected, or a sequence is being moved at this moment.
@@ -203,9 +202,6 @@ class View (gtk.DrawingArea): # {{{
 		if View.started == True:
 			self.move (None, None)
 			View.update (self)
-		if self.firstconfigure:
-			self.firstconfigure = False
-			self.reset ()
 		self.clamp_offset ()
 		self.update ()
 	def reset (self):
@@ -459,14 +455,6 @@ class ViewMap (View): # {{{
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
 		self.current_selection = 0	# Index of "current" sprite in selection.
 		self.set_size_request (50 * 12, 50 * 8)
-	def reset (self):
-		# Initial offset is centered on dink starting map.
-		map = data.start_map
-		sc = ((map - 1) % 32, (map - 1) / 32)
-		s = (12, 8)
-		self.offset = [(sc[x] * s[x] + s[x] / 2) * screenzoom - self.screensize[x] / 2 for x in range (2)]
-		self.clamp_offset ()
-		update_maps ()
 	def find_tile (self, worldpos):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.map:
@@ -2586,7 +2574,8 @@ def new_game (root = None):
 		open (os.path.join (tmpdir, s + os.extsep + 'c'), 'w').write (data.script.data[s])
 	open (os.path.join (tmpdir, 'info' + os.extsep + 'txt'), 'w').write (data.info)
 	sync ()
-	viewmap.reset ()	# Go to starting map.
+	the_gui.setworld = True
+	update_maps ()
 	the_gui.set_music_list = musiclist ()
 	the_gui.set_sounds_list = soundslist ()
 	the_gui.set_walk_list = [''] + collectionlist ()

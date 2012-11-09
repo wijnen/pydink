@@ -2954,9 +2954,6 @@ void main ()\r
 {\r
 	script_attach (1000);\r
 	wait (1);\r
-	&player_map = %d;\r
-	sp_x (1, %d);\r
-	sp_y (1, %d);\r
 	sp_base_walk (1, %d);\r
 	sp_base_attack (1, %d);\r
 	set_dink_speed (3);\r
@@ -2967,9 +2964,6 @@ void main ()\r
 	sp_que (1, 0);\r
 	sp_noclip (1, 0);\r
 %s	dink_can_walk_off_screen (0);\r
-	&player_map = %d;\r
-	sp_x (1, %d);\r
-	sp_y (1, %d);\r
 %s	load_screen ();\r
 	draw_screen ();\r
 	&update_status = 1;\r
@@ -2977,7 +2971,7 @@ void main ()\r
 	fade_up ();\r
 	kill_this_task ();\r
 }\r
-''' % (self.parent.start_map, self.parent.start_x, self.parent.start_y, self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink'), ('\texternal ("intro", "main");\r\n' if 'intro.c' in self.data else ''), self.parent.start_map, self.parent.start_x, self.parent.start_y, ('\texternal ("init", "main");\r\n' if 'init.c' in self.data else '')))
+''' % (self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink'), ('\texternal ("intro", "main");\r\n' if 'intro' in self.data else ''), ('\texternal ("init", "main");\r\n' if 'init' in self.data else '')))
 # }}}
 
 class Images: #{{{
@@ -3035,8 +3029,6 @@ class Dink: #{{{
 			self.info = f.read ()
 			info, self.image.preview = get (info, 'preview', '')
 			info, self.image.splash = get (info, 'splash', '')
-			info, s = get (info, 'start')
-			self.start_map, self.start_x, self.start_y = [int (x) for x in s.split ()]
 			self.layer_visible = [None] * 10
 			self.layer_background = [None] * 10
 			for i in range (10):
@@ -3046,9 +3038,6 @@ class Dink: #{{{
 		else:
 			self.image.preview = ''
 			self.image.splash = ''
-			self.start_map = 400
-			self.start_x = 320
-			self.start_y = 200
 			self.layer_visible = [i != 9 for i in range (10)]
 			self.layer_background = [i in (0, 9) for i in range (10)]
 			self.info = '''\
@@ -3096,7 +3085,6 @@ file (info.txt).
 		f = open (os.path.join (self.root, 'info' + os.extsep + 'txt'), 'w')
 		put (f, 'preview', self.image.preview, '')
 		put (f, 'splash', self.image.splash, '')
-		put (f, 'start', '%d %d %d' % (self.start_map, self.start_x, self.start_y))
 		for i in range (10):
 			put (f, 'visible-%d' % i, self.layer_visible[i], i != 9)
 			put (f, 'background-%d' % i, self.layer_background[i], i in (0, 9))
@@ -3140,13 +3128,10 @@ file (info.txt).
 		global error_message
 		error_message = ''
 		if y is not None:
-			tmp = self.start_map, self.start_x, self.start_y, (None if 'intro.c' not in self.script.data else self.script.data['intro']), self.script.data['start']
-			self.start_map = map
-			self.start_x = x
-			self.start_y = y
-			if 'intro.c' in self.script.data:
+			tmp = (None if 'intro' not in self.script.data else self.script.data['intro']), self.script.data['start']
+			if 'intro' in self.script.data:
 				del self.script.data['intro']
-			self.script.data['start'] = 'void main ()\n{\n\tstart_game ();\n\tkill_this_task ();\n}\n'
+			self.script.data['start'] = 'void main ()\n{\n\tstart_game ();\n\t\tplayer_map = %d;\n\tsp_x (1, %d);\n\tsp_y (1, %d);\n\tkill_this_task ();\n}\n' % (map, x, y)
 		builddir = tempfile.mkdtemp (prefix = 'pydink-test-')
 		oldroot = self.root
 		self.root = 'playtest'
@@ -3162,7 +3147,7 @@ file (info.txt).
 			self.root = oldroot
 			shutil.rmtree (builddir)
 			if y is not None:
-				self.script.start_map, self.script.start_x, self.script.start_y, intro, self.script.data['start'] = tmp
+				intro, self.script.data['start'] = tmp
 				if intro is not None:
 					self.script.data['intro'] = intro
 		return error_message
