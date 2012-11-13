@@ -318,6 +318,17 @@ def push (ret, operators):
 	else:
 		ret += ([op, r],)
 	return ret, operators
+
+def pathsearch (dink, dirname):
+	ret = []
+	p = os.path.join (dink.root, dirname)
+	if os.path.exists (p):
+		ret.append (('', p))
+	for d in dink.depends:
+		p = os.path.join (dink.config['editdir'], d, dirname)
+		if os.path.exists (p):
+			ret.append ((d + '.', p))
+	return ret
 # }}}
 # {{{ Global variables and functions for building dmod files
 functions = {}
@@ -1949,6 +1960,7 @@ class World: #{{{
 # }}}
 
 class Tile: #{{{
+	# TODO: allow external tiles somehow.
 	# self.tile is a dict of num:(tiles, hardness, code). Code means:
 	# 0: hardness from original, image from original
 	# 1: hardness from original, image from dmod
@@ -2159,8 +2171,7 @@ class Seq: #{{{
 		self.custom_collections = []
 		if self.parent.root is None:
 			return
-		d = os.path.join (parent.root, "seq")
-		if os.path.isdir (d):
+		for prefix, d in pathsearch (parent, 'seq'):
 			for s in os.listdir (d):
 				filename = os.path.join (d, s)
 				if not os.path.isdir (filename):
@@ -2168,24 +2179,23 @@ class Seq: #{{{
 				r = re.match (r'([^.].*?)(?:-(\d+))?$', s)
 				if not r:
 					continue
-				base = r.group (1)
+				base = prefix + r.group (1)
 				if base not in self.seq:
 					self.seq[base] = self.makeseq (base)
-				if r.group (2):
+				if prefix == '' and r.group (2):
 					self.seq[base].code = int (r.group (2))
 				else:
 					self.seq[base].code = None
 				self.fill_seq (self.seq[base], filename)
 				self.custom_seqs += (self.seq[base],)
-		d = os.path.join (parent.root, "collection")
-		if os.path.isdir (d):
+		for prefix, d in pathsearch (parent, 'collection'):
 			for s in os.listdir (d):
 				filename = os.path.join (d, s)
 				if not os.path.isdir (filename):
 					r = re.match (r'([^.].*)-(die|\d).txt$', s)
 					if not r:
 						continue
-					base = r.group (1)
+					base = prefix + r.group (1)
 					if not nice_assert (base in self.collection, '%s is not a known collection' % base):
 						continue
 					d = r.group (2)
@@ -2202,7 +2212,7 @@ class Seq: #{{{
 				base = r.group (1)
 				if base not in self.collection:
 					self.collection[base] = self.makecollection (base)
-				if r.group (2):
+				if prefix == '' and r.group (2):
 					self.collection[base]['code'] = int (r.group (2))
 				else:
 					self.collection[base]['code'] = None
@@ -2617,10 +2627,9 @@ class Sound: #{{{
 		self.music = self.detect ('music', ('mid', 'ogg'), musics)
 	def detect (self, dirname, exts, initial):
 		ret = {}
-		d = os.path.join (self.parent.root, dirname)
 		codes = set ()
 		other = []
-		if os.path.exists (d):
+		for prefix, d in pathsearch (self.parent, dirname):
 			for s in os.listdir (d):
 				for e in exts:
 					if s.endswith (os.extsep + e):
@@ -2633,10 +2642,10 @@ class Sound: #{{{
 				data = (filename, 0, os.stat (filename).st_size)
 				code = r.group (3)
 				if not code:
-					other += ((r.group (1), data, e),)
+					other += ((prefix + r.group (1), data, e),)
 				else:
 					code = int (code)
-					ret[r.group (1)] = (code, data, True, e)
+					ret[prefix + r.group (1)] = (code, data, True, e)
 					nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
 					codes.add (code)
 		for i in initial:
@@ -2972,18 +2981,18 @@ class Images: #{{{
 		self.images = {}
 		if self.parent.root is None:
 			return
-		im = os.path.join (self.parent.root, 'image')
-		if not os.path.exists (im):
-			return
-		for i in os.listdir (im):
-			if i.endswith (os.extsep + 'png'):
-				name = os.path.join (im, i)
-				self.images[i[:-4]] = (os.path.join (im, i), 0, os.stat (name).st_size)
+		for prefix, im in pathsearch (parent, 'image'):
+			for i in os.listdir (im):
+				ext = os.extsep + 'png'
+				if i.endswith (ext):
+					name = os.path.join (im, i)
+					self.images[prefix + i[:-len (ext)]] = (name, 0, os.stat (name).st_size)
 	def save (self):
 		im = os.path.join (self.parent.root, 'image')
-		if self.images != {}:
+		imgs = [x for x in self.images.keys () if not '.' in x]
+		if len (imgs) > 0:
 			os.mkdir (im)
-			for i in self.images:
+			for i in imgs:
 				convert_image (Image.open (filepart (*self.images[i]))).save (os.path.join (im, i + os.extsep + 'png'))
 	def build (self, root):
 		for i in self.images:
@@ -3009,29 +3018,32 @@ class Dink: #{{{
 			tilefiles, collections, sequences, codes, musics, sounds = pickle.load (open (os.path.join (cachedir, 'data'), 'rb'))
 			read_cache = True
 		self.config = read_config ()
+		assert 'dinkdir' in self.config and 'dmoddir' in self.config and 'editdir' in self.config and 'dinkprog' in self.config
 		if root is None:
 			self.root = None
 		else:
 			self.root = os.path.abspath (os.path.normpath (root))
 			filename = os.path.join (self.root, 'info' + os.extsep + 'txt')
-		self.image = Images (self)
 		if root is not None and os.path.exists (filename):
 			f = open (filename)
 			info = readlines (f)
 			self.info = f.read ()
-			info, self.image.preview = get (info, 'preview', '')
-			info, self.image.splash = get (info, 'splash', '')
+			info, preview = get (info, 'preview', '')
+			info, splash = get (info, 'splash', '')
 			self.layer_visible = [None] * 10
 			self.layer_background = [None] * 10
 			for i in range (10):
 				info, self.layer_visible[i] = get (info, 'visible-%d' % i, i != 9)
 				info, self.layer_background[i] = get (info, 'background-%d' % i, i in (0, 9))
+			info, d = get (info, 'depends', '')
+			self.depends = d.split ()
 			nice_assert (info == {}, 'unused data')
 		else:
-			self.image.preview = ''
-			self.image.splash = ''
+			preview = ''
+			splash = ''
 			self.layer_visible = [i != 9 for i in range (10)]
 			self.layer_background = [i in (0, 9) for i in range (10)]
+			self.depends = []
 			self.info = '''\
 %s
 
@@ -3039,6 +3051,9 @@ This file should describe the game. If this text is still here and you are not
 the author of the game, please inform the author that they should update this
 file (info.txt).
 ''' % ('dmodname' if root is None else os.path.basename (root))
+		self.image = Images (self)
+		self.image.preview = preview
+		self.image.splash = splash
 		self.tile = Tile (self)
 		self.seq = Seq (self)
 		self.sound = Sound (self)

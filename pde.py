@@ -1905,30 +1905,32 @@ class ViewWorld (View): # {{{
 		View.__init__ (self)
 		self.set_size_request (32 * 12, 24 * 8)
 		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
+		self.tsize = 1
+		self.off = (0, 0)
 	def update (self):
 		if not self.buffer:
 			return
 		s = (32, 24)
 		scrsize = (12, 8)
-		tsize = min ([self.screensize[x] / s[x] for x in range (2)])
-		off = [(self.screensize[x] - s[x] * tsize) / 2 for x in range (2)]
+		self.tsize = min ([self.screensize[x] / s[x] for x in range (2)])
+		self.off = [(self.screensize[x] - s[x] * self.tsize) / 2 for x in range (2)]
 		self.buffer.draw_rectangle (self.emptygc, True, 0, 0, self.screensize[0], self.screensize[1])
 		for y in range (s[1]):
-			self.buffer.draw_line (self.bordergc, off[0], off[1] + y * tsize, off[0] + s[0] * tsize - 1, off[1] + y * tsize)
+			self.buffer.draw_line (self.bordergc, self.off[0], self.off[1] + y * self.tsize, self.off[0] + s[0] * self.tsize - 1, self.off[1] + y * self.tsize)
 			for x in range (s[0]):
-				self.buffer.draw_line (self.bordergc, off[0] + x * tsize, off[1], off[0] + x * tsize, off[1] + s[1] * tsize - 1)
+				self.buffer.draw_line (self.bordergc, self.off[0] + x * self.tsize, self.off[1], self.off[0] + x * self.tsize, self.off[1] + s[1] * self.tsize - 1)
 				n = y * 32 + x + 1
 				if n in data.world.map:
 					if data.world.map[n].indoor:
-						self.buffer.draw_rectangle (self.noshowgc, True, off[0] + tsize * x + 1, off[1] + tsize * y + 1, tsize - 1, tsize - 1)
+						self.buffer.draw_rectangle (self.noshowgc, True, self.off[0] + self.tsize * x + 1, self.off[1] + self.tsize * y + 1, self.tsize - 1, self.tsize - 1)
 					else:
-						self.buffer.draw_rectangle (self.noselectgc, True, off[0] + tsize * x + 1, off[1] + tsize * y + 1, tsize - 1, tsize - 1)
+						self.buffer.draw_rectangle (self.noselectgc, True, self.off[0] + self.tsize * x + 1, self.off[1] + self.tsize * y + 1, self.tsize - 1, self.tsize - 1)
 				else:
-					self.buffer.draw_rectangle (self.invalidgc, True, off[0] + tsize * x + 1, off[1] + tsize * y + 1, tsize - 1, tsize - 1)
-		self.buffer.draw_line (self.bordergc, off[0], off[1] + s[1] * tsize, off[0] + s[0] * tsize - 1, off[1] + s[1] * tsize)
-		self.buffer.draw_line (self.bordergc, off[0] + s[0] * tsize, off[1], off[0] + s[0] * tsize, off[1] + s[1] * tsize - 1)
-		targetsize = [max (2, viewmap.screensize[x] * tsize / screenzoom / scrsize[x]) for x in range (2)]
-		current = [viewmap.offset[t] * tsize / scrsize[t] / screenzoom + off[t] for t in range (2)]
+					self.buffer.draw_rectangle (self.invalidgc, True, self.off[0] + self.tsize * x + 1, self.off[1] + self.tsize * y + 1, self.tsize - 1, self.tsize - 1)
+		self.buffer.draw_line (self.bordergc, self.off[0], self.off[1] + s[1] * self.tsize, self.off[0] + s[0] * self.tsize - 1, self.off[1] + s[1] * self.tsize)
+		self.buffer.draw_line (self.bordergc, self.off[0] + s[0] * self.tsize, self.off[1], self.off[0] + s[0] * self.tsize, self.off[1] + s[1] * self.tsize - 1)
+		targetsize = [max (2, viewmap.screensize[x] * self.tsize / screenzoom / scrsize[x]) for x in range (2)]
+		current = [viewmap.offset[t] * self.tsize / scrsize[t] / screenzoom + self.off[t] for t in range (2)]
 		self.buffer.draw_rectangle (self.selectgc, False, current[0], current[1], targetsize[0] - 1, targetsize[1] - 1)
 		self.buffer.draw_rectangle (self.pastegc, False, self.pointer_pos[0] - targetsize[0] / 2, self.pointer_pos[1] - targetsize[1] / 2, targetsize[0] - 1, targetsize[1] - 1)
 		if not the_gui.nobackingstore:
@@ -1941,9 +1943,7 @@ class ViewWorld (View): # {{{
 		self.selecting = True
 		s = (32, 24)
 		scrsize = (12, 8)
-		tsize = min ([self.screensize[x] / s[x] for x in range (2)])
-		off = [(self.screensize[x] - s[x] * tsize) / 2 for x in range (2)]
-		viewmap.offset = [(self.pointer_pos[x] - off[x]) * screenzoom * scrsize[x] / tsize - viewmap.screensize[x] / 2 for x in range (2)]
+		viewmap.offset = [(self.pointer_pos[x] - self.off[x]) * screenzoom * scrsize[x] / self.tsize - viewmap.screensize[x] / 2 for x in range (2)]
 		viewmap.clamp_offset ()
 		viewmap.update ()
 		self.update ()
@@ -1963,6 +1963,10 @@ class ViewWorld (View): # {{{
 		self.pointer_pos = int (ex), int (ey)
 		if self.selecting:
 			self.select ()
+		s = (32, 24)
+		scrsize = (12, 8)
+		pos = [(self.pointer_pos[x] - self.off[x]) / self.tsize for x in range (2)]
+		the_gui.statuslabel = '%03d/%03d,%03d' % (pos[0] + pos[1] * 32 + 1, pos[0], pos[1])
 		self.update ()
 # }}}
 
@@ -2801,6 +2805,7 @@ the_gui.setmap = True
 the_gui (1)
 viewmap.realize ()
 the_gui.setworld = True
+the_gui.statusbar = 'Welcome to PyDink Editor'
 the_gui ()
 
 clean_fs ()
