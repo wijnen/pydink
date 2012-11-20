@@ -161,6 +161,8 @@ def filepart (name, offset, length):
 
 brains = ['none', 'dink', 'headless', 'duck', 'pig', 'mark', 'repeat', 'play', 'text', 'monster', 'rook', 'missile', 'resize', 'pointer', 'button', 'shadow', 'person', 'flare']
 
+colornames = '\x001234567890!@#$%'
+
 def make_brain (name):
 	if name in brains:
 		return brains.index (name)
@@ -169,14 +171,12 @@ def make_brain (name):
 	except:
 		error ('unknown and non-numeric brain %s' % name)
 		ret = 0
-	if ret >= len (brains):
+	if ret < len (brains):
 		error ('accessing named brain %s by number (%d)' % (brains[ret], ret))
 	return ret
 
-predefined = [
-		"current_sprite",
-		"savegameinfo"
-	]
+predefined_statics = ['current_sprite']
+predefined = ['savegameinfo']
 default_globals = {
 		"exp": 0,
 		"strength": 3,
@@ -339,7 +339,7 @@ mangled_names = {}
 
 def mangle (name):
 	nice_assert (name != 'missle_source', 'misspelling of missile_source must not be used.')
-	if name in default_globals or name in predefined:
+	if name in default_globals or name in predefined or name in predefined_statics:
 		# Fix spelling mistake in original source (by inserting it in generated expressions).
 		if name == 'missile_source':
 			return '&missle_source'
@@ -352,7 +352,7 @@ def mangle (name):
 
 def newmangle (name):
 	global next_mangled
-	if name in default_globals or name in predefined:
+	if name in default_globals or name in predefined or name in predefined_statics:
 		return
 	if nice_assert (name not in mangled_names, 'duplicate mangling request for %s' % name):
 		mangled_names[name] = next_mangled
@@ -360,7 +360,7 @@ def newmangle (name):
 
 def clear_mangled (which):
 	for name in which:
-		if name in default_globals or name in predefined:
+		if name in default_globals or name in predefined or name in predefined_statics:
 			continue
 		if not nice_assert (name in mangled_names, "trying to clear mangled %s, which isn't in mangled_names" % name):
 			continue
@@ -983,7 +983,7 @@ def tokenize_expr (parent, script, used, current_vars):
 					# variable reference.
 					if t in current_vars[0]:
 						ret += (('local', t),)
-					elif t in current_vars[1]:
+					elif t in predefined_statics or t in current_vars[1]:
 						ret += (('static', t),)
 					elif t in default_globals or t in predefined or t in current_vars[2]:
 						ret += (('global', t),)
@@ -995,7 +995,7 @@ def tokenize_expr (parent, script, used, current_vars):
 				need_operator = True
 
 def check_exists (current_vars, name):
-	if name in predefined or name in default_globals:
+	if name in predefined or name in default_globals or name in predefined_statics:
 		return True
 	return any ([name in x for x in current_vars])
 

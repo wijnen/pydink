@@ -21,6 +21,8 @@
 # {{{ Imports
 import dink
 import gtk
+import glib
+import struct
 # }}}
 
 class GtkDink (dink.Dink): # {{{
@@ -125,9 +127,20 @@ class GtkDink (dink.Dink): # {{{
 			bx = [0, 0, w, h]
 		return (x, y), (l, t, r, b), bx
 	def load_pixbuf (self, file):
-		pbl = gtk.gdk.PixbufLoader ()
-		pbl.write (open (file[0], 'rb').read (file[1] + file[2])[file[1]:])
-		pbl.close ()
+		data = open (file[0], 'rb').read (file[1] + file[2])[file[1]:]
+		try:
+			pbl = gtk.gdk.PixbufLoader ()
+			pbl.write (data)
+			pbl.close ()
+		except glib.GError:
+			open ('/tmp/f.bmp', 'wb').write (data)
+			assert data[:2] == 'BM'
+			w, h = struct.unpack ('<II', data[0x12:0x1a])
+			bpp = struct.unpack ('<H', data[0x1c:0x1e])[0]
+			data = data[:0x22] + struct.pack ('<I', w * h * bpp / 8) + data[0x26:]
+			pbl = gtk.gdk.PixbufLoader ('bmp')
+			pbl.write (data)
+			pbl.close ()
 		pb = pbl.get_pixbuf ()
 		if self.scale != 50:
 			w = pb.get_width () * self.scale / 50
