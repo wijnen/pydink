@@ -10,11 +10,14 @@ The editor creates games for both the original as well as this new engine.
 
 *** Setting up the system ***
 First make sure you have Python, PyGtk, the Python Imaging Library and FreeDink
-installed. You can get them here:
+installed. If you want decompile to work, you also need numpy. You can get them
+here:
+
 http://python.org/download
 http://pygtk.org/downloads.html
 http://www.pythonware.com/products/pil/
 http://www.dinknetwork.com/file/gnu_freedink
+http://sourceforge.net/projects/numpy/files/NumPy/
 
 (They're all free software, which means that if you're not using Windows, you
 can most likely save yourself some trouble and install them with your package

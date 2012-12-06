@@ -228,9 +228,24 @@ Last but not least: Spaces, tabs and newlines are all considered whitespace and
 is mostly ignored, just like in C. This is true at top level and inside
 functions.
 
+*** Decompile ***
+This is a script which tries to decompile any dmod into a format which pydink
+can understand. It is particularly useful for examining the dmod in ways that
+dinkedit doesn't support (for example, jumping from warp target to the warping
+object location), and for using custom artwork from other dmods. It may also
+find some bugs in dink.ini. It does not attempt to convert the DinkC scripts,
+nor does it find bugs in them. This also means that a decompiled dmod cannot be
+recompiled and played.
+
+Using it is not Windows-friendly: you need to run it from the commandline and
+it requires exactly two arguments: the path to the dmod directory which should
+be decompiled, and the path to the new pydink dmod directory, which must not
+exist yet. If you are using Windows, you must run Python explicitly:
+C:\path\to\python path\to\decompile path\to\dmod path\to\new_dmod
+
 *** Bugs ***
 There are no known bugs. Which doesn't mean there aren't any bugs. Please
-report them if you find them.
+report them if you find any (see next section).
 
 *** Finally ***
 Feedback is very welcome. Contact me at wijnen@debian.org, or by posting on the
