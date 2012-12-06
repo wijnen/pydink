@@ -228,7 +228,7 @@ def readlines (f):
 
 def get (d, member, default = None):
 	if member not in d:
-		nice_assert (default is not None and default != int, 'member %s has no default, but is missing in file' % member)
+		nice_assert (default is not None and default not in (int, str), 'member %s has no default, but is missing in file' % member)
 		return d, default
 	if default is None:
 		ret = d[member]
@@ -240,6 +240,8 @@ def get (d, member, default = None):
 			ret = False
 	elif default == int:
 		ret = int (d[member])
+	elif default == str:
+		ret = str (d[member])
 	else:
 		ret = type (default)(d[member])
 	del d[member]
@@ -1546,7 +1548,7 @@ class Sprite: #{{{
 		if len (seq) == 1:
 			self.seq = seq[0]
 		elif len (seq) == 2:
-			self.seq = (seq[0], int (seq[1]))
+			self.seq = (seq[0], seq[1] if seq[1] == 'die' else int (seq[1]))
 		else:
 			print 'Warning: strange seq:', seq
 			self.seq = None
@@ -1996,7 +1998,7 @@ class Tile: #{{{
 						self.tile[n] = ((t, 0, os.stat (t).st_size), hardfile, 3)
 					else:
 						self.tile[n] = (tilefiles[n - 1], hardfile, 2)
-		ext = os.extsep + 'bmp'
+		ext = os.extsep + 'png'
 		for n in range (1, 42):
 			if n not in self.tile:
 				if self.parent.root is not None:
@@ -2030,7 +2032,7 @@ class Tile: #{{{
 				Image.open (filepart (*self.hard[h])).save (os.path.join (d, h + os.extsep + 'png'))
 		# Check if any tiles need to be written.
 		for i in self.tile:
-			if self.tile[i] != 0:
+			if self.tile[i][2] != 0:
 				break
 		else:
 			return
@@ -2089,28 +2091,28 @@ class Tile: #{{{
 		for i in self.tile:
 			nice_assert (1 <= int (i) <= 41, 'invalid tile number %s for building dmod' % i)
 		d = os.path.join (root, 'tiles')
-		if not os.path.exists (d):
-			os.mkdir (d)
 		h = open (os.path.join (root, 'hard.dat'), "wb")
 		# First hardness tile cannot be used (because 0 means "use default"), so skip it.
 		self.hmap = [None]
 		# Write it in the file as well.
 		h.write ('\0' * (51 * 50 + 58))
 		self.hardmap = {}
-		self.tilemap = [None] * 41
+		self.tilemap = [None] * 42
 		for t in self.hard:
 			# Write hardness for custom hard maps.
 			self.hardmap[t] = self.write_hard (Image.open (filepart (*self.hard[t])), h)
-		for n in range (1, 41):
+		for n in range (1, 42):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
 				# Write custom tile maps.
+				if not os.path.exists (d):
+					os.mkdir (d)
 				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, str (t) + os.extsep + 'bmp'))
 			# Write hardness for standard tiles.
 			self.tilemap[n] = self.write_hard (Image.open (filepart (*self.tile[n][1])), h)
 		nice_assert (len (self.hmap) <= 800, 'More than 800 hardness tiles defined (%d)' % len (self.hmap))
 		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
 		# Write hardness index for tile maps.
-		for t in range (1, 41):
+		for t in range (1, 42):
 			m = self.tilemap[t]
 			for y in range (8):
 				for x in range (12):
@@ -2241,7 +2243,8 @@ class Seq: #{{{
 		ret['attack'] = ''
 		ret['death'] = ''
 		return ret
-	def makeseq (self, base):
+	@classmethod
+	def makeseq (cls, base):
 		ret = Sequence ()
 		ret.name = base
 		ret.brain = 'none'
@@ -2296,7 +2299,7 @@ class Seq: #{{{
 			info, seq.script = get (info, 'script', seq.script)
 			info, seq.hard = get (info, 'hard', seq.hard)
 		info, seq.repeat = get (info, 'repeat', seq.repeat)
-		info, seq.special = get (info, 'special', seq.special)
+		info, seq.special = get (info, 'special', 0 if seq.special is None else seq.special)
 		info, seq.now = get (info, 'load-now', seq.now)
 		info, seq.preload = get (info, 'preload', seq.preload)
 		info, seq.type = get (info, 'type', seq.type)
@@ -2360,8 +2363,26 @@ class Seq: #{{{
 		# Fill in the gaps, if any, and compute actual bounding box.
 		seq.boundingbox = None
 		for f in range (1, frames):
-			w, h = seq.frames[f].size
-			del seq.frames[f].size
+			if hasattr (seq.frames[f], 'size'):
+				w, h = seq.frames[f].size
+				del seq.frames[f].size
+			elif hasattr (seq.frames[f], 'source'):
+				if seq.frames[f].source[0] == seq.name:
+					s = seq
+				else:
+					s = self.find_seq (seq.frames[f].source[0])
+				if s is None or len (s.frames) <= seq.frames[f].source[1]:
+					print ('Warning: seq %s frame %d links to nonexistent frame %s,%d' % (seq.name, f, seq.frames[f].source[0], seq.frames[f].source[1]))
+					w, h = 50, 50
+				else:
+					if hasattr (s.frames[seq.frames[f].source[1]], 'size'):
+						w, h = s.frames[seq.frames[f].source[1]].size
+					else:
+						bb = s.frames[seq.frames[f].source[1]].boundingbox
+						w, h = bb[2] - bb[0], bb[3] - bb[1]
+			else:
+				print ("Warning: no image for frame %d of seq %s" % (f, seq.name))
+				w, h = 50, 50
 			if seq.frames[f].position is None:
 				seq.frames[f].position = seq.position
 			x, y = seq.frames[f].position
@@ -2455,9 +2476,10 @@ class Seq: #{{{
 					return None
 				return self.collection[parts[0]][p]
 		else:
-			if name[0] not in self.collection or int (name[1]) not in self.collection[name[0]]:
+			n = name[1] if name[1] == 'die' else int (name[1])
+			if name[0] not in self.collection or n not in self.collection[name[0]]:
 				return None
-			return self.collection[name[0]][int (name[1])]
+			return self.collection[name[0]][n]
 	def find_collection (self, name):
 		if isinstance (name, int):
 			for c in self.collection:
@@ -2491,8 +2513,8 @@ class Seq: #{{{
 		put (f, 'preload', seq.preload, '')
 		put (f, 'type', seq.type, 'foreign')
 		put (f, 'delay', -1 if seq.delay is None else seq.delay, 75)
-		put (f, 'position', '%d %d' % tuple (seq.position), str)
-		put (f, 'hardbox', '%d %d %d %d' % tuple (seq.hardbox), str)
+		put (f, 'position', '%d %d' % (tuple (seq.position) if seq.position is not None else (0, 0)), str)
+		put (f, 'hardbox', '%d %d %d %d' % (tuple (seq.hardbox) if seq.hardbox is not None else (0, 0, 0, 0)), str)
 		put (f, 'frames', 0 if seq.frames[-1].source is None else len (seq.frames), 0)
 		for frame in range (1, len (seq.frames)):
 			if seq.frames[frame].source is None:
@@ -2604,14 +2626,14 @@ class Seq: #{{{
 	def rename (self, old, new):
 		for i in self.seq:
 			for f in range (1, len (self.seq[i].frames)):
-				if self.seq[i].frames[f].cache[0].startswith (old):
+				if self.seq[i].frames[f].cache is not None and self.seq[i].frames[f].cache[0].startswith (old):
 					self.seq[i].frames[f].cache = (new + self.seq[i].frames[f].cache[0][len (old):], self.seq[i].frames[f].cache[1], self.seq[i].frames[f].cache[2])
 		for i in self.collection:
 			for d in self.collection[i]:
 				if d not in (1,2,3,4,'die',6,7,8,9):
 					continue
 				for f in range (1, len (self.collection[i][d].frames)):
-					if self.collection[i][d].frames[f].cache[0].startswith (old):
+					if self.collection[i][d].frames[f].cache is not None and self.collection[i][d].frames[f].cache[0].startswith (old):
 						self.collection[i][d].frames[f].cache = (new + self.collection[i][d].frames[f].cache[0][len (old):], self.collection[i][d].frames[f].cache[1], self.collection[i][d].frames[f].cache[2])
 # }}}
 
@@ -2629,25 +2651,26 @@ class Sound: #{{{
 		ret = {}
 		codes = set ()
 		other = []
-		for prefix, d in pathsearch (self.parent, dirname):
-			for s in os.listdir (d):
-				for e in exts:
-					if s.endswith (os.extsep + e):
-						break
-				else:
-					continue
-				r = re.match ('(.*?)(-(\d+))?' + os.extsep + e + '$', s)
-				nice_assert (r, 'file %s has wrong name, must be from %s' % (s, str (exts)))
-				filename = os.path.join (d, s)
-				data = (filename, 0, os.stat (filename).st_size)
-				code = r.group (3)
-				if not code:
-					other += ((prefix + r.group (1), data, e),)
-				else:
-					code = int (code)
-					ret[prefix + r.group (1)] = (code, data, True, e)
-					nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
-					codes.add (code)
+		if dirname is not None:
+			for prefix, d in pathsearch (self.parent, dirname):
+				for s in os.listdir (d):
+					for e in exts:
+						if s.endswith (os.extsep + e):
+							break
+					else:
+						continue
+					r = re.match ('(.*?)(-(\d+))?' + os.extsep + e + '$', s)
+					nice_assert (r, 'file %s has wrong name, must be from %s' % (s, str (exts)))
+					filename = os.path.join (d, s)
+					data = (filename, 0, os.stat (filename).st_size)
+					code = r.group (3)
+					if not code:
+						other += ((prefix + r.group (1), data, e),)
+					else:
+						code = int (code)
+						ret[prefix + r.group (1)] = (code, data, True, e)
+						nice_assert (code not in codes, 'duplicate definition of sound %d' % code)
+						codes.add (code)
 		for i in initial:
 			if initial[i][0] not in codes:
 				ret[i] = (initial[i][0], initial[i][1], False, initial[i][2])
@@ -2675,7 +2698,7 @@ class Sound: #{{{
 			d = os.path.join (self.parent.root, "sound")
 			os.mkdir (d)
 			for i in self.sound:
-				if not self.sound[i][2]:
+				if not self.sound[i][2] or not self.sound[i][1]:
 					continue
 				data = filepart (*self.sound[i][1]).read ()
 				open (os.path.join (d, '%s-%d' % (i, self.sound[i][0]) + os.extsep + self.sound[i][3]), 'wb').write (data)
@@ -2683,30 +2706,32 @@ class Sound: #{{{
 			d = os.path.join (self.parent.root, "music")
 			os.mkdir (d)
 			for i in self.music:
-				if not self.music[i][2]:
+				if not self.music[i][2] or not self.music[i][1]:
 					continue
 				data = filepart (*self.music[i][1]).read ()
 				open (os.path.join (d, '%s-%d' % (i, self.music[i][0]) + os.extsep + self.music[i][3]), 'wb').write (data)
 	def rename (self, old, new):
 		for i in self.sound:
-			if self.sound[i][2] and self.sound[i][1][0].startswith (old):
+			if self.sound[i][1] and self.sound[i][2] and self.sound[i][1][0].startswith (old):
 				self.sound[i] = (self.sound[i][0], (new + self.sound[i][1][0][len (old):], self.sound[i][1][1], self.sound[i][1][2]), self.sound[i][2], self.sound[i][3])
 		for i in self.music:
-			if self.music[i][2] and self.music[i][1][0].startswith (old):
+			if self.music[i][1] and self.music[i][2] and self.music[i][1][0].startswith (old):
 				self.music[i] = (self.music[i][0], (new + self.music[i][1][0][len (old):], self.music[i][1][1], self.music[i][1][2]), self.music[i][2], self.music[i][3])
 	def build (self, root):
 		# Write sound/*
+		if len ([1 for x in self.sound if self.sound[x][2]]) == 0 and len ([x for x in self.music if self.music[x][2]]) == 0:
+			return
 		dst = os.path.join (root, 'sound')
 		if not os.path.exists (dst):
 			os.mkdir (dst)
 		src = os.path.join (self.parent.root, 'sound')
 		for s in self.sound:
-			if not self.sound[s][2]:
+			if not self.sound[s][1] or not self.sound[s][2]:
 				continue
 			data = filepart (*self.sound[s][1]).read ()
 			open (os.path.join (dst, s + os.extsep + self.sound[s][3]), 'wb').write (data)
 		for s in self.music:
-			if not self.music[s][2]:
+			if not self.music[s][1] or not self.music[s][2]:
 				continue
 			data = filepart (*self.music[s][1]).read ()
 			open (os.path.join (dst, str (self.music[s][0]) + os.extsep + self.music[s][3]), 'wb').write (data)
@@ -3001,7 +3026,10 @@ class Images: #{{{
 		if self.preview != '':
 			convert_image (Image.open (filepart (*self.images[self.preview]))).save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
 		if self.splash != '':
-			convert_image (Image.open (filepart (*self.images[self.splash]))).save (os.path.join (root, 'tiles', 'splash' + os.extsep + 'bmp'))
+			d = os.path.join (root, 'tiles')
+			if not os.path.exists (d):
+				os.mkdir (d)
+			convert_image (Image.open (filepart (*self.images[self.splash]))).save (os.path.join (d, 'splash' + os.extsep + 'bmp'))
 	def get_file (self, name):
 		return self.images[name] + (None,)
 	def rename (self, old, new):

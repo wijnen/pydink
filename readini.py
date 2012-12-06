@@ -20,7 +20,7 @@
 # {{{ Documentation.
 # This code is called by makecache to parse all stuff from the original game,
 # and by decompile to parse a dmod.
-# It reads hardness, collections and seqs links from dink.ini, tile screens,
+# It reads hardness, collections and seqs links from dink.ini, tile maps,
 # sounds, music.
 # }}}
 
@@ -329,19 +329,28 @@ def makedinkpath (f): # {{{
 	'''Get real path from dinkdir.'''
 	f = f.split ('\\')
 	if dmodtree != None:
-		paths = ((dmoddir, dmodtree), (dinkdir, dinktree))
+		paths = ((dmoddir, dmodtree, True), (dinkdir, dinktree, False))
 	else:
-		paths = ((dinkdir, dinktree),)
-	for p, walk in paths:
+		paths = ((dinkdir, dinktree, False),)
+	for p, walk, from_dmod in paths:
 		for i in f[:-1]:
+			if i not in walk:
+				break
 			branch = walk[i]
 			p = os.path.join (p, branch[0])
 			if not os.path.exists (p):
 				break
 			walk = branch[1]
 		else:
-			return p, walk, f
+			return p, walk, f, from_dmod
 	raise AssertionError ('path %s not found in dmod or dinkdir' % '\\'.join (f))
+# }}}
+
+def parse_lsb (s): # {{{
+	ret = 0
+	for i in range (4):
+		ret += ord (s[i]) << (i << 3)
+	return ret
 # }}}
 
 def read_lsb (f): # {{{
@@ -355,16 +364,16 @@ def loaddinkfile (f): # {{{
 	'''Load a file from dinkdir.'''
 	if not is_setup:
 		setup (dink.read_config ()['dinkdir'])
-	p, walk, f = makedinkpath (f)
+	p, walk, f, from_dmod = makedinkpath (f)
 	if f[-1] in walk:
 		path = os.path.join (p, walk[f[-1]][0])
 		ret = open (os.path.join (p, walk[f[-1]][0]), 'rb')
 		ret.seek (0, 2)
 		l = ret.tell ()
 		ret.seek (0)
-		return ret, (path, 0, l)
+		return ret, (path, 0, l), from_dmod
 	if 'dir.ff' not in walk:
-		return None, None
+		return None, None, False
 	path = os.path.join (p, walk['dir.ff'][0])
 	dirfile = open (path, 'rb')
 	n = read_lsb (dirfile) - 1
@@ -375,16 +384,16 @@ def loaddinkfile (f): # {{{
 			break
 		offset = None
 	if offset == None:
-		return None, None
+		return None, None, False
 	end = read_lsb (dirfile)
 	dirfile.seek (offset)
 	data = dirfile.read (end - offset)
-	return StringIO.StringIO (data), (path, offset, end - offset)
+	return StringIO.StringIO (data), (path, offset, end - offset), from_dmod
 # }}}
 
 def read_hard (): # {{{
 	'''read hardness into usable format.'''
-	f, junk = loaddinkfile ('hard.dat')
+	f, junk, junk = loaddinkfile ('hard.dat')
 	data = [None] * 800
 	for t in range (800):
 		dat = f.read (2608)
@@ -404,10 +413,20 @@ def read_hard (): # {{{
 					global err
 					err += 'Warning: invalid hardness in default hard.dat: %d:%d,%d = %d\n' % (t, x, y, p)
 					pixels[x, y] = (0, 0, 0, 0)
-	defaults = [[read_lsb (f) for x in range (8 * 12 + 32)] for s in range (41)]
+	dat = f.read ((8 * 12 + 32) * 41 * 4)
+	defaults = [None] * 41
+	for s in range (41):
+		ps = (8 * 12 + 32) * s
+		defaults[s] = [0] * (8 * 12 + 32)
+		for x in range (8 * 12 + 32):
+			px = (ps + x) * 4
+			if len (dat) < px + 4:
+				break
+			defaults[s][x] = parse_lsb (dat[px:px + 4])
 	tilefiles = [None] * 41
 	for n in range (41):
-		junk, tilefiles[n] = loaddinkfile ('tiles\\ts%02d.bmp' % (n + 1))
+		junk, tilefiles[n], from_dmod = loaddinkfile ('tiles\\ts%02d.bmp' % (n + 1))
+		tilefiles[n] = (tilefiles[n], from_dmod)
 	return data, defaults, tilefiles
 # }}}
 
@@ -422,32 +441,42 @@ def set_custom (cols, seqs): # {{{
 def read_ini (): # {{{
 	'''read dink.ini; make a list of sequences and sequence collections using the name list at the start.
 	Result is a list of collections and a list of sequences.
-	A collection has 10 members, which can be None or a sequence. (0 is always None.)
+	A collection has members 1-9\\5 and 'die', which can be None or a sequence.
+	Graphics from the dmod ignore the namelist and are never collections.
 	Sequence and Frame members are described below.'''
 	global err
-	dinkini, junk = loaddinkfile ('dink.ini')
+	dinkini, junk, junk = loaddinkfile ('dink.ini')
 
 	def fill_frame (s, f, im): # {{{
-		if 'position' not in dir (sequence_codes[s].frames[f]):
+		if not hasattr (sequence_codes[s].frames[f], 'position'):
 			if sequence_codes[s].position != None:
 				sequence_codes[s].frames[f].position = sequence_codes[s].position
 			elif im != None:
 				# Why is this how the default position is computed? Beats me, blame Seth...
 				sequence_codes[s].frames[f].position = (im.size[0] - im.size[0] / 2 + im.size[0] / 6, im.size[1] - im.size[1] / 4 - im.size[1] / 30)
-			else:
+			elif hasattr (sequence_codes[s].frames[f], 'source'):
 				src = sequence_codes[s].frames[f].source
 				sequence_codes[s].frames[f].position = sequence_codes[src[0]].frames[src[1]].position
-		if 'hardbox' not in dir (sequence_codes[s].frames[f]):
+			else:
+				if hasattr (sequence_codes[s], 'filepath'):
+					# If it doesn't a warning has already been printed.
+					print ('Warning: seq %d %d has no image and no source' % (s, f))
+				sequence_codes[s].frames[f].position = (0, 0)
+		if not hasattr (sequence_codes[s].frames[f], 'hardbox'):
 			if sequence_codes[s].hardbox != None:
 				sequence_codes[s].frames[f].hardbox = sequence_codes[s].hardbox
 			elif im != None:
 				# Why is this how the default hardbox is computed? Beats me, blame Seth...
-				sequence_codes[s].frames[f].hardbox = (-im.size[0] / 4, -im.size[1] / 10, im.size[0] / 4, im.size[1] / 10, False)
-			else:
+				sequence_codes[s].frames[f].hardbox = [-im.size[0] / 4, -im.size[1] / 10, im.size[0] / 4, im.size[1] / 10]
+			elif hasattr (sequence_codes[s].frames[f], 'source'):
+				src = sequence_codes[s].frames[f].source
 				sequence_codes[s].frames[f].hardbox = sequence_codes[src[0]].frames[src[1]].hardbox
-		if 'delay' not in dir (sequence_codes[s].frames[f]):
+			else:
+				# Warning is already printed for 'position'.
+				sequence_codes[s].frames[f].hardbox = [0, 0, 0, 0]
+		if not hasattr (sequence_codes[s].frames[f], 'delay'):
 			sequence_codes[s].frames[f].delay = sequence_codes[s].delay
-		if 'source' not in dir (sequence_codes[s].frames[f]):
+		if not hasattr (sequence_codes[s].frames[f], 'source'):
 			sequence_codes[s].frames[f].source = None
 	# }}}
 
@@ -468,8 +497,8 @@ def read_ini (): # {{{
 				l += ('6',)
 			s = int (l[2])
 			if s in sequence_codes:
-				if 'filepath' in dir (sequence_codes[s]):
-					assert 'preload' not in dir (sequence_codes[s])
+				if hasattr (sequence_codes[s], 'filepath'):
+					assert not hasattr (sequence_codes[s], 'preload')
 					preload = sequence_codes[s].filepath
 					sequence_codes[s] = dink.Sequence ()
 					sequence_codes[s].frames = []
@@ -559,7 +588,7 @@ def read_ini (): # {{{
 			use (sequence_codes[s], f)
 			sequence_codes[s].special = f
 		else:
-			raise AssertionError ('Error: invalid line in dink.ini: %s' % l)
+			print ('Warning: ignoring invalid line in dink.ini: %s' % l)
 
 	# A sequence has members:
 	#	frames, list with members:
@@ -585,33 +614,45 @@ def read_ini (): # {{{
 	# Fill all open members of all sequences.
 	for s in sequence_codes:
 		sequence_codes[s].code = s
-		assert 'filepath' in dir (sequence_codes[s])
-		if 'type' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'filepath'):
+			print ('Warning: no filepath for sequence %d' % s)
+		if not hasattr (sequence_codes[s], 'type'):
 			sequence_codes[s].type = 'normal'
-		if 'preload' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'preload'):
 			sequence_codes[s].preload = ''
-		if 'now' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'now'):
 			sequence_codes[s].now = False
-		if 'special' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'special'):
 			sequence_codes[s].special = None
-		if 'repeat' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'repeat'):
 			sequence_codes[s].repeat = False
-		if 'position' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'position'):
 			sequence_codes[s].position = None
-		if 'hardbox' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'hardbox'):
 			sequence_codes[s].hardbox = None
-		if 'delay' not in dir (sequence_codes[s]):
+		if not hasattr (sequence_codes[s], 'delay'):
 			sequence_codes[s].delay = 1
+		if not hasattr (sequence_codes[s], 'brain'):
+			sequence_codes[s].brain = 'none'
+		if not hasattr (sequence_codes[s], 'script'):
+			sequence_codes[s].script = ''
+		if not hasattr (sequence_codes[s], 'hard'):
+			sequence_codes[s].hard = True
 		# Read frame information from images.
 		f = 1
 		boundingbox = [None] * 4
+		sequence_codes[s].from_dmod = False
 		while True:
-			fr, c = loaddinkfile ('%s%02d.bmp' % (sequence_codes[s].filepath, f))
+			if not hasattr (sequence_codes[s], 'filepath'):
+				break
+			fr, c, from_dmod = loaddinkfile ('%s%02d.bmp' % (sequence_codes[s].filepath, f))
 			if fr == None:
 				break
 			use (sequence_codes[s], f)
 			im = Image.open (fr)
 			fill_frame (s, f, im)
+			if from_dmod:
+				sequence_codes[s].from_dmod = True
 			sequence_codes[s].frames[f].cache = c
 			sequence_codes[s].frames[f].boundingbox = (-sequence_codes[s].frames[f].position[0], -sequence_codes[s].frames[f].position[1], im.size[0] - sequence_codes[s].frames[f].position[0], im.size[1] - sequence_codes[s].frames[f].position[1])
 			if boundingbox[0] == None or sequence_codes[s].frames[f].boundingbox[0] < boundingbox[0]:
@@ -627,10 +668,16 @@ def read_ini (): # {{{
 		for f in range (1, len (sequence_codes[s].frames)):
 			fill_frame (s, f, None)
 		for f in range (1, len (sequence_codes[s].frames)):
-			if 'cache' not in dir (sequence_codes[s].frames[f]):
-				sequence_codes[s].frames[f].cache = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].cache
-			if 'boundingbox' not in dir (sequence_codes[s].frames[f]):
-				sequence_codes[s].frames[f].boundingbox = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].boundingbox
+			if not hasattr (sequence_codes[s].frames[f], 'cache'):
+				if sequence_codes[s].frames[f].source is not None:
+					sequence_codes[s].frames[f].cache = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].cache
+				else:
+					sequence_codes[s].frames[f].cache = None
+			if not hasattr (sequence_codes[s].frames[f], 'boundingbox'):
+				if sequence_codes[s].frames[f].source is not None:
+					sequence_codes[s].frames[f].boundingbox = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].boundingbox
+				else:
+					sequence_codes[s].frames[f].boundingbox = (0, 0, 0, 0)
 
 	codes = set ()
 
@@ -649,7 +696,9 @@ def read_ini (): # {{{
 			collections[c[0]][name] = sequence_codes[c[1] + d]
 			collections[c[0]][name].name = (c[0], name)
 			del sequence_codes[c[1] + d]
-		assert collections[c[0]] != {}
+		if collections[c[0]] == {}:
+			del collections[c[0]]
+			continue
 		collections[c[0]]['name'] = c[0]
 		collections[c[0]]['code'] = c[1]
 		collections[c[0]]['brain'] = c[2]
@@ -660,15 +709,54 @@ def read_ini (): # {{{
 	# Create the sequences.
 	sequences = {}
 	for s in sequence_names:
+		if s[1] not in sequence_codes:
+			codes.add (s[1])
+			name = 'seq%03d' % s[1]
+			sequences[name] = dink.Seq.makeseq (name)
+			sequences[name].code = s[1]
+			sequences[name].from_dmod = False
+			continue
 		codes.add (s[1])
 		sequences[s[0]] = sequence_codes[s[1]]
 		sequences[s[0]].name = s[0]
 		sequences[s[0]].brain = s[2]
 		sequences[s[0]].script = '' if s[3] == 'none' else s[3]
 		sequences[s[0]].hard = s[4]
+		sequences[s[0]].from_dmod = sequence_codes[s[1]].from_dmod
 		del sequence_codes[s[1]]
 
-	assert sequence_codes == {}
+	for s in sequence_codes:
+		codes.add (s)
+		name = 'seq%03d' % s
+		sequences[name] = sequence_codes[s]
+		sequences[name].name = name
+		sequences[name].code = s
+		sequences[name].from_dmod = sequence_codes[s].from_dmod
+
+	def seq_name (code):
+		for s in sequences:
+			if sequences[s].code == code:
+				return sequences[s].name
+		for c in collections:
+			for s in collections[c]:
+				if s not in (1, 2, 3, 4, 'die', 6, 7, 8, 9):
+					continue
+				n = 5 if s == 'die' else s
+				if collections[c]['code'] + n == code:
+					return collections[c][s].name
+		print ('Warning: sequence name not found for code %d' % code)
+	# Fix source references.
+	for s in sequences:
+		for f in sequences[s].frames[1:]:
+			if f.source is not None:
+				f.source = (seq_name (f.source[0]), f.source[1])
+	for c in collections:
+		for s in collections[c]:
+			if s not in (1, 2, 3, 4, 'die', 6, 7, 8, 9):
+				continue
+			for f in collections[c][s].frames[1:]:
+				if f.source is not None:
+					f.source = (seq_name (f.source[0]), f.source[1])
 
 	return collections, sequences, codes
 # }}}
@@ -684,30 +772,30 @@ def read_sound (): # {{{
 			ext = ext[len (os.extsep):]
 		if ext.lower () not in ('ogg', 'mid'):
 			continue
-		f, c = loaddinkfile ('sound\\' + root + '.' + ext)
+		f, c, from_dmod = loaddinkfile ('sound\\' + root + '.' + ext)
 		r = re.match (r'\d+$', root)
 		if r:
 			r = int (r.group (0))
-			musics[root] = (r, c, ext)
+			musics[root] = (r, c, ext, from_dmod)
 			musiccodes.add (r)
 		else:
-			other.append ((root, c, ext))
+			other.append ((root, c, ext, from_dmod))
 	nextcode = 1
 	for i in other:
 		while nextcode in musiccodes:
 			nextcode += 1
-		musics[i[0]] = (nextcode, i[1], i[2])
+		musics[i[0]] = (nextcode, i[1], i[2], i[3])
 		musiccodes.add (nextcode)
 	nextcode += 1
 
 	sounds = {}
 	for i in range (len (soundnames)):
 		if soundnames[i] != '-':
-			f, c = loaddinkfile ('sound\\' + soundnames[i] + '.wav')
+			f, c, from_dmod = loaddinkfile ('sound\\' + soundnames[i] + '.wav')
 			if c == None:
 				global err
 				err += "(ignore) warning: sound file %s doesn't exist.\n" % soundnames[i]
-			sounds[soundnames[i]] = (i + 1, c, 'wav')
+			sounds[soundnames[i]] = (i + 1, c, 'wav', from_dmod)
 
 	return musics, sounds
 # }}}
@@ -733,29 +821,30 @@ def read_map (data, hard, defaulthard): # {{{
 		return ''
 	# }}}
 	def get_music (code, data): # {{{
+		if code == 0:
+			return ''
 		for s in data.sound.music:
 			if data.sound.music[s][0] == code:
 				return s
+		print ('Warning: music not found: %d' % code)
 		return ''
 	# }}}
-	def read_sprite (f, data, room): # {{{
+	def read_sprite (f, data, map): # {{{
 		"""Read a sprite from map.dat"""
-		ret = data.Sprite (data)
-		ret.room = room
-		ret.x = read_lsb (f) + ((room - 1) % 32) * 50 * 12
-		ret.y = read_lsb (f) + ((room - 1) / 32) * 50 * 8
-		ret.seq = get_seq (read_lsb (f), data).name
+		ret = dink.Sprite (data)
+		ret.map = map
+		ret.x = read_lsb (f) + ((map - 1) % 32) * 50 * 12
+		ret.y = read_lsb (f) + ((map - 1) / 32) * 50 * 8
+		s = get_seq (read_lsb (f), data)
+		ret.seq = s.name if s is not None else ''
 		ret.frame = read_lsb (f)
 		t = read_lsb (f)
 		if t == 0:
-			ret.bg = True
-			ret.visible = True
+			ret.layer = 0
 		elif t == 1:
-			ret.bg = False
-			ret.visible = True
+			ret.layer = 1
 		elif t == 2:
-			ret.bg = False
-			ret.visible = False
+			ret.layer = 9
 		else:
 			global err
 			err += 'invalid sprite type %d' % t
@@ -769,9 +858,12 @@ def read_map (data, hard, defaulthard): # {{{
 		ret.script = clean (f.read (14))
 		f.seek (38, 1)
 		ret.speed = read_lsb (f)
-		ret.base_walk = get_collection (read_lsb (f), target)['name']
-		ret.base_idle = get_collection (read_lsb (f), target)['name']
-		ret.base_attack = get_collection (read_lsb (f), target)['name']
+		c = get_collection (read_lsb (f), data)
+		ret.base_walk = c['name'] if c is not None else ''
+		c = get_collection (read_lsb (f), data)
+		ret.base_idle = c['name'] if c is not None else ''
+		c = get_collection (read_lsb (f), data)
+		ret.base_attack = c['name'] if c is not None else ''
 		read_lsb (f)
 		timer = read_lsb (f)
 		ret.que = read_lsb (f)
@@ -788,14 +880,16 @@ def read_map (data, hard, defaulthard): # {{{
 			ret.warp = [warp_map, warp_x, warp_y]
 		else:
 			ret.warp = None
-		ret.touch_seq = get_seq (read_lsb (f), target).name
-		ret.base_die = get_collection (read_lsb (f), target)['name']
+		s = get_seq (read_lsb (f), data)
+		ret.touch_seq = s.name if s is not None else ''
+		c = get_collection (read_lsb (f), data)
+		ret.base_death = c['name'] if c is not None else ''
 		ret.gold = read_lsb (f)
 		ret.hitpoints = read_lsb (f)
 		ret.strength = read_lsb (f)
 		ret.defense = read_lsb (f)
 		ret.exp = read_lsb (f)
-		ret.sound = get_sound (read_lsb (f), target)
+		ret.sound = get_sound (read_lsb (f), data)
 		ret.vision = read_lsb (f)
 		ret.nohit = read_lsb (f) != 0
 		ret.touch_damage = read_lsb (f)
@@ -811,7 +905,7 @@ def read_map (data, hard, defaulthard): # {{{
 		"""Read a tile from map.dat"""
 		ret = [0, 0, 0]
 		n = read_lsb (f)
-		ret[0] = n / 128
+		ret[0] = n / 128 + 1
 		n %= 128
 		ret[1] = n % 12
 		ret[2] = n / 12
@@ -820,46 +914,46 @@ def read_map (data, hard, defaulthard): # {{{
 		f.seek (68, 1)
 		return ret, althard
 	# }}}
-	def read_screen (f, data, roomnum, hard, defaulthard): # {{{
-		"""Read a screen, including tiles and sprites, from map.dat"""
-		room = dink.Room (data)
+	def read_map (f, data, mapnum, hard, defaulthard): # {{{
+		"""Read a map screen, including tiles and sprites, from map.dat"""
+		map = dink.Map (data)
 		f.seek (20, 1)
 		hard = [None] * 8 * 12
 		for y in range (8):
 			for x in range (12):
-				room.tiles[y][x], hard[y * 12 + x] = read_tile (f)
+				map.tiles[y][x], hard[y * 12 + x] = read_tile (f)
 		# TODO: build hard image and keep it if it's not default.
 		# end marker: ignore.
 		read_tile (f)
 		# junk to ignore.
 		f.seek (160 + 80, 1)
 		for s in range (100):
-			spr = read_sprite (f, data, roomnum)
+			spr = read_sprite (f, data, mapnum)
 			if spr:
 				if type (spr.seq) == str:
 					name = spr.seq
 				else:
-					name = '%s-%d' % spr.seq
+					name = '%s-%s' % (spr.seq[0], str (spr.seq[1]))
 		# end marker: ignore.
-		read_sprite (f, target, None)
-		room.script = clean (f.read (21))
+		read_sprite (f, data, 1)
+		map.script = clean (f.read (21))
 		f.seek (1019, 1)
-		return room
+		return map
 	# }}}
-	screens = [[0, 0, 0] for i in range (768)]
+	maps = [[0, 0, 0] for i in range (769)]
 	f = loaddinkfile ('dink.dat')[0]
 	f.seek (20)
 	for a in range (3):
-		for s in range (768):
-			screens[s][a] = read_lsb (f)
+		for s in range (769):
+			maps[s][a] = read_lsb (f)
 	f.close ()
 	f = loaddinkfile ('map.dat')[0]
-	for s in range (len (screens)):
-		if screens[s][0] == 0:
+	for s in range (len (maps)):
+		if maps[s][0] == 0:
 			continue
-		f.seek (31280 * (screens[s][0] - 1))
-		room = read_screen (f, data, s, hard, defaulthard)
-		room.music = get_music (screens[s][1], data)
-		room.indoor = screens[s][2] != 0
-		data.world.room[s] = room
+		f.seek (31280 * (maps[s][0] - 1))
+		map = read_map (f, data, s, hard, defaulthard)
+		map.music = get_music (maps[s][1], data)
+		map.indoor = maps[s][2] != 0
+		data.world.map[s] = map
 # }}}

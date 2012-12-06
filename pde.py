@@ -267,18 +267,9 @@ class View (gtk.DrawingArea): # {{{
 		offset = [x % screenzoom for x in self.offset]
 		maps = set ()
 		# Fill maps with all maps from which sprites should be drawn.
-		for y in range (origin[1] / 8, origin[1] / 8 + self.screensize[1] / screenzoom / 8 + 1):
-			for x in range (origin[0] / 12, origin[0] / 12 + self.screensize[0] / screenzoom / 12 + 1):
+		for y in range (origin[1] / 8, (origin[1] + self.screensize[1] / screenzoom) / 8 + 1):
+			for x in range (origin[0] / 12, (origin[0] + self.screensize[0] / screenzoom) / 12 + 1):
 				maps.add (y * 32 + x + 1)
-				# and maps around it, for sprites which stick out.
-				maps.add (y * 32 + x + 1 + 1)
-				maps.add (y * 32 + x + 1 - 1)
-				maps.add (y * 32 + x + 1 + 32)
-				maps.add (y * 32 + x + 1 - 32)
-				maps.add (y * 32 + x + 1 + 1 + 32)
-				maps.add (y * 32 + x + 1 + 1 - 32)
-				maps.add (y * 32 + x + 1 - 1 + 32)
-				maps.add (y * 32 + x + 1 - 1 - 32)
 		# Draw tiles.
 		for y in range (origin[1], origin[1] + self.screensize[1] / screenzoom + 2):
 			for x in range (origin[0], origin[0] + self.screensize[0] / screenzoom + 2):
@@ -549,7 +540,7 @@ class ViewMap (View): # {{{
 			box = [x * screenzoom / 50 for x in box]
 			w = (right - left) * screenzoom / 50
 			h = (bottom - top) * screenzoom / 50
-			if w > 0 and h > 0:
+			if w > 0 and h > 0 and left * screenzoom / 50 > -w and top * screenzoom / 50 > -h and left * screenzoom / 50 < self.screensize[0] and top * screenzoom / 50 < self.screensize[1]:
 				# Draw the pixbuf.
 				pb = data.get_seq (s[2], s[1].frame)
 				if not pb:
@@ -583,7 +574,8 @@ class ViewMap (View): # {{{
 			else:
 				gc = self.bggc if vis < 2 else self.hardgc
 			(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
-			self.buffer.draw_rectangle (gc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
+			if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
+				self.buffer.draw_rectangle (gc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
 		# Wireframe information.
 		def draw_target (n, x, y, active, gc):
 			x += ((n - 1) % 32) * 12 * 50 - 20
@@ -594,10 +586,11 @@ class ViewMap (View): # {{{
 			y -= self.offset[1]
 			s = 20 * screenzoom / 50
 			a = 15 * screenzoom / 50
-			if active:
-				self.buffer.draw_line (gc, x - s, y, x + s, y)
-				self.buffer.draw_line (gc, x, y - s, x, y + s)
-			self.buffer.draw_arc (gc, False, x - a, y - a, a * 2, a * 2, 0, 64 * 360)
+			if x >= -s and y >= -s and x - s < self.screensize[0] and y - s < self.screensize[1]:
+				if active:
+					self.buffer.draw_line (gc, x - s, y, x + s, y)
+					self.buffer.draw_line (gc, x, y - s, x, y + s)
+				self.buffer.draw_arc (gc, False, x - a, y - a, a * 2, a * 2, 0, 64 * 360)
 		for spr in lst:
 			if spr[3]:
 				continue
@@ -606,9 +599,10 @@ class ViewMap (View): # {{{
 				# This is a sprite, not a warp target.
 				if spr[1].layer == the_gui.active_layer:
 					(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
 					# Hotspot.
-					self.buffer.draw_line (self.bggc if vis < 2 else self.noselectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
-					self.buffer.draw_line (self.bggc if vis < 2 else self.noselectgc, x * screenzoom / 50, (y - 10) * screenzoom / 50, x * screenzoom / 50, (y + 10) * screenzoom / 50)
+						self.buffer.draw_line (self.bggc if vis < 2 else self.noselectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
+						self.buffer.draw_line (self.bggc if vis < 2 else self.noselectgc, x * screenzoom / 50, (y - 10) * screenzoom / 50, x * screenzoom / 50, (y + 10) * screenzoom / 50)
 			else:
 				# This is a warp target.
 				n, x, y = spr[1].warp
@@ -620,11 +614,12 @@ class ViewMap (View): # {{{
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
 				(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
-				# Que.
-				self.buffer.draw_line (self.noshowgc, (x - 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50, (x + 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50)
-				# Hotspot
-				self.buffer.draw_line (self.selectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
-				self.buffer.draw_line (self.selectgc, x * screenzoom / 50, (y - 10) * screenzoom / 50, x * screenzoom / 50, (y + 10) * screenzoom / 50)
+				if w > 0 and h > 0 and left * screenzoom / 50 >= -w and top * screenzoom / 50 >= -h and left * screenzoom / 50 < self.screensize[0] and top * screenzoom / 50 < self.screensize[1]:
+					# Que.
+					self.buffer.draw_line (self.noshowgc, (x - 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50, (x + 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50)
+					# Hotspot
+					self.buffer.draw_line (self.selectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
+					self.buffer.draw_line (self.selectgc, x * screenzoom / 50, (y - 10) * screenzoom / 50, x * screenzoom / 50, (y + 10) * screenzoom / 50)
 			else:
 				# This is a warp target.
 				n, x, y = spr[1].warp
@@ -2639,7 +2634,7 @@ viewcollection = ViewCollection ()
 viewtiles = ViewTiles ()
 viewworld = ViewWorld ()
 
-the_gui = gui.Gui (gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld })
+the_gui = gui.Gui ('pydink', gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld })
 
 def show_open ():
 	the_gui.show_open = True
