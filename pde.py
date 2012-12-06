@@ -2125,7 +2125,7 @@ def update_editgui ():
 	if type (sprite.seq) == str:
 		the_gui.seq_text = sprite.seq
 	else:
-		the_gui.seq_text = '%s %d' % sprite.seq
+		the_gui.seq_text = '%s %s' % (sprite.seq[0], str (sprite.seq[1]))
 	the_gui.frame = sprite.frame
 	the_gui.size = sprite.size
 	the_gui.brain = sprite.brain

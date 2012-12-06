@@ -2440,7 +2440,7 @@ class Seq: #{{{
 					return None
 				return parts[0]
 		else:
-			if name[0] not in self.collection or int (name[1]) not in self.collection[name[0]]:
+			if name[0] not in self.collection or (name[1] if name[1] == 'die' else int (name[1])) not in self.collection[name[0]]:
 				return None
 			return name[0]
 	def find_seq (self, name):

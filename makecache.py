@@ -99,6 +99,7 @@ dinkprog	%s
 	err = ''
 	try:
 		harddata, harddefaults, tilefiles = readini.read_hard ()
+		tilefiles = [t[0] for t in tilefiles]
 		collections, sequences, codes = readini.read_ini ()
 		musics, sounds = readini.read_sound ()
 	except:
@@ -122,7 +123,7 @@ dinkprog	%s
 
 	# {{{ Create cache of hardness tiles.
 	for n in range (41):
-		tilef = Image.open (tilefiles[n][0][0]).convert ('RGBA')
+		tilef = Image.open (tilefiles[n][0]).convert ('RGBA')
 		image = Image.new ('RGBA', (tilef.size[0] / 50 * 50, tilef.size[1] / 50 * 50))
 		image.paste ((0, 0, 0, 0))
 		for y in range (8):
