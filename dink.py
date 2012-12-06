@@ -1213,8 +1213,6 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 	return script, ret
 
 def preprocess (script, dink, fname):
-	if script.split ('\n', 1)[0].strip () == '#no preprocessing':
-		return data.split ('\n', 1)[1]
 	global numlabels
 	numlabels = 0
 	fs = tokenize (script, dink, fname, used = None)
