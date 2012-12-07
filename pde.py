@@ -268,7 +268,11 @@ class View (gtk.DrawingArea): # {{{
 		maps = set ()
 		# Fill maps with all maps from which sprites should be drawn.
 		for y in range (origin[1] / 8, (origin[1] + self.screensize[1] / screenzoom) / 8 + 1):
+			if y >= 24:
+				break
 			for x in range (origin[0] / 12, (origin[0] + self.screensize[0] / screenzoom) / 12 + 1):
+				if x >= 32:
+					break
 				maps.add (y * 32 + x + 1)
 		# Draw tiles.
 		for y in range (origin[1], origin[1] + self.screensize[1] / screenzoom + 2):
@@ -1489,10 +1493,8 @@ class ViewMap (View): # {{{
 			s.unregister ()
 			if self.moveinfo[1][0] == 2:
 				s.bottom += diff[1]
-				if s.bottom < 0:
-					s.bottom = 0
-				elif s.bottom >= s.top:
-					s.bottom = s.top - 1
+				if s.bottom <= s.top:
+					s.bottom = s.top + 1
 			elif self.moveinfo[1][0] == 4:
 				s.left += diff[0]
 				if s.left < 0:
@@ -1505,8 +1507,10 @@ class ViewMap (View): # {{{
 					s.right = s.left + 1
 			elif self.moveinfo[1][0] == 8:
 				s.top += diff[1]
-				if s.top <= s.bottom:
-					s.top = s.bottom + 1
+				if s.top < 0:
+					s.top = 0
+				elif s.top >= s.bottom:
+					s.top = s.bottom - 1
 			s.register ()
 	def move (self, widget, e):
 		global screenzoom
