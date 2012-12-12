@@ -8,6 +8,18 @@ original game.
 
 The editor creates games for both the original as well as this new engine.
 
+*** IMPORTANT NOTE ***
+For those who are used to writing DinkC scripts: I know you are used to writing
+workarounds for all sorts of bugs. Please do not do this with PyDink.
+
+If something doesn't work as it should, or some functionality is not available,
+but would be very useful, instead of hacking around it, please file a bug
+report or feature request.
+
+If you encounter a bug and decide you can use it as a feature, expect your DMod
+to break on it in the next version of PyDink. Future PyDink versions will not
+be backwards compatible when it comes to bugs.
+
 *** Running the PyDink editor (pde) ***
 If everything is correctly set up (see README.install), a window should open
 when you run pde.py. This window has a map on the left and a side bar on the
@@ -288,6 +300,13 @@ Inside functions, there are some differences to DinkC:
 Last but not least: Spaces, tabs and newlines are all considered whitespace and
 are mostly ignored, just like in C. This is true at top level and inside
 functions.
+
+*** The PyDink engine ***
+The engine is a script called play.py. You can run it from the commandline:
+python play.py path/to/dmod
+Note that it wants a path to the PyDink files, not the built DMod.
+
+The engine is not finished yet, and probably buggy. But feel free to test it.
 
 *** Decompile ***
 This is a script which tries to decompile any dmod into a format which pydink
