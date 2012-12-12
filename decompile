@@ -38,8 +38,10 @@ try:
 	target = dink.Dink (root)
 
 	# {{{ Read and parse hardness.
+	print ('parsing hardness')
 	hard, defaulthard, tilefiles = readini.read_hard ()
 	# Build tile and hardness images.
+	print ('creating tiles')
 	os.mkdir (os.path.join (root, 'tile'))
 	for i, t in enumerate (tilefiles):
 		if not t[1]:
@@ -52,10 +54,12 @@ try:
 	# }}}
 
 	# {{{ Read and parse graphics.
+	print ('reading ini file')
 	collections, sequences, codes = readini.read_ini ()
 	target.seq.seq = sequences
 	target.seq.collection = collections
 	target.seq.custom_seqs = [sequences[x] for x in sequences if sequences[x].from_dmod]
+	print ('converting custom graphics')
 	for s in target.seq.custom_seqs:
 		# Convert frames to png and change paths.
 		for f in s.frames[1:]:
@@ -75,14 +79,17 @@ try:
 	# }}}
 
 	# {{{ Read and parse sound.
+	print ('reading sound')
 	musics, sounds = readini.read_sound ()
 	target.sound.sound = target.sound.detect (None, None, sounds)
 	target.sound.music = target.sound.detect (None, None, musics)
 	# }}}
 
+	print ('reading map')
 	readini.read_map (target, hard, defaulthard)
 
 	# {{{ Preview and splash image.
+	print ('setting preview and splash image')
 	target.info = readini.loaddinkfile ('dmod.diz')[0].read ()
 	p = readini.loaddinkfile ('preview.bmp')
 	if p[2]:
@@ -92,6 +99,9 @@ try:
 		target.splash = p[1]
 	# }}}
 
+	print ('saving dmod')
 	target.save (sys.argv[2])
 finally:
+	print ('removing temporary files')
 	shutil.rmtree (root)
+	print ('done')

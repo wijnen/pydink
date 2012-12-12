@@ -195,10 +195,12 @@ default_globals = {
 		"level": 1,
 		"player_map": 1,
 		"last_text": 0,
-		"update_status": 0,
+		"update_status": 0
+	}
+default_statics = {
+		"magic_cost": 0,
 		"missile_target": 0,
 		"enemy_sprite": 0,
-		"magic_cost": 0,
 		"missile_source": 0
 	}
 the_globals = {}
@@ -341,7 +343,7 @@ mangled_names = {}
 
 def mangle (name):
 	nice_assert (name != 'missle_source', 'misspelling of missile_source must not be used.')
-	if name in default_globals or name in predefined or name in predefined_statics:
+	if name in default_globals or name in predefined or name in default_statics or name in predefined_statics:
 		# Fix spelling mistake in original source (by inserting it in generated expressions).
 		if name == 'missile_source':
 			return '&missle_source'
@@ -354,7 +356,7 @@ def mangle (name):
 
 def newmangle (name):
 	global next_mangled
-	if name in default_globals or name in predefined or name in predefined_statics:
+	if name in default_globals or name in predefined or name in default_statics or name in predefined_statics:
 		return
 	if nice_assert (name not in mangled_names, 'duplicate mangling request for %s' % name):
 		mangled_names[name] = next_mangled
@@ -362,7 +364,7 @@ def newmangle (name):
 
 def clear_mangled (which):
 	for name in which:
-		if name in default_globals or name in predefined or name in predefined_statics:
+		if name in default_globals or name in predefined or name in default_statics or name in predefined_statics:
 			continue
 		if not nice_assert (name in mangled_names, "trying to clear mangled %s, which isn't in mangled_names" % name):
 			continue
@@ -541,7 +543,7 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 		nice_assert (not as_bool and not invert, 'string (%s) cannot be inverted or used as boolean expression' % expr[0])
 		ret = ''
 		for i in range (0, len (expr[1]) - 1, 2):
-			ret += expr[1][i] + '&' + mangle (expr[1][i + 1])
+			ret += expr[1][i] + mangle (expr[1][i + 1])
 		return '', '"' + ret + expr[1][-1] + '"'
 	elif expr[0] in ('local', 'static', 'global'):
 		if as_bool:
@@ -624,6 +626,10 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 		tmp = current_tmp
 		current_tmp += 1
 		return build_choice (dink, fname, expr[1], expr[2], indent) + indent + 'int &tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
+	elif expr[0] == 'choice_stop':
+		tmp = current_tmp
+		current_tmp += 1
+		return build_choice (dink, fname, expr[1], expr[2], indent, stop = True) + indent + 'int &tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
 	elif expr[0] == 'internal':	# internal function call
 		b, e = build_internal_function (expr[1], expr[2], indent, dink, fname, True)
 		if as_bool:
@@ -819,7 +825,7 @@ def make_direct (dink, name, args, used):
 	ia = internal_functions[name]
 	a = list (args)
 	if len (a) < len (ia) and (ia.endswith ('I') or ia.endswith ('S') or ia.endswith ('Q')):
-		a += ((None,),)
+		a.append ((None,))
 	if not nice_assert (len (a) == len (ia), 'incorrect number of arguments for %s (must be %d; is %d)' % (name, len (ia), len (a))):
 		return None
 	for i in range (len (ia)):
@@ -967,8 +973,8 @@ def tokenize_expr (parent, script, used, current_vars):
 								ret += (['()', (filename.lower (), name), args],)
 							else:
 								# internal function.
-								if name == 'choice':
-									ret += (['choice', choice_args (args), choice_title[0]],)
+								if name in ('choice', 'choice_stop'):
+									ret += ([name, choice_args (args), choice_title[0]],)
 									choice_title[:] = [None, False]
 								else:
 									direct = make_direct (parent, name, args, used)
@@ -983,12 +989,9 @@ def tokenize_expr (parent, script, used, current_vars):
 						need_operator = True
 						continue
 					# variable reference.
-					if t in current_vars[0]:
-						ret += (('local', t),)
-					elif t in predefined_statics or t in current_vars[1]:
-						ret += (('static', t),)
-					elif t in default_globals or t in predefined or t in current_vars[2]:
-						ret += (('global', t),)
+					r = check_exists (current_vars, t)
+					if r:
+						ret.append (r)
 					else:
 						error ('using undefined variable %s. locals: %s, statics: %s, globals: %s' % ((t,) + tuple ([str (x) for x in current_vars])))
 				else:
@@ -997,9 +1000,13 @@ def tokenize_expr (parent, script, used, current_vars):
 				need_operator = True
 
 def check_exists (current_vars, name):
-	if name in predefined or name in default_globals or name in predefined_statics:
-		return True
-	return any ([name in x for x in current_vars])
+	if name in current_vars[0]:
+		return ('local', name)
+	elif name in default_statics or name in predefined_statics or name in current_vars[1]:
+		return ('static', name)
+	elif name in default_globals or name in predefined or name in current_vars[2]:
+		return ('global', name)
+	return False
 
 def tokenize (script, dink, fname, used):
 	'''Tokenize a script completely. Return a list of functions (name, (rettype, args), definition-statement).'''
@@ -1066,7 +1073,8 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 				need_semicolon = False
 				break
 			script, s = tokenize_statement (t + ' ' + script, dink, fname, own_name, used, current_vars)
-			statements += (s,)
+			if s is not None:
+				statements += (s,)
 	elif t == ';':
 		ret = None
 		need_semicolon = False
@@ -1087,6 +1095,7 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for while not closed')
 		script, s = tokenize_statement (script, dink, fname, own_name, used, current_vars)
+		nice_assert (s is not None, 'choice_title may not be used conditionally')
 		need_semicolon = False
 		ret = 'while', e, s
 	elif t == 'for':
@@ -1095,11 +1104,12 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 		if script[0] != ';':
 			n, script, isname = token (script)
 			nice_assert (isname, 'first for-expression must be empty or assignment (not %s)' % n)
+			r = check_exists (current_vars, n)
+			nice_assert (r, 'use of undefined variable %s in for loop' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'first for-expression must be empty or assignment (not %s)' % a)
 			script, e = tokenize_expr (dink, script, used, current_vars)
-			f1 = (a, n, e)
-			nice_assert (check_exists (current_vars, n), 'use of undefined variable %s in for loop' % n)
+			f1 = (a, r, e)
 		else:
 			f1 = None
 		t, script, isname = token (script)
@@ -1110,16 +1120,18 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 		if script[0] != ')':
 			n, script, isname = token (script)
 			nice_assert (isname, 'third for-expression must be empty or assignment (not %s)' % n)
+			r = check_exists (current_vars, n)
+			nice_assert (r, 'use of undefined variable %s in for loop' % n)
 			a, script, isname = token (script)
 			nice_assert (a in ('=', '+=', '-=', '*=', '/='), 'third for-expression must be empty or assignment (not %s)' % a)
 			script, e = tokenize_expr (dink, script, used, current_vars)
-			nice_assert (check_exists (current_vars, n), 'use of undefined variable %s in for loop' % n)
-			f3 = (a, n, e)
+			f3 = (a, r, e)
 		else:
 			f3 = None
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis for for not closed')
 		script, s = tokenize_statement (script, dink, fname, own_name, used, current_vars)
+		nice_assert (s is not None, 'choice_title may not be used conditionally')
 		need_semicolon = False
 		ret = 'for', f1, f2, f3, s
 	elif t == 'if':
@@ -1129,9 +1141,11 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 		t, script, isname = token (script)
 		nice_assert (t == ')', 'parenthesis not closed for if')
 		script, s1 = tokenize_statement (script, dink, fname, own_name, used, current_vars)
+		nice_assert (s1 is not None, 'choice_title may not be used conditionally')
 		t, script, isname = token (script)
 		if t == 'else':
 			script, s2 = tokenize_statement (script, dink, fname, own_name, used, current_vars)
+			nice_assert (s2 is not None, 'choice_title may not be used conditionally')
 		else:
 			script = t + ' ' + script
 			s2 = None
@@ -1163,10 +1177,11 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 		name = t
 		t, script, isname = token (script)
 		if t in ['=', '+=', '-=', '*=', '/=']:
-			nice_assert (check_exists (current_vars, name), 'use of undefined variable %s' % name)
+			r = check_exists (current_vars, name)
+			nice_assert (r, 'use of undefined variable %s' % name)
 			op = t
 			script, e = tokenize_expr (dink, script, used, current_vars)
-			ret = op, name, e
+			ret = op, r, e
 		else:
 			if t == '.':
 				# Remote function call.
@@ -1182,11 +1197,11 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 				nice_assert (len (args) >= 1 and len (args) <= 3 and args[0][0] == '"', 'invalid argument list for %s' % name)
 				choice_title[0] = args
 				ret = None
-			elif name == 'choice':
+			elif name in ('choice', 'choice_stop'):
 				choices = []
 				script, args = read_args (dink, script, used, current_vars)
 				choices = choice_args (args)
-				ret = 'choice', choice_args (args), choice_title[0]
+				ret = name, choice_args (args), choice_title[0]
 				choice_title[:] = [None, False]
 			else:
 				script, args = read_args (dink, script, used, current_vars)
@@ -1205,7 +1220,7 @@ def tokenize_statement (script, dink, fname, own_name, used, current_vars):
 						print functions[name[0]]
 					nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1])))
 					ret = '()', name, args
-	nice_assert (choice_title[1] == False or choice_title[0] is None, 'unused choice_title')
+	#nice_assert (choice_title[1] == False or choice_title[0] is None, 'unused choice_title')
 	if need_semicolon:
 		t, script, isname = token (script)
 		if not nice_assert ((t == ';'), 'missing semicolon'):
@@ -1250,6 +1265,7 @@ def build_function_def (data, fname, dink, my_statics, my_globals):
 	sp_que (1, 20000);\r
 	sp_noclip (1, 1);\r
 ''' % (make_brain ('pointer'), dink.seq.find_seq ('special').code)
+	print impl[1]
 	for s in impl[1]:
 		ret += build_statement (s, ra[0], '\t', fname, dink, None, None, (my_locals, my_statics, my_globals))
 	clear_mangled (my_locals)
@@ -1273,12 +1289,15 @@ def build_function (name, args, indent, dink, fname):
 	else:
 		return tb + indent + 'external("%s", "%s");\r\n' % name
 
-def build_choice (dink, fname, choices, title, indent):
+def build_choice (dink, fname, choices, title, indent, stop = False):
 	# choices[i][0] = expr or None
 	# choices[i][1] = Choice string
 	# title = None or title (sequence of 1, 2 or 3 arguments)
 	tb = ''
-	ret = indent + 'choice_start()\r\n'
+	ret = ''
+	if stop:
+		ret += indent + 'stop_entire_game(1);\r\n'
+	ret += indent + 'choice_start()\r\n'
 	if title is not None:
 		if len (title) == 3:
 			b, e = build_expr (dink, fname, title[2], as_bool = False)
@@ -1288,7 +1307,7 @@ def build_choice (dink, fname, choices, title, indent):
 			b, e = build_expr (dink, fname, title[1], as_bool = False)
 			tb += b
 			ret += indent + 'set_title_color %d\r\n' % e
-		ret += indent + 'title_start()\r\n' + title[0] + indent + 'title_end()\r\n'
+		ret += indent + 'title_start()\r\n' + build_expr (dink, fname, title[0], indent, as_bool = False)[1][1:-1] + '\r\n' + indent + 'title_end()\r\n'
 	for i in choices:
 		ret += indent
 		if i[0] is not None:
@@ -1351,7 +1370,7 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 			if a[0] in ('*', '/'):
 				a = a[0]
 			b, e = build_expr (dink, fname, te, indent, as_bool = False)
-			ret += b + indent + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
+			ret += b + indent + mangle (n[1]) + ' ' + a + ' ' + e + ';\r\n'
 		ret += start + ':\r\n'
 		b, e = build_expr (dink, fname, data[2], indent, invert = True, as_bool = True)
 		ret += b + indent + 'if (' + e + ')\r\n' + indent + '{\r\n' + indent + '\tgoto ' + end + ';\r\n' + indent + '}\r\n'
@@ -1362,7 +1381,7 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 			if a[0] in ('*', '/'):
 				a = a[0]
 			b, e = build_expr (dink, fname, te, indent, as_bool = False)
-			ret += b + indent + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
+			ret += b + indent + mangle (n[1]) + ' ' + a + ' ' + e + ';\r\n'
 		ret += indent + 'goto ' + start + ';\r\n' + end + ':\r\n'
 		return ret
 	elif data[0] == 'if':
@@ -1394,6 +1413,10 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 		b, e = build_choice (dink, fname, data[1], data[2], indent)
 		# discard return value
 		return b
+	elif data[0] == 'choice_stop':
+		b, e = build_choice (dink, fname, data[1], data[2], indent, stop = True)
+		# discard return value
+		return b
 	elif data[0] == '()':
 		return build_function (data[1], data[2], indent, dink, fname)
 	elif data[0] == 'internal':
@@ -1405,7 +1428,7 @@ def build_statement (data, retval, indent, fname, dink, continue_label, break_la
 		if a[0] in ('*', '/'):
 			a = a[0]
 		b, e = build_expr (dink, fname, te, indent, as_bool = False)
-		return b + indent + mangle (n) + ' ' + a + ' ' + e + ';\r\n'
+		return b + indent + mangle (n[1]) + ' ' + a + ' ' + e + ';\r\n'
 # }}}
 
 class Sprite: #{{{
@@ -2143,6 +2166,7 @@ class Seq: #{{{
 	#	frames, list with members:
 	#		position	Hotspot position.
 	#		hardbox		Hardbox: left, top, right, bottom.
+	#		special		bool, if this frame can hit.
 	#		boundingbox	Bounding box: left, top, right, bottom.
 	#		delay		Delay value for this frame.
 	#		source		For copied frames, source; None otherwise.
@@ -2153,7 +2177,6 @@ class Seq: #{{{
 	#	position	default position
 	#	filepath	name for use in dink.ini
 	#	repeat		bool, whether the sequence is set for repeating
-	#	special		int, special frame
 	#	now		bool, whether to load now
 	#	code		int
 	#	preload		string, name of sequence to preload into this code
@@ -2252,7 +2275,6 @@ class Seq: #{{{
 		ret.repeat = False
 		ret.filepath = 'graphics\\custom\\%s-' % base
 		ret.type = 'foreign'
-		ret.special = 0
 		ret.preload = ''
 		ret.delay = 75
 		ret.hardbox = None
@@ -2264,6 +2286,7 @@ class Seq: #{{{
 		ret = Frame ()
 		ret.position = None
 		ret.hardbox = None
+		ret.special = False
 		ret.boundingbox = None
 		ret.delay = 75
 		ret.source = None
@@ -2297,12 +2320,9 @@ class Seq: #{{{
 			info, seq.script = get (info, 'script', seq.script)
 			info, seq.hard = get (info, 'hard', seq.hard)
 		info, seq.repeat = get (info, 'repeat', seq.repeat)
-		info, seq.special = get (info, 'special', 0 if seq.special is None else seq.special)
 		info, seq.now = get (info, 'load-now', seq.now)
 		info, seq.preload = get (info, 'preload', seq.preload)
 		info, seq.type = get (info, 'type', seq.type)
-		if seq.special == 0:
-			seq.special = None
 		info, seq.delay = get (info, 'delay', seq.delay)
 		if seq.delay == -1:
 			seq.delay = None
@@ -2334,6 +2354,7 @@ class Seq: #{{{
 			if hardbox != '':
 				seq.frames[f].hardbox = [int (x) for x in hardbox.split ()]
 				nice_assert (len (seq.frames[f].hardbox) == 4, 'frame hardbox must be four numbers')
+			info, seq.frames[f].special = get (info, 'special-%d' % f, False)
 			info, seq.frames[f].delay = get (info, 'delay-%d' % f, 75)
 			if seq.frames[f].delay == -1:
 				seq.frames[f].delay = None
@@ -2364,7 +2385,7 @@ class Seq: #{{{
 			if hasattr (seq.frames[f], 'size'):
 				w, h = seq.frames[f].size
 				del seq.frames[f].size
-			elif hasattr (seq.frames[f], 'source'):
+			elif hasattr (seq.frames[f], 'source') and seq.frames[f].source is not None:
 				if seq.frames[f].source[0] == seq.name:
 					s = seq
 				else:
@@ -2506,7 +2527,6 @@ class Seq: #{{{
 		return coll['code']
 	def save_seq (self, d, f, seq):
 		put (f, 'repeat', seq.repeat, False)
-		put (f, 'special', 0 if seq.special is None else seq.special, 0)
 		put (f, 'load-now', seq.now, False)
 		put (f, 'preload', seq.preload, '')
 		put (f, 'type', seq.type, 'foreign')
@@ -2519,6 +2539,7 @@ class Seq: #{{{
 				open (os.path.join (d, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (seq.frames[frame].cache[0], 'rb').read ())
 			put (f, 'position-%d' % frame, '' if seq.frames[frame].position == seq.position else '%d %d' % tuple (seq.frames[frame].position), '')
 			put (f, 'hardbox-%d' % frame, '' if seq.frames[frame].hardbox == seq.hardbox else '%d %d %d %d' % tuple (seq.frames[frame].hardbox), '')
+			put (f, 'special-%d' % frame, seq.frames[frame].special, False)
 			put (f, 'delay-%d' % frame, -1 if seq.frames[frame].delay == seq.delay else seq.frames[frame].delay, -1)
 			put (f, 'source-%d' % frame, '' if seq.frames[frame].source is None else '%s %d' % tuple (seq.frames[frame].source), '')
 	def save (self):
@@ -2582,7 +2603,7 @@ class Seq: #{{{
 				ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\r\n' % (seq.code, f, seq.frames[f].position[0], seq.frames[f].position[1], seq.frames[f].hardbox[0], seq.frames[f].hardbox[1], seq.frames[f].hardbox[2], seq.frames[f].hardbox[3]))
 			if seq.frames[f].source is not None or seq.frames[f].delay != seq.delay:
 				ini.write ('set_frame_delay %d %d %d\r\n' % (seq.code, f, int (seq.frames[f].delay)))
-			if seq.special == f:
+			if seq.frames[f].special:
 				ini.write ('set_frame_special %d %d 1\r\n' % (seq.code, f))
 		if seq.repeat:
 			ini.write ('set_frame_frame %d %d -1\r\n' % (seq.code, len (seq.frames)))

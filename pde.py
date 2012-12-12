@@ -388,7 +388,7 @@ class View (gtk.DrawingArea): # {{{
 					continue
 				s[0].base_attack = self.get_selected_collection ()
 			the_gui.setmap = True
-		elif not ctrl and not shift and key == gtk.keysyms.b: # set base walk.
+		elif not ctrl and not shift and key == gtk.keysyms.w: # set base walk.
 			for s in spriteselect:
 				if s[1]:
 					continue
@@ -578,6 +578,8 @@ class ViewMap (View): # {{{
 			else:
 				gc = self.bggc if vis < 2 else self.hardgc
 			(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+			w = (right - left) * screenzoom / 50
+			h = (bottom - top) * screenzoom / 50
 			if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
 				self.buffer.draw_rectangle (gc, False, (x + spr[2].frames[spr[1].frame].hardbox[0]) * screenzoom / 50, (y + spr[2].frames[spr[1].frame].hardbox[1]) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[2] - spr[2].frames[spr[1].frame].hardbox[0] - 1) * screenzoom / 50, (spr[2].frames[spr[1].frame].hardbox[3] - spr[2].frames[spr[1].frame].hardbox[1] - 1) * screenzoom / 50)
 		# Wireframe information.
@@ -603,6 +605,8 @@ class ViewMap (View): # {{{
 				# This is a sprite, not a warp target.
 				if spr[1].layer == the_gui.active_layer:
 					(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					w = (right - left) * screenzoom / 50
+					h = (bottom - top) * screenzoom / 50
 					if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
 					# Hotspot.
 						self.buffer.draw_line (self.bggc if vis < 2 else self.noselectgc, (x - 10) * screenzoom / 50, y * screenzoom / 50, (x + 10) * screenzoom / 50, y * screenzoom / 50)
@@ -618,6 +622,8 @@ class ViewMap (View): # {{{
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
 				(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+				w = (right - left) * screenzoom / 50
+				h = (bottom - top) * screenzoom / 50
 				if w > 0 and h > 0 and left * screenzoom / 50 >= -w and top * screenzoom / 50 >= -h and left * screenzoom / 50 < self.screensize[0] and top * screenzoom / 50 < self.screensize[1]:
 					# Que.
 					self.buffer.draw_line (self.noshowgc, (x - 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50, (x + 40) * screenzoom / 50, (y - spr[1].que) * screenzoom / 50)

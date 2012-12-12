@@ -343,7 +343,8 @@ def makedinkpath (f): # {{{
 			walk = branch[1]
 		else:
 			return p, walk, f, from_dmod
-	raise AssertionError ('path %s not found in dmod or dinkdir' % '\\'.join (f))
+	print ('Warning: path %s not found in dmod or dinkdir' % '\\'.join (f))
+	return None, None, None, None
 # }}}
 
 def parse_lsb (s): # {{{
@@ -365,6 +366,8 @@ def loaddinkfile (f): # {{{
 	if not is_setup:
 		setup (dink.read_config ()['dinkdir'])
 	p, walk, f, from_dmod = makedinkpath (f)
+	if p is None:
+		return None, None, False
 	if f[-1] in walk:
 		path = os.path.join (p, walk[f[-1]][0])
 		ret = open (os.path.join (p, walk[f[-1]][0]), 'rb')
@@ -586,7 +589,7 @@ def read_ini (): # {{{
 				sequence_codes[s] = dink.Sequence ()
 				sequence_codes[s].frames = []
 			use (sequence_codes[s], f)
-			sequence_codes[s].special = f
+			sequence_codes[s].frames[f].special = True
 		else:
 			print ('Warning: ignoring invalid line in dink.ini: %s' % l)
 
@@ -594,6 +597,7 @@ def read_ini (): # {{{
 	#	frames, list with members:
 	#		position	Hotspot position. If len (position) == 3, this is a default generated position.
 	#		hardbox		Hardbox: left, top, right, bottom. If len (hardbox) == 5, this is a default generated position.
+	#		special		bool, special frame
 	#		boudingbox	Bounding box: left, top, right, bottom.
 	#		delay		Delay value for this frame.
 	#		source		For copied frames, source; None otherwise.
@@ -605,7 +609,6 @@ def read_ini (): # {{{
 	#	position	default position
 	#	filepath	name for use in dink.ini
 	#	repeat		bool, whether the sequence is set for repeating
-	#	special		int, special frame
 	#	now		bool, whether to load now
 	#	code		int
 	#	preload		string, name of sequence to preload into this code
@@ -622,8 +625,6 @@ def read_ini (): # {{{
 			sequence_codes[s].preload = ''
 		if not hasattr (sequence_codes[s], 'now'):
 			sequence_codes[s].now = False
-		if not hasattr (sequence_codes[s], 'special'):
-			sequence_codes[s].special = None
 		if not hasattr (sequence_codes[s], 'repeat'):
 			sequence_codes[s].repeat = False
 		if not hasattr (sequence_codes[s], 'position'):
@@ -668,6 +669,8 @@ def read_ini (): # {{{
 		for f in range (1, len (sequence_codes[s].frames)):
 			fill_frame (s, f, None)
 		for f in range (1, len (sequence_codes[s].frames)):
+			if not hasattr (sequence_codes[s].frames[f], 'special'):
+				sequence_codes[s].frames[f].special = False
 			if not hasattr (sequence_codes[s].frames[f], 'cache'):
 				if sequence_codes[s].frames[f].source is not None:
 					sequence_codes[s].frames[f].cache = sequence_codes[sequence_codes[s].frames[f].source[0]].frames[sequence_codes[s].frames[f].source[1]].cache
@@ -831,14 +834,19 @@ def read_map (data, hard, defaulthard): # {{{
 	# }}}
 	def read_sprite (f, data, map): # {{{
 		"""Read a sprite from map.dat"""
+		sdata = f.read (220)
+		active = parse_lsb (sdata[24:28])
+		if not active:
+			return None
 		ret = dink.Sprite (data)
 		ret.map = map
-		ret.x = read_lsb (f) + ((map - 1) % 32) * 50 * 12
-		ret.y = read_lsb (f) + ((map - 1) / 32) * 50 * 8
-		s = get_seq (read_lsb (f), data)
+		ret.x = parse_lsb (sdata[0:4]) + ((map - 1) % 32) * 50 * 12	# 4	  0
+		ret.y = parse_lsb (sdata[4:8]) + ((map - 1) / 32) * 50 * 8	# 4	  4
+		s = get_seq (parse_lsb (sdata[8:12]), data)			# 4	  8
 		ret.seq = s.name if s is not None else ''
-		ret.frame = read_lsb (f)
-		t = read_lsb (f)
+		ret.rename (ret.seq if isinstance (ret.seq, str) else '%s-%s' % (ret.seq[0], str (ret.seq[1])))
+		ret.frame = parse_lsb (sdata[12:16])				# 4	 12
+		t = parse_lsb (sdata[16:20])					# 4	 16
 		if t == 0:
 			ret.layer = 0
 		elif t == 1:
@@ -850,53 +858,49 @@ def read_map (data, hard, defaulthard): # {{{
 			err += 'invalid sprite type %d' % t
 			ret.bg = True
 			ret.visible = False
-		ret.size = read_lsb (f)
-		active = read_lsb (f) & 0xff
-		read_lsb (f)
-		read_lsb (f)
-		ret.brain = get_brain (read_lsb (f))
-		ret.script = clean (f.read (14))
-		f.seek (38, 1)
-		ret.speed = read_lsb (f)
-		c = get_collection (read_lsb (f), data)
+		ret.size = parse_lsb (sdata[20:24])				# 4	 20
+		active = parse_lsb (sdata[24:28]) & 0xff			# 4	 24
+		# 2 words junk.							# 8      28
+		ret.brain = get_brain (parse_lsb (sdata[36:40]))		# 4	 36
+		ret.script = clean (sdata[40:54])				# 14	 40
+		# 38 bytes junk.						# 38	 54
+		ret.speed = parse_lsb (sdata[92:96])				# 4	 92
+		c = get_collection (parse_lsb (sdata[96:100]), data)		# 4	 96
 		ret.base_walk = c['name'] if c is not None else ''
-		c = get_collection (read_lsb (f), data)
+		c = get_collection (parse_lsb (sdata[100:104]), data)		# 4	100
 		ret.base_idle = c['name'] if c is not None else ''
-		c = get_collection (read_lsb (f), data)
+		c = get_collection (parse_lsb (sdata[104:108]), data)		# 4	104
 		ret.base_attack = c['name'] if c is not None else ''
-		read_lsb (f)
-		timer = read_lsb (f)
-		ret.que = read_lsb (f)
-		ret.hard = read_lsb (f) == 0    # Note: the meaning is inverted, "== 0" is correct!
-		ret.left = read_lsb (f)
-		ret.top = read_lsb (f)
-		ret.right = read_lsb (f)
-		ret.bottom = read_lsb (f)
-		prop = read_lsb (f)
-		warp_map = read_lsb (f)
-		warp_x = read_lsb (f)
-		warp_y = read_lsb (f)
+		# 1 word junk.							# 4	108
+		timer = parse_lsb (sdata[112:116])				# 4	112
+		ret.que = parse_lsb (sdata[116:120])				# 4	116
+		ret.hard = parse_lsb (sdata[120:124]) == 0			# 4	120 Note: the meaning is inverted, "== 0" is correct!
+		ret.left = parse_lsb (sdata[124:128])				# 4	124
+		ret.top = parse_lsb (sdata[128:132])				# 4	128
+		ret.right = parse_lsb (sdata[132:136])				# 4	132
+		ret.bottom = parse_lsb (sdata[136:140])				# 4	136
+		prop = parse_lsb (sdata[140:144])				# 4	140
 		if prop:
+			warp_map = parse_lsb (sdata[144:148])			# 4	144
+			warp_x = parse_lsb (sdata[148:152])			# 4	148
+			warp_y = parse_lsb (sdata[152:156])			# 4	152
 			ret.warp = [warp_map, warp_x, warp_y]
 		else:
 			ret.warp = None
-		s = get_seq (read_lsb (f), data)
+		s = get_seq (parse_lsb (sdata[156:160]), data)			# 4	156
 		ret.touch_seq = s.name if s is not None else ''
-		c = get_collection (read_lsb (f), data)
+		c = get_collection (parse_lsb (sdata[160:164]), data)		# 4	160
 		ret.base_death = c['name'] if c is not None else ''
-		ret.gold = read_lsb (f)
-		ret.hitpoints = read_lsb (f)
-		ret.strength = read_lsb (f)
-		ret.defense = read_lsb (f)
-		ret.exp = read_lsb (f)
-		ret.sound = get_sound (read_lsb (f), data)
-		ret.vision = read_lsb (f)
-		ret.nohit = read_lsb (f) != 0
-		ret.touch_damage = read_lsb (f)
-		for k in range (5):
-			read_lsb (f)
-		if not active:
-			return None
+		ret.gold = parse_lsb (sdata[164:168])				# 4	164
+		ret.hitpoints = parse_lsb (sdata[168:172])			# 4	168
+		ret.strength = parse_lsb (sdata[172:176])			# 4	172
+		ret.defense = parse_lsb (sdata[176:180])			# 4	176
+		ret.exp = parse_lsb (sdata[180:184])				# 4	180
+		ret.sound = get_sound (parse_lsb (sdata[184:188]), data)	# 4	184
+		ret.vision = parse_lsb (sdata[188:192])				# 4	188
+		ret.nohit = parse_lsb (sdata[192:196]) != 0			# 4	192
+		ret.touch_damage = parse_lsb (sdata[196:200])			# 4	196
+		# 5 words junk.							# 20	216
 		data.world.sprite.add (ret)
 		ret.register ()
 		return ret
@@ -929,18 +933,13 @@ def read_map (data, hard, defaulthard): # {{{
 		f.seek (160 + 80, 1)
 		for s in range (100):
 			spr = read_sprite (f, data, mapnum)
-			if spr:
-				if type (spr.seq) == str:
-					name = spr.seq
-				else:
-					name = '%s-%s' % (spr.seq[0], str (spr.seq[1]))
 		# end marker: ignore.
 		read_sprite (f, data, 1)
 		map.script = clean (f.read (21))
 		f.seek (1019, 1)
 		return map
 	# }}}
-	maps = [[0, 0, 0] for i in range (769)]
+	maps = [[0, 0, 0, i] for i in range (769)]
 	f = loaddinkfile ('dink.dat')[0]
 	f.seek (20)
 	for a in range (3):
@@ -948,12 +947,17 @@ def read_map (data, hard, defaulthard): # {{{
 			maps[s][a] = read_lsb (f)
 	f.close ()
 	f = loaddinkfile ('map.dat')[0]
-	for s in range (len (maps)):
-		if maps[s][0] == 0:
+	print ('reading %d maps' % len ([0 for m in maps if m[0] != 0]))
+	maps.sort (key = lambda x: x[0])
+	for m, music, indoor, s in maps:
+		if m == 0:
 			continue
-		f.seek (31280 * (maps[s][0] - 1))
+		sys.stdout.write ('\rreading map %d' % m)
+		sys.stdout.flush ()
+		f.seek (31280 * (m - 1))
 		map = read_map (f, data, s, hard, defaulthard)
-		map.music = get_music (maps[s][1], data)
-		map.indoor = maps[s][2] != 0
+		map.music = get_music (music, data)
+		map.indoor = indoor != 0
 		data.world.map[s] = map
+	print ('')
 # }}}
