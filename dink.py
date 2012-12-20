@@ -186,6 +186,7 @@ default_globals = {
 		"gold": 0,
 		"magic": 0,
 		"magic_level": 0,
+		"magic_cost": 0,
 		"vision": 0,
 		"result": 0,
 		"speed": 1,
@@ -198,7 +199,6 @@ default_globals = {
 		"update_status": 0
 	}
 default_statics = {
-		"magic_cost": 0,
 		"missile_target": 0,
 		"enemy_sprite": 0,
 		"missile_source": 0
@@ -466,6 +466,8 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 					a[1] = ('const', s.code)
 	elif name == 'sp_nohard':
 		name = 'sp_hard'
+	elif name in ('create_view', 'set_view', 'kill_view', 'get_item_seq', 'get_item_frame', 'get_magic_seq', 'get_magic_frame'):
+		error ("'%s' cannot be used when building for original Dink" % name)
 	bt = ''
 	at = []
 	for i in a:
@@ -684,6 +686,7 @@ internal_functions = {
 		'count_item': 's',
 		'count_magic': 's',
 		'create_sprite': 'ii*qi',
+		'create_view': '',
 		'debug': 's',
 		'dink_can_walk_off_screen': 'i',
 		'disable_all_sprites': '',
@@ -703,6 +706,10 @@ internal_functions = {
 		'free_magic': '',
 		'freeze': 'i',
 		'game_exist': 'i',
+		'get_item_frame': 'i',
+		'get_item_seq': 'i',
+		'get_magic_frame': 'i',
+		'get_magic_seq': 'i',
 		'get_last_bow_power': '',
 		'get_rand_sprite_with_this_brain': '*i',
 		'get_sprite_with_this_brain': '*i',
@@ -720,6 +727,7 @@ internal_functions = {
 		'kill_this_item': 's',
 		'kill_this_magic': 's',
 		'kill_this_task': '',
+		'kill_view': 'i',
 		'load_game': 'i',
 		'load_screen': '',
 		'move': 'iiii',
@@ -745,6 +753,7 @@ internal_functions = {
 		'set_callback_random': 'sii',
 		'set_dink_speed': 'i',
 		'set_keep_mouse': 'i',
+		'set_view': 'i',
 		'show_bmp': 'bii',
 		'sound_set_kill': 'i',
 		'sound_set_survive': 'ii',
@@ -802,7 +811,6 @@ internal_functions = {
 		'sp_y': 'iI',
 		'spawn': 's',
 		'start_game': '',
-		'stop_entire_game': 'i',
 		'stop_wait_for_button': '',
 		'stopcd': '',
 		'stopmidi': '',
@@ -2975,8 +2983,13 @@ void click ()
 		for i in the_globals:
 			newmangle (i)
 		for name in self.data:
+			if name == 'map':
+				outname = 'button6'
+			else:
+				outname = name
+			nice_assert (name not in ('button6', 'main'), 'scripts must not be called button6.c (use map.c instead) or main.c')
 			filename = name
-			f = open (os.path.join (d, name + os.extsep + 'c'), 'w')
+			f = open (os.path.join (d, outname + os.extsep + 'c'), 'w')
 			f.write (preprocess (self.data[name], self.parent, name))
 		# Write main.c
 		s = open (os.path.join (d, 'main' + os.extsep + 'c'), 'w')

@@ -26,8 +26,9 @@ import struct
 # }}}
 
 class GtkDink (dink.Dink): # {{{
-	def __init__ (self, root, scale):
+	def __init__ (self, root, scale, hard_scale = True):
 		dink.Dink.__init__ (self, root)
+		self.hard_scale = hard_scale
 		self.colors = ['black', 'dark blue', 'light green', 'cyan', 'orange', 'lavender', '#cc7722', 'light grey', 'dark grey', 'sky blue', 'green', 'yellow', 'yellow', 'pink', 'yellow', 'white']
 		for c in range (len (self.colors)):
 			self.colors[c] = gtk.gdk.colormap_get_system ().alloc_color (self.colors[c])
@@ -84,7 +85,7 @@ class GtkDink (dink.Dink): # {{{
 			if t == None:
 				self.cache_add ('h', name, None)
 				return None
-			tile = self.load_pixbuf (t)
+			tile = self.load_pixbuf (t, self.hard_scale)
 			self.cache_add ('h', name, tile)
 		return tile
 	def get_color (self, c):
@@ -126,7 +127,7 @@ class GtkDink (dink.Dink): # {{{
 		else:
 			bx = [0, 0, w, h]
 		return (x, y), (l, t, r, b), bx
-	def load_pixbuf (self, file):
+	def load_pixbuf (self, file, use_scale = True):
 		data = open (file[0], 'rb').read (file[1] + file[2])[file[1]:]
 		try:
 			pbl = gtk.gdk.PixbufLoader ()
@@ -142,7 +143,7 @@ class GtkDink (dink.Dink): # {{{
 			pbl.write (data)
 			pbl.close ()
 		pb = pbl.get_pixbuf ()
-		if self.scale != 50:
+		if self.scale != 50 and use_scale:
 			w = pb.get_width () * self.scale / 50
 			h = pb.get_height () * self.scale / 50
 			if h <= 0 or w <= 0:
