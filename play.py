@@ -203,10 +203,7 @@ class Sprite:
 		if not self.alive:
 			return
 		if self.num == 1:
-			# Don't kill Dink; code everywhere depends on its existence. Instead, set it to nodraw nohit frozen.
-			self.nodraw = True
-			self.nohit = True
-			self.frozen = True
+			# Don't kill Dink; code everywhere depends on its existence.
 			return
 		del self.view.sprites[self.num]
 		self.alive = False
@@ -217,6 +214,7 @@ class Sprite:
 		if self.deathcb:
 			self.view.events += ((self.data.current_time - datetime.timedelta (seconds = 1), self.deathcb[0], self.deathcb[1]),)
 	def set_state (self, state = None):
+		assert self.num != 1 or self.brain != NONEBRAIN
 		# First set dir according to movement.
 		if self.mx != 0 or self.my != 0:
 			mx, my = [t / abs (t) if t != 0 else 0 for t in (self.mx, self.my)]
@@ -258,12 +256,14 @@ class View:
 		self.wait_for_button = None
 		self.screenlock = False
 		self.blocker = []
+		self.fade_block = []
+		self.enable_sprites = True
 		self.kill_queue = []
 		self.push_delay = 0
 		self.touch_delay = 0
 		self.push_active = True
 		self.bow = False, 0
-		self.fade = 0, True
+		self.fade = (0, True, self.data.current_time)
 		self.dink_can_walk_off_screen = False
 		self.bg = gtk.gdk.Pixmap (self.data.window, self.data.winw, self.data.winh)
 		self.choice_sprites = [Sprite (self.data, x, y, brain, seq, frame, '', view = None) for x, y, brain, seq, frame in ((181, 270, 'none', 'textbox', 2), (355, 254, 'none', 'textbox', 3), (528, 270, 'none', 'textbox', 4), (165, 104, 'repeat', 'arrow-l', 4), (503, 104, 'repeat', 'arrow-r', 4))]
@@ -277,6 +277,13 @@ class View:
 		self.events += ((self.data.current_time, self.do_brain (self.sprites[1]), -1),)
 		self.sprites[1].last_time = self.data.current_time
 		self.last_time = data.current_time
+		self.stat_info = {}
+		for stat, x, y, width, size, seq in (('strength', 50, 410, 10, 3, 'numr'), ('defense', 50, 430, 10, 3, 'numb'), ('magic', 50, 440, 10, 3, 'nump'), ('exp', 450, 440, 8, 5, 'nums'), ('gold', 350, 440, 10, 5, 'numy'), ('level', 500, 440, 8, 5, 'nums')):
+			self.stat_info[stat] = [0, Sprite (self.data, x, y, 'none', seq, 1, '', view = None), x, width]
+			self.stat_info[stat][1].clip = False
+		self.stat_info['life'] = [10, None]
+		self.stat_info['lifemax'] = [10, None]
+		self.draw_stat_digit ('exp', -1, 11)
 	def add_sprite (self, x = None, y = None, brain = None, seq = None, frame = None, script = None, src = None):
 		ret = Sprite (self.data, x, y, brain, seq, frame, script, src = src, view = self)
 		self.data.run_script (ret.script, 'main', (), ret)
@@ -298,7 +305,7 @@ class View:
 				continue
 			# Move.
 			if not (0 <= sprite.y + sprite.my < 400) or not (0 <= sprite.x + sprite.mx - 20 < 600):
-				if sprite.brain == DINKBRAIN and not self.dink_can_walk_off_screen:
+				if sprite.brain == DINKBRAIN and not self.dink_can_walk_off_screen and not self.screenlock:
 					# Move to new screen (if possible).
 					if sprite.y + sprite.my < 0:
 						self.try_move (0, -1)
@@ -465,7 +472,7 @@ class View:
 		if self.data.the_globals['player_map'] not in self.data.data.world.map:
 			self.data.gc.set_foreground (self.data.data.get_color (0))
 			self.bg.draw_rectangle (self.data.gc, True, 0, 0, 12 * self.data.data.scale, 8 * self.data.data.scale)
-			return
+			return ret
 		screen = self.data.data.world.map[self.data.the_globals['player_map']]
 		for y in range (8):
 			for x in range (12):
@@ -569,13 +576,14 @@ class View:
 			else:
 				assert spr.brain == TEXTBRAIN
 				continue
-			if spr.x + hardbox[0] >= x + sprite.range:
+			r = sprite.range / 2
+			if spr.x + hardbox[0] >= x + r:
 				continue
-			if spr.y + hardbox[1] >= y + sprite.range:
+			if spr.y + hardbox[1] >= y + r:
 				continue
-			if spr.x + hardbox[2] < x - sprite.range:
+			if spr.x + hardbox[2] < x - r:
 				continue
-			if spr.y + hardbox[3] < y - sprite.range:
+			if spr.y + hardbox[3] < y - r:
 				continue
 			ret.append (spr)
 		return ret
@@ -584,25 +592,47 @@ class View:
 		while True:
 			# Wait some time before being called again. Do this at the start, so continue can be used.
 			yield ('wait', -50)
-			self.data.buffer.draw_drawable (self.data.gc, self.bg, 0, 0, 0, 0, self.data.winw, self.data.winh)
+			if self.fade[0] != 0:
+				ticks = ((self.data.current_time - self.fade[2]) / 1000).microseconds
+				self.fade = (max (0, self.fade[0] - ticks), self.fade[1], self.data.current_time)
+				if self.fade[0] == 0:
+					for b in self.fade_block:
+						self.events += ((self.data.current_time, b[0], b[1]),)
+					self.fade_block = []
 			spr = self.sprites.keys ()
 			spr.sort (key = lambda s: (self.sprites[s].y - self.sprites[s].que))
 			if not self.stopped:
 				for s in spr:
-					# Change frame.
-					sprite = self.sprites[s]
-					if sprite.nodraw:
+					if s not in self.sprites or self.sprites[s].nodraw:
 						continue
-					self.animate (sprite)
+					# Change frame.
+					self.animate (self.sprites[s])
 				if self.touch_delay:
 					self.touch_delay -= 1
+			if self.fade[:2] == (0, False):
+				self.data.gc.set_foreground (self.data.data.colors[0])
+				self.data.buffer.draw_rectangle (self.data.gc, True, 0, 0, self.data.winw, self.data.winh)
+			else:
+				self.data.buffer.draw_drawable (self.data.gc, self.bg, 0, 0, 0, 0, self.data.winw, self.data.winh)
+			if self.enable_sprites and self.fade[:2] != (0, False):
+				for s in spr:
+					if s not in self.sprites or self.sprites[s].nodraw or self.sprites[s].brain == TEXTBRAIN:
+						continue
+					self.draw_sprite (self.data.buffer, self.sprites[s])
+			if self.fade[:2] != (0, True):
+				if self.fade[0] != 0:
+					color = self.fade[0] * 255 / 500
+					if not self.fade[1]:
+						color = 255 - color
+					self.data.fade_pixbuf.fill (color)
+					self.data.buffer.draw_pixbuf (self.data.gc, self.data.fade_pixbuf, 0, 0, 0, 0)
 			for s in spr:
-				if s not in self.sprites or self.sprites[s].nodraw:
+				if s not in self.sprites or self.sprites[s].nodraw or self.sprites[s].brain != TEXTBRAIN:
 					continue
-				self.draw_sprite (self.data.buffer, self.sprites[s])
+				self.draw_textsprite (self.data.buffer, self.sprites[s])
 			if self.choice != None:
 				# Compute arrow position.
-				y = self.choice_title[2] + self.choice_title[5] + 30 + 5
+				y = self.choice_title[2] + self.choice_title[4] + 30 + 5
 				for i in self.choice[:self.choice_current]:
 					y += i[3] + 5
 				y += self.choice[self.choice_current][3] / 2
@@ -611,10 +641,10 @@ class View:
 				for s in self.choice_sprites:
 					self.animate (s)
 					self.draw_sprite (self.data.buffer, s)
-				self.data.buffer.draw_layout (self.data.gc, self.choice_title[1], self.choice_title[2], self.choice_title[3], self.choice_title[4], None)
-				y = self.choice_title[2] + self.choice_title[5] + 30
-				for i in self.choice:
-					self.data.buffer.draw_layout (self.data.gc, i[2], y, i[4], i[5], None)
+				self.data.buffer.draw_layout (self.data.gc, self.choice_title[1], self.choice_title[2], self.choice_title[3], self.data.data.colors[-1], None)
+				y = self.choice_title[2] + self.choice_title[4] + 30
+				for n, i in enumerate (self.choice):
+					self.data.buffer.draw_layout (self.data.gc, i[2], y, i[4], self.data.data.colors[-1 if n == self.choice_current else -2], None)
 					y += i[3] + 5
 			self.data.expose (self, (0, 0, self.data.winw, self.data.winh))
 	def animate (self, sprite):
@@ -664,6 +694,9 @@ class View:
 						# If idle without a seq, just freeze the walk seq by not returning to 1.
 						sprite.frame = 1
 				else:
+					# Force current state to be the final frame of the animation.
+					sprite.pseq = sprite.seq
+					sprite.pframe = sprite.frame
 					sprite.seq = None
 			if sprite.seq and sprite.seq.frames[sprite.frame].special:
 				# Hit things.
@@ -688,7 +721,8 @@ class View:
 		layout.set_width (width * pango.SCALE)
 		return layout
 	def damage (self, strength, target, source):
-		dam = strength / 2 + random.random () * strength / 2 + 1 - target.defense
+		self.hurt (strength / 2 + random.random () * strength / 2 + 1 - target.defense, target, source)
+	def hurt (self, dam, target, source):
 		if dam <= 0:
 			dam = random.choice ((0, 1))
 		if dam == 0:
@@ -698,6 +732,7 @@ class View:
 		t.my = -1
 		t.set_killdelay (1000)
 		t.mylimit = (0, True)	# this makes the move ignore hardness.
+		t.have_brain = True
 		self.events += ((self.data.current_time, self.do_brain (t), t.num),)
 		if target.brain in (DINKBRAIN, POINTERBRAIN):
 			self.data.the_globals['life'] -= dam
@@ -706,6 +741,8 @@ class View:
 			target.hitpoints -= dam
 			death = target.hitpoints <= 0
 		if death:
+			if source == self.sprites[1]:
+				self.add_exp (target.experience, target)
 			# Create death sprite.
 			seq = None
 			if self.data.data.seq.find_collection (target.base_death):
@@ -719,33 +756,45 @@ class View:
 			# Run die script.
 			self.data.run_script (target.script, 'die', (), target)
 			target.kill ()
-	def draw_sprite (self, target, sprite, clip = True):
-		if sprite.brain == TEXTBRAIN:
-			# Print text.
-			if sprite.owner:
-				offset = sprite.owner.x, sprite.owner.y
-				x = offset[0] + sprite.offset[0] + sprite.x - sprite.size[0] / 2
-				y = offset[1] + sprite.offset[1] + sprite.y - sprite.size[1]
-			else:
-				offset = 320, 0
-				x = offset[0] + sprite.offset[0] + sprite.x - sprite.size[0] / 2
-				y = offset[1] + sprite.offset[1] + sprite.y - sprite.size[1] / 2
-			x = x * self.data.data.scale / 50
-			y = y * self.data.data.scale / 50
-			if x < 20 * self.data.data.scale / 50:
-				x = 20 * self.data.data.scale / 50
-			if x + sprite.size[0] >= 620 * self.data.data.scale / 50:
-				x = 620 * self.data.data.scale / 50 - sprite.size[0]
-			if y < 0:
-				y = 0
-			if clip:
-				if y + sprite.size[1] >= 400 * self.data.data.scale / 50:
-					y = 400 * self.data.data.scale / 50 - sprite.size[1]
-			else:
-				if y + sprite.size[1] >= 480 * self.data.data.scale / 50:
-					y = 480 * self.data.data.scale / 50 - sprite.size[1]
-			target.draw_layout (self.data.clipgc if clip else self.data.gc, x, y, sprite.layout, sprite.fg, None)
+	def add_exp (self, amount, source):
+		if amount == 0:
 			return
+		self.data.the_globals['exp'] += amount
+		seq, frame = (source.seq, source.frame) if source.seq is not None else (source.pseq, source.pframe)
+		t = self.add_text (source.x - 320, source.y + seq.frames[frame].boundingbox[1] - 15, str (amount), {}, {})
+		t.my = -1
+		t.set_killdelay = (1000)
+		t.mylimit = (0, True)
+		t.have_brain = True
+		self.events += ((self.data.current_time, self.do_brain (t), t.num),)
+	def draw_textsprite (self, target, sprite, clip = True):
+		if sprite.owner:
+			offset = sprite.owner.x, sprite.owner.y
+			x = offset[0] + sprite.offset[0] + sprite.x - sprite.size[0] / 2
+			y = offset[1] + sprite.offset[1] + sprite.y - sprite.size[1]
+		else:
+			offset = 320, 0
+			x = offset[0] + sprite.offset[0] + sprite.x - sprite.size[0] / 2
+			y = offset[1] + sprite.offset[1] + sprite.y - sprite.size[1] / 2
+		x = x * self.data.data.scale / 50
+		y = y * self.data.data.scale / 50
+		if x < 20 * self.data.data.scale / 50:
+			x = 20 * self.data.data.scale / 50
+		if x + sprite.size[0] >= 620 * self.data.data.scale / 50:
+			x = 620 * self.data.data.scale / 50 - sprite.size[0]
+		if y < 0:
+			y = 0
+		if clip:
+			if y + sprite.size[1] >= 400 * self.data.data.scale / 50:
+				y = 400 * self.data.data.scale / 50 - sprite.size[1]
+		else:
+			if y + sprite.size[1] >= 480 * self.data.data.scale / 50:
+				y = 480 * self.data.data.scale / 50 - sprite.size[1]
+		# Draw a black shadow first, then the text.
+		target.draw_layout (self.data.clipgc if clip else self.data.gc, x - 1, y - 1, sprite.layout, self.data.data.colors[0], None)
+		target.draw_layout (self.data.clipgc if clip else self.data.gc, x, y, sprite.layout, sprite.fg, None)
+		return
+	def draw_sprite (self, target, sprite, clip = True):
 		if sprite.seq == None:
 			assert sprite.pseq != None
 			seq = (sprite.pseq, sprite.pframe)
@@ -820,7 +869,7 @@ class View:
 		for s in clicking:
 			self.data.run_script (s.script, 'click', (), s)
 		# Handle dink attacking.
-		if self.data.current_weapon != None and self.data.items[self.data.current_weapon] != None:
+		if self.data.current_weapon > 0 and self.data.items[self.data.current_weapon] != None:
 			self.data.run_script (self.data.items[self.data.current_weapon][0], 'use', (), None)
 		else:
 			if not a:
@@ -871,6 +920,26 @@ class View:
 		if 0 < self.data.current_magic < len (self.data.magic) and self.data.magic[self.data.current_magic][1] is not None:
 			magic = self.data.magic[self.data.current_magic]
 			self.draw_frame (self.bg, (self.data.data.seq.find_seq (magic[1]), magic[2]), (194, 454), 100, (0, 0, 0, 0), False)
+		for stat in ('strength', 'defense', 'magic', 'exp', 'lifemax', 'life', 'gold'):
+			self.stat_info[stat][0] = self.data.the_globals[stat]
+			if stat != 'lifemax':
+				self.draw_stat (stat)
+	def draw_stat (self, stat):
+		if stat == 'life':
+			# TODO: draw life bar.
+			pass
+		else:
+			# Draw number.
+			info = self.stat_info[stat]
+			s = '%0*d' % (info[3], info[0])
+			for p, d in enumerate (s):
+				self.draw_stat_digit (stat, len (s) - p - 1, ord (d) - ord ('0'))
+	def draw_stat_digit (self, stat, pos, digit):
+		if digit == 0:
+			digit = 10
+		self.stat_info[stat][1].x = self.stat_info[stat][2] - pos * self.stat_info[stat][3]
+		self.stat_info[stat][1].frame = digit
+		self.draw_sprite (self.bg, self.stat_info[stat][1])
 	def add_text (self, x, y, text, the_statics, the_locals, fg = -2, owner = None):
 		t = Sprite (self.data, x = x, y = y, brain = 'text', view = self)
 		t.que = -1000
@@ -1002,14 +1071,14 @@ class View:
 		for n, c in enumerate (self.choice):
 			layout = self.make_layout (c[1], 250)
 			size = layout.get_pixel_size ()
-			self.choice[n] = (c[0], c[1], 320 - size[0] / 2, size[1], layout, self.data.data.colors[-2])
+			self.choice[n] = (c[0], c[1], 320 - size[0] / 2, size[1], layout)
 		if stop:
 			self.stopped = self.data.current_time, [x for x in self.events if x[2] != -2], self.kill_queue
 			self.kill_queue = []
 			self.events = [x for x in self.events if x[2] == -2]
 		layout = self.make_layout (title, 250)
 		size = layout.get_pixel_size ()
-		self.choice_title = (title, 320 - size[0] / 2, 100, layout, self.data.data.colors[-2], size[1])
+		self.choice_title = (title, 320 - size[0] / 2, 100, layout, size[1])
 		# Register choice_button as wait_for_button callback.
 		self.wait_for_button = self.choice_button
 	def warp_time (self):
@@ -1025,36 +1094,55 @@ class View:
 
 class Play (gtk.DrawingArea):
 	"Widget for playing dink."
-	def __init__ (self, data):
-		"Arguments: dink data"
-		gtk.DrawingArea.__init__ (self)
-		self.data = data
+	def load_game (self):
+		self.data.set_window (self.window)
 		self.offset = 20 * self.data.scale / 50
 		self.current_time = datetime.datetime.utcnow ()
 		self.checkpoint = self.current_time
+		self.the_globals = {}
+		nextcode = 1
+		for s in self.data.world.sprite:
+			s.editcode = nextcode
+			nextcode += 1
+		self.editor_sprites = {}
+		for s in self.data.world.sprite:
+			self.editor_sprites[s.editcode] = s
+		self.scripts = self.data.script.compile (set (('PYDINK',)))
+		for v in gtkdink.dink.the_globals:
+			self.the_globals[v] = gtkdink.dink.the_globals[v]
+		self.functions = gtkdink.dink.functions
+		self.next_sprite = 2
+		self.the_globals['player_map'] = None
+		self.items = [None] * 17
+		self.magic = [None] * 9
+		self.current_weapon = 0
+		self.current_magic = 0
+		self.winw = 12 * self.data.scale + 2 * self.offset
+		self.winh = 8 * self.data.scale + 80 * self.data.scale / 50
+		self.set_size_request (self.winw, self.winh)
+		self.clipgc.set_clip_rectangle (gtk.gdk.Rectangle (self.offset, 0, self.data.scale * 12, self.data.scale * 8))
+		self.buffer = gtk.gdk.Pixmap (self.window, self.winw, self.winh)
+		self.fade_pixbuf = gtk.gdk.Pixbuf (gtk.gdk.COLORSPACE_RGB, True, 8, self.winw, self.winh)
+		self.views = [View (self)]
+		self.current_view = 0
+		self.views[0].make_hardmap ()
+		self.views[0].sprites[1].clip = False
+		self.views[0].sprites[1].que = -100000
+		self.views[0].sprites[1].script = 'dinfo'
+		# Run start.c (before first update).
+		self.run_script ('start', 'main', (), None)
+		self.expose (self, (0, 0, self.winw, self.winh));
+		self.schedule_next ()
+	def __init__ (self, data):
+		self.data = data
+		gtk.DrawingArea.__init__ (self)
 		self.set_can_focus (True)
 		self.connect_after ('realize', self.start)
 		self.control_down = 0
 		self.cursor = [False, False, False, False]
 		self.space = False
 		self.shift = False
-		self.the_globals = {}
-		nextcode = 1
-		for s in data.world.sprite:
-			s.editcode = nextcode
-			nextcode += 1
-		self.scripts = data.script.compile ()
-		for v in gtkdink.dink.the_globals:
-			self.the_globals[v] = gtkdink.dink.the_globals[v]
-		self.functions = gtkdink.dink.functions
-		self.next_sprite = 2
-		self.views = []
-		self.current_view = 0
-		self.the_globals['player_map'] = None
-		self.items = [None] * 17
-		self.magic = [None] * 9
-		self.current_weapon = None
-		self.current_magic = None
+		self.offset = 20 * self.data.scale / 50
 		self.winw = 12 * self.data.scale + 2 * self.offset
 		self.winh = 8 * self.data.scale + 80 * self.data.scale / 50
 		self.set_size_request (self.winw, self.winh)
@@ -1064,13 +1152,9 @@ class Play (gtk.DrawingArea):
 		color = gtk.gdk.Color ()
 		cursor = gtk.gdk.Cursor(pixmap, pixmap, color, color, 0, 0)
 		self.window.set_cursor (cursor)
-		# Initialize gtkdink.
-		self.data.set_window (self.window)
 		# Set up GCs and pixmaps.
 		self.gc = gtk.gdk.GC (self.window)
 		self.clipgc = gtk.gdk.GC (self.window)
-		self.clipgc.set_clip_rectangle (gtk.gdk.Rectangle (self.offset, 0, self.data.scale * 12, self.data.scale * 8))
-		self.buffer = gtk.gdk.Pixmap (self.window, self.winw, self.winh)
 		# Set up events.
 		self.connect ('expose-event', self.expose)
 		self.connect ('key-press-event', self.keypress)
@@ -1080,15 +1164,7 @@ class Play (gtk.DrawingArea):
 		self.connect ('motion-notify-event', self.move)
 		self.connect ('enter-notify-event', self.enter)
 		self.add_events (gtk.gdk.KEY_PRESS_MASK | gtk.gdk.KEY_RELEASE_MASK | gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK | gtk.gdk.POINTER_MOTION_MASK | gtk.gdk.POINTER_MOTION_HINT_MASK | gtk.gdk.ENTER_NOTIFY_MASK)
-		self.views.append (View (self))
-		self.views[0].make_hardmap ()
-		self.views[0].sprites[1].clip = False
-		self.views[0].sprites[1].que = -100000
-		self.views[0].sprites[1].script = 'dinfo'
-		# Run start.c (before first update).
-		self.run_script ('start', 'main', (), None)
-		self.expose (widget, (0, 0, self.winw, self.winh));
-		self.schedule_next ()
+		self.load_game ()
 	def schedule_next (self):
 		self.get_view ().schedule_next ()
 	def play_music (self, music):
@@ -1133,6 +1209,7 @@ class Play (gtk.DrawingArea):
 		if name not in self.functions[fname]:
 			yield 'error', "script doesn't exist: %s.%s" % (fname, name)
 			return
+		#print 'running %s.%s' % (fname, name)
 		retval, argnames = self.functions[fname][name]
 		stack = [[self.scripts[fname][name]]]
 		pos = [0]
@@ -1367,7 +1444,7 @@ class Play (gtk.DrawingArea):
 				self.get_view ().choice = None
 				yield ('return', 0)
 			else:
-				self.get_view ().prepare_choice (expr[0] == 'choice_stop', title = self.build_string (expr[2][0][1], the_statics, the_locals))
+				self.get_view ().prepare_choice (expr[0] == 'choice_stop', title = '' if expr[2] is None else self.build_string (expr[2][0][1], the_statics, the_locals))
 				yield ('choice', 0)
 				ret = self.get_view ().choice_response
 				yield ('return', ret)
@@ -1421,13 +1498,14 @@ class Play (gtk.DrawingArea):
 		return self.views[self.current_view]
 	def Internal (self, name, args, the_statics, the_locals):
 		view = self.get_view ()
+		if name.startswith ('sp_'):
+			if args[0] not in view.sprites:
+				yield ('return', 0)
+				return
 		if name == 'activate_bow':
 			view.bow = True, 0
 		elif name == 'add_exp':
-			self.the_globals['exp'] += args[0]
-			t = view.add_text (0, 0, [str (args[0])], {}, {}, owner = view.sprites[args[1]])
-			t.set_killdelay = (1000)
-			t.my = -1
+			view.add_exp (args[0], args[1])
 		elif name == 'add_item':
 			try:
 				idx = self.items[1:].index (None) + 1
@@ -1447,15 +1525,24 @@ class Play (gtk.DrawingArea):
 			yield ('return', idx)
 			return
 		elif name == 'arm_magic':
-			self.current_magic = self.the_globals['cur_magic']
+			if 1 <= self.the_globals['cur_magic'] < len (self.magic) and self.magic[self.the_globals['cur_magic']] is not None:
+				self.current_magic = self.the_globals['cur_magic']
+			else:
+				self.current_magic = 0
 		elif name == 'arm_weapon':
-			self.current_weapon = self.the_globals['cur_weapon']
+			if 1 <= self.the_globals['cur_weapon'] < len (self.items) and self.items[self.the_globals['cur_weapon']] is not None:
+				self.current_weapon = self.the_globals['cur_weapon']
+			else:
+				self.current_weapon = 0
 		elif name == 'busy':
 			if args[0] not in view.sprites:
 				yield ('return', 0)
 			else:
 				sprite = view.sprites[args[0]]
 				yield ('return', sprite.speech if sprite.speech != None else 0)
+			return
+		elif name == 'compare_item_script':
+			yield ('return', int (0 < args[0] < len (self.items) and self.items[args[0]] is not None and self.items[args[0]] == args[1]))
 			return
 		elif name == 'compare_sprite_script':
 			if args[0] not in view.sprites:
@@ -1465,19 +1552,21 @@ class Play (gtk.DrawingArea):
 				yield ('return', int (sprite.script == args[0]))
 			return
 		elif name == 'compare_magic':
-			yield ('return', int (self.current_magic > 0 and self.magic[self.current_magic] == args[0]))
+			yield ('return', int (0 < self.current_magic < len (self.magic) and self.magic[self.current_magic] is not None and self.magic[self.current_magic][0] == args[0]))
+			return
+		elif name == 'compare_magic_script':
+			yield ('return', int (0 < args[0] < len (self.magic) and self.magic[args[0]] is not None and self.magic[args[0]][0] == args[1]))
 			return
 		elif name == 'compare_weapon':
-			yield ('return', int (self.current_weapon > 0 and self.items[self.current_weapon] == args[0]))
+			yield ('return', int (0 < self.current_weapon < len (self.items) and self.items[self.current_weapon] is not None and self.items[self.current_weapon][0] == args[0]))
 			return
 		elif name == 'copy_bmp_to_screen':
-			# TODO? handle palette stuff... If I want it...
 			view.bg.draw_drawable (self.gc, self.data.get_image (args[0], self.data.scale), 0, 0, 0, 0, self.winw, self.winh)
 		elif name == 'count_item':
-			yield ('return', sum ([i[0] == args[0] for i in self.items if i != None]))
+			yield ('return', sum ([i[0] == args[0] for i in self.items[1:] if i != None]))
 			return
 		elif name == 'count_magic':
-			yield ('return', sum ([i[0] == args[0] for i in self.magic if i != None]))
+			yield ('return', sum ([i[0] == args[0] for i in self.magic[1:] if i != None]))
 			return
 		elif name == 'create_sprite':
 			s = view.add_sprite (args[0], args[1], args[2], args[3], args[4])
@@ -1510,34 +1599,70 @@ class Play (gtk.DrawingArea):
 		elif name == 'draw_status':
 			view.draw_status ()
 		elif name == 'editor_seq':
-			# TODO
-			pass
+			if args[0] not in self.editor_sprites:
+				yield ('return', 0)
+			else:
+				spr = self.editor_sprites[args[0]]
+				if len (args) <= 1:
+					yield ('return', self.data.find_seq (spr.seq).code)
+				else:
+					spr.seq = args[0]
+					yield ('return', 0)
+			return
 		elif name == 'editor_frame':	#
-			if len (args) <= 1:
-				yield ('return', view.sprites[args[0]].editcode if args[0] in view.sprites else 0)
-				return
-			# TODO
-		elif name == 'editor_type':	#
-			# TODO
-			pass
-		elif name == 'fade_down':
-			view.fade = 500, False
-		elif name == 'fade_up':
-			view.fade = 500, True
+			if args[0] not in self.editor_sprites:
+				yield ('return', 0)
+			else:
+				spr = self.editor_sprites[args[0]]
+				if len (args) <= 1:
+					yield ('return', spr.frame)
+				else:
+					spr.frame = args[0]
+					yield ('return', 0)
+			return
+		elif name == 'editor_set_sprite':	#
+			if args[0] in self.editor_sprites:
+				spr = self.editor_sprites[args[0]]
+				spr.layer = args[1]
+				spr.hard = args[2]
+			yield ('return', 0)
+			return
+		elif name == 'editor_kill_sprite':	#
+			if args[0] in self.editor_sprites:
+				spr = self.editor_sprites[args[0]]
+				# TODO: record time that a sprite should be disabled. This should not be wall clock time like in the original Dink.
+		elif name in ('fade_down', 'fade_down_stop'):
+			if view.fade[1]:
+				if view.fade[0] != 0:
+					view.fade = (501 - view.fade[0], False, view.fade[2])
+				else:
+					view.fade = 500, False, self.current_time
+			if name == 'fade_down_stop':
+				yield ('stop', lambda x: view.fade_block.append (x))
+		elif name in ('fade_up', 'fade_up_stop'):
+			if not view.fade[1]:
+				if view.fade[0] != 0:
+					view.fade = (501 - view.fade[0], True, view.fade[2])
+				else:
+					view.fade = 500, True, self.current_time
+			if name == 'fade_up_stop':
+				yield ('stop', lambda x: view.fade_block.append (x))
 		elif name == 'fill_screen':
 			view.bg.draw_rectangle (self.gc, True, 0, 0, 640 * self.data.scale / 50, 480 * self.data.scale / 50)
 		elif name == 'free_items':
-			yield ('return', sum ([i == None for i in self.items]))
+			yield ('return', sum ([i == None for i in self.items[1:]]))
 			return
 		elif name == 'free_magic':
-			yield ('return', sum ([i == None for i in self.magic]))
+			yield ('return', sum ([i == None for i in self.magic[1:]]))
 			return
 		elif name == 'freeze':
-			if args[0] not in view.sprites:
-				yield ('error', 'nonexistent sprite')
-			else:
+			if args[0] in view.sprites:
 				view.sprites[args[0]].frozen = True
-				yield ('return', 0)
+				if view.sprites[args[0]].mxlimit is None and view.sprites[args[0]].mylimit is None:
+					view.sprites[args[0]].mx = 0
+					view.sprites[args[0]].my = 0
+					view.sprites[args[0]].set_state ('idle')
+			yield ('return', 0)
 			return
 		elif name == 'game_exist':
 			# TODO
@@ -1548,44 +1673,58 @@ class Play (gtk.DrawingArea):
 		elif name == 'get_item_seq':
 			yield ('return', 0 if not 0 <= args[0] < len (self.items) or self.items[args[0]] is None else self.data.seq.find_seq (self.items[args[0]][1]).code)
 			return
+		elif name == 'get_last_bow_power':
+			yield ('return', view.bow[1])
+			return
 		elif name == 'get_magic_frame':
 			yield ('return', 0 if not 0 <= args[0] < len (self.magic) or self.magic[args[0]] is None else self.magic[args[0]][2])
 			return
 		elif name == 'get_magic_seq':
 			yield ('return', 0 if not 0 <= args[0] < len (self.magic) or self.magic[args[0]] is None else self.data.seq.find_seq (self.magic[args[0]][1]).code)
 			return
-		elif name == 'get_last_bow_power':
-			yield ('return', view.bow[1])
-			return
+		elif name == 'get_next_sprite_with_this_brain':
+			# TODO
+			pass
 		elif name == 'get_rand_sprite_with_this_brain':
+			# TODO
 			pass
 		elif name == 'get_sprite_with_this_brain':
+			# TODO
 			pass
 		elif name == 'get_version':
-			pass
+			yield ('return', 10000)
+			return
 		elif name == 'hurt':
-			pass
-		elif name == 'init':
-			pass
+			if args[0] in view.sprites:
+				view.hurt (args[1], view.sprites[args[0]], None)
 		elif name == 'initfont':
+			# TODO
 			pass
 		elif name == 'inside_box':
+			# TODO
 			pass
 		elif name == 'is_script_attached':
+			# TODO
 			pass
 		elif name == 'kill_all_sounds':
+			# TODO
 			pass
 		elif name == 'kill_cur_item':
+			# TODO
 			pass
 		elif name == 'kill_cur_magic':
+			# TODO
 			pass
 		elif name == 'kill_game':
 			gtk.main_quit ()
 		elif name == 'kill_shadow':
+			# TODO
 			pass
 		elif name == 'kill_this_item':
+			# TODO
 			pass
 		elif name == 'kill_this_magic':
+			# TODO
 			pass
 		elif name == 'kill_this_task':
 			yield ('kill', 0)
@@ -1599,6 +1738,7 @@ class Play (gtk.DrawingArea):
 			else:
 				print ("Warning: not killing view %d: it doesn't exist" % args[0])
 		elif name == 'load_game':
+			# TODO
 			pass
 		elif name == 'load_screen':
 			view.load_screen ()
@@ -1636,22 +1776,28 @@ class Play (gtk.DrawingArea):
 			yield ('stop', lambda x: setattr (view.sprites[args[0]], 'mblock', x))
 			# Always ignore hardness. TODO?
 		elif name == 'playmidi':
+			# TODO
 			pass
 		elif name == 'playsound':
+			# TODO
 			pass
 		elif name == 'preload_seq':
+			# TODO
 			pass
 		elif name == 'push_active':
 			view.push_active = args[0]
 		elif name == 'random':
+			# TODO
 			pass
 		elif name == 'reset_timer':
+			# TODO
 			pass
 		elif name == 'restart_game':
-			pass
-		elif name == 'run_script_by_number':
-			pass
+			self.data = gtkdink.GtkDink (gamename, gamescale, False)
+			self.load_game ()
+			yield ('kill', 0)
 		elif name == 'save_game':
+			# TODO
 			pass
 		elif name == 'say':
 			if args[1] not in view.sprites:
@@ -1697,10 +1843,13 @@ class Play (gtk.DrawingArea):
 			view.screenlock = args[0] != 0
 			view.draw_status ()
 		elif name == 'script_attach':
+			# TODO
 			pass
 		elif name == 'set_callback_random':
+			# TODO
 			pass
 		elif name == 'set_dink_speed':
+			# TODO
 			pass
 		elif name == 'set_keep_mouse':
 			# The pointer is never disabled, even though it is usually not used.
@@ -1711,162 +1860,122 @@ class Play (gtk.DrawingArea):
 				self.current_view = args[0]
 			self.views[self.current_view].warp_time ()
 		elif name == 'show_bmp':
+			# TODO
 			pass
 		elif name == 'sound_set_kill':
+			# TODO
 			pass
 		elif name == 'sound_set_survive':
+			# TODO
 			pass
 		elif name == 'sound_set_vol':
+			# TODO
 			pass
 		elif name == 'sp':
 			for s in view.sprites:
 				if view.sprites[s].name == args[0]:
 					yield ('return', s)
 					return
+			yield ('return', 0)
+			return
 		elif name == 'sp_active':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if args[1] == 0:
 				view.sprites[args[0]].kill ()
 		elif name == 'sp_attack_hit_sound':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_attack_hit_sound_speed':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_attack_wait':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_base_attack':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			view.sprites[args[0]].base_attack = args[1]
 		elif name == 'sp_base_death':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			view.sprites[args[0]].base_death = args[1]
 		elif name == 'sp_base_idle':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			view.sprites[args[0]].base_idle = args[1]
 		elif name == 'sp_base_walk':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			view.sprites[args[0]].base_walk = args[1]
 		elif name == 'sp_brain':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].brain)
 				return
-			view.sprites[args[0]].brain = gtkdink.dink.make_brain (args[1])
-			if not view.sprites[args[0]].have_brain:
-				view.sprites[args[0]].have_brain = True
-				view.events += ((self.current_time, view.do_brain (view.sprites[args[0]]), args[0]),)
+			b = gtkdink.dink.make_brain (args[1])
+			if (view.sprites[args[0]].brain == TEXTBRAIN) ^ (b == TEXTBRAIN):
+				print ('Warning: changing brain to or from text is not allowed')
+			else:
+				view.sprites[args[0]].brain = gtkdink.dink.make_brain (args[1])
+				if not view.sprites[args[0]].have_brain:
+					view.sprites[args[0]].have_brain = True
+					view.events += ((self.current_time, view.do_brain (view.sprites[args[0]]), args[0]),)
 		elif name == 'sp_brain_parm':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].brain_parm)
 				return
 			view.sprites[args[0]].brain_parm = args[1]
 		elif name == 'sp_brain_parm2':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].brain_parm2)
 				return
 			view.sprites[args[0]].brain_parm2 = args[1]
 		elif name == 'sp_defense':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_dir':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].dir)
 				return
 			view.sprites[args[0]].dir = args[1]
 			view.sprites[args[0]].set_state (view.sprites[args[0]].state)
 		elif name == 'sp_disabled':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_distance':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].distance)
 				return
 			view.sprites[args[0]].distance = args[1]
 		elif name == 'sp_editor_num':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			yield ('return', view.sprites[args[0]].editor_num)
+			return
 		elif name == 'sp_exp':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_flying':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_follow':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_frame':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].frame)
 				return
 			view.sprites[args[0]].frame = args[1]
 		elif name == 'sp_frame_delay':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_gold':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
+			if len (args) <= 1:
+				yield ('return', view.sprites[args[0]].gold)
 				return
+			view.sprites[args[0]].gold = args[1]
 		elif name == 'sp_nohard':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_hitpoints':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
+			if len (args) <= 1:
+				yield ('return', view.sprites[args[0]].hitpoints)
 				return
+			view.sprites[args[0]].hitpoints = args[1]
 		elif name == 'sp_kill':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			view.sprites[args[0]].set_killdelay (args[1] if args[1] > 0 else None)
 		elif name == 'sp_move_nohard':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_mx':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].mx)
 				return
@@ -1875,9 +1984,6 @@ class Play (gtk.DrawingArea):
 				view.sprites[args[0]].have_brain = True
 				view.events += ((self.current_time, self.do_brain (view.sprites[args[0]]), args[0]),)
 		elif name == 'sp_my':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].my)
 				return
@@ -1886,136 +1992,99 @@ class Play (gtk.DrawingArea):
 				view.sprites[args[0]].have_brain = True
 				view.events += ((self.current_time, self.do_brain (view.sprites[args[0]]), args[0]),)
 		elif name == 'sp_noclip':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', not view.sprites[args[0]].clip)
 				return
 			view.sprites[args[0]].clip = not args[1]
 		elif name == 'sp_nocontrol':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].nocontrol)
 				return
 			view.sprites[args[0]].nocontrol = args[1]
 		elif name == 'sp_nodraw':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].nodraw)
 				return
 			view.sprites[args[0]].nodraw = args[1]
 		elif name == 'sp_nohit':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].nohit)
 				return
 			view.sprites[args[0]].nohit = args[1]
 		elif name == 'sp_pframe':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', not view.sprites[args[0]].pframe)
 				return
 			view.sprites[args[0]].pframe = args[1]
 		elif name == 'sp_picfreeze':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_pseq':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
 			view.sprites[args[0]].pseq = self.data.seq.find_seq (args[1])
 		elif name == 'sp_que':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].que)
 				return
 			view.sprites[args[0]].que = args[1]
 		elif name == 'sp_range':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].range)
 				return
 			view.sprites[args[0]].range = args[1]
 		elif name == 'sp_reverse':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_script':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			view.sprites[args[0]].script = args[1]
 		elif name == 'sp_seq':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
+			if len (args) <= 1:
+				yield ('return', 0 if view.sprites[args[0]].seq is None else view.sprites[args[0]].seq.code)
 				return
 			view.sprites[args[0]].seq = self.data.seq.find_seq (args[1])
+			view.sprites[args[0]].last_time = self.current_time
+			if not view.sprites[args[0]].have_brain:
+				view.sprites[args[0]].have_brain = True
+				view.events += ((self.current_time, view.do_brain (view.sprites[args[0]]), args[0]),)
 		elif name == 'sp_size':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
+			if len (args) <= 1:
+				yield ('return', view.sprites[args[0]].size)
 				return
+			view.sprites[args[0]].size = args[1]
 		elif name == 'sp_sound':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
+			# TODO
+			pass
 		elif name == 'sp_speed':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].speed)
 				return
 			view.sprites[args[0]].speed = args[1]
 		elif name == 'sp_strength':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
+			if len (args) <= 1:
+				yield ('return', view.sprites[args[0]].strength)
 				return
+			view.sprites[args[0]].strength = args[1]
 		elif name == 'sp_target':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
+			if len (args) <= 1:
+				yield ('return', view.sprites[args[0]].target)
 				return
+			view.sprites[args[0]].target = args[1]
 		elif name == 'sp_timing':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].timing)
 				return
 			view.sprites[args[0]].timing = args[1]
 		elif name == 'sp_touch_damage':
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].touch_damage)
 				return
 			view.sprites[args[0]].touch_damage = args[1]
 		elif name == 'sp_x':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].x)
 				return
 			view.sprites[args[0]].x = args[1]
 		elif name == 'sp_y':	#
-			if args[0] not in view.sprites:
-				yield ('return', 0)
-				return
 			if len (args) <= 1:
 				yield ('return', view.sprites[args[0]].y)
 				return
@@ -2052,18 +2121,20 @@ class Play (gtk.DrawingArea):
 			view.load_screen ()
 			view.draw_status ()
 			if view.fade[1] == False:
-				view.fade = 500, True
-		elif name == 'stop_entire_game':
-			pass
+				view.fade = 500, True, self.current_time
 		elif name == 'stop_wait_for_button':
 			pass
 		elif name == 'stopcd':
+			# TODO
 			pass
 		elif name == 'stopmidi':
+			# TODO
 			pass
 		elif name == 'turn_midi_off':
+			# TODO
 			pass
 		elif name == 'turn_midi_on':
+			# TODO
 			pass
 		elif name == 'unfreeze':
 			view.sprites[args[0]].frozen = False
@@ -2081,12 +2152,13 @@ class Play (gtk.DrawingArea):
 			return
 		yield ('return', 0)
 
-name = sys.argv[1]
-game = Play (gtkdink.GtkDink (name, 50, False))
+gamescale = 50
+gamename = sys.argv[1]
+game = Play (gtkdink.GtkDink (gamename, gamescale, False))
 window = gtk.Window ()
-shortname = os.path.basename (name)
+shortname = os.path.basename (gamename)
 if shortname == '':
-	shortname = os.path.basename (os.path.dirname (name))
+	shortname = os.path.basename (os.path.dirname (gamename))
 window.set_title ('%s - PyDink' % os.path.basename (shortname))
 window.add (game)
 window.connect ('destroy', gtk.main_quit)

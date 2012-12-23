@@ -62,6 +62,7 @@ import shutil
 import StringIO
 import pickle
 import glib
+import xdg.BaseDirectory
 # }}}
 # {{{ Error handling
 error_message = ''
@@ -178,30 +179,30 @@ def make_brain (name):
 predefined_statics = ['current_sprite']
 predefined = ['savegameinfo']
 default_globals = {
-		"exp": 0,
-		"strength": 3,
-		"defense": 0,
-		"cur_weapon": 0,
-		"cur_magic": 0,
-		"gold": 0,
-		"magic": 0,
-		"magic_level": 0,
-		"magic_cost": 0,
-		"vision": 0,
-		"result": 0,
-		"speed": 1,
-		"timing": 0,
-		"lifemax": 10,
-		"life": 10,
-		"level": 1,
-		"player_map": 1,
-		"last_text": 0,
-		"update_status": 0
+		'exp': 0,
+		'strength': 3,
+		'defense': 0,
+		'cur_weapon': 0,
+		'cur_magic': 0,
+		'gold': 0,
+		'magic': 0,
+		'magic_level': 0,
+		'magic_cost': 0,
+		'vision': 0,
+		'result': 0,
+		'speed': 1,
+		'timing': 0,
+		'lifemax': 10,
+		'life': 10,
+		'level': 1,
+		'player_map': 1,
+		'last_text': 0,
+		'update_status': 0
 	}
 default_statics = {
-		"missile_target": 0,
-		"enemy_sprite": 0,
-		"missile_source": 0
+		'missile_target': 0,
+		'enemy_sprite': 0,
+		'missile_source': 0
 	}
 the_globals = {}
 for i in default_globals:
@@ -466,6 +467,11 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 					a[1] = ('const', s.code)
 	elif name == 'sp_nohard':
 		name = 'sp_hard'
+	elif name == 'show_bmp':
+		a.append (('const', 0))
+	elif name in ('fade_up_stop', 'fade_down_stop'):
+		# These are not supported by original Dink; use the "normal" ones instead. (Note: for fade_down, this behaves as fade_down_stop.)
+		name = name[:-5]
 	elif name in ('create_view', 'set_view', 'kill_view', 'get_item_seq', 'get_item_frame', 'get_magic_seq', 'get_magic_frame'):
 		error ("'%s' cannot be used when building for original Dink" % name)
 	bt = ''
@@ -700,7 +706,9 @@ internal_functions = {
 		'editor_frame': 'iI',
 		'editor_type': 'iI',
 		'fade_down': '',
+		'fade_down_stop': '',
 		'fade_up': '',
+		'fade_up_stop': '',
 		'fill_screen': 'i',
 		'free_items': '',
 		'free_magic': '',
@@ -754,7 +762,7 @@ internal_functions = {
 		'set_dink_speed': 'i',
 		'set_keep_mouse': 'i',
 		'set_view': 'i',
-		'show_bmp': 'bii',
+		'show_bmp': 'bi',
 		'sound_set_kill': 'i',
 		'sound_set_survive': 'ii',
 		'sound_set_vol': 'ii',
@@ -1273,7 +1281,6 @@ def build_function_def (data, fname, dink, my_statics, my_globals):
 	sp_que (1, 20000);\r
 	sp_noclip (1, 1);\r
 ''' % (make_brain ('pointer'), dink.seq.find_seq ('special').code)
-	print impl[1]
 	for s in impl[1]:
 		ret += build_statement (s, ra[0], '\t', fname, dink, None, None, (my_locals, my_statics, my_globals))
 	clear_mangled (my_locals)
@@ -1849,7 +1856,7 @@ class World: #{{{
 		mdat.write (make_lsb (int (spr.nohit), 4))
 		mdat.write (make_lsb (spr.touch_damage, 4))
 		mdat.write ('\0' * 20)
-	def find_used_sprites (self):
+	def find_used_sprites (self, defs):
 		# Initial values are all which are used by the engine.
 		cols = set (('idle', 'walk', 'hit', 'push', 'duckbloody', 'duckhead'))
 		seqs = set (('status', 'nums', 'numr', 'numb', 'nump', 'numy', 'special', 'textbox', 'spurt', 'spurtl', 'spurtr', 'health-w', 'health-g', 'health-br', 'health-r', 'level', 'title', 'arrow-l', 'arrow-r', 'shiny', 'menu'))
@@ -1871,7 +1878,7 @@ class World: #{{{
 				if i:
 					cols.add (i)
 		# Fill with values from scripts.
-		used = self.parent.script.find_used_sprites ()
+		used = self.parent.script.find_used_sprites (defs)
 		cols.update (used[0])
 		seqs.update (used[1])
 		# Some collections and seqs which are often used from default scripts.
@@ -1891,7 +1898,7 @@ class World: #{{{
 			seq.used = True
 		return cols, seqs
 	def build (self, root):
-		used_cols, used_seqs = self.find_used_sprites ()
+		used_cols, used_seqs = self.find_used_sprites (defs = set ())
 		used_codes = set ()
 		remove = set ()
 		for i in used_cols:
@@ -2766,101 +2773,21 @@ class Sound: #{{{
 
 class Script: #{{{
 	def create_defaults (self):
-		if 'intro' not in self.data:
-			self.data['intro'] = '''\
-void main ()
-{
-	// The intro script must put Dink at his starting position.
-	player_map = 400;
-	sp_x (1, 320);
-	sp_y (1, 200);
-}
-'''
-		if 'start' not in self.data:
-			self.data['start'] = '''\
-int make_button (int button)
-{
-	sp_noclip (button, 1);
-	sp_touch_damage (button, -1);
-	return button;
-}
-
-void main ()
-{
-	fill_screen (0);
-	sp_script (make_button (create_sprite (76, 40, "button", "button-start", 1)), "game-start");
-	sp_script (make_button (create_sprite (524, 40, "button", "button-continue", 1)), "game-continue");
-	sp_script (make_button (create_sprite (560, 440, "button", "button-quit", 1)), "game-quit");
-}
-'''
-			if 'game-start' not in self.data:
-				self.data['game-start'] = '''\
-void buttonon ()
-{
-	sp_pframe (current_sprite, 2);
-}
-
-void buttonoff ()
-{
-	sp_pframe (current_sprite, 1);
-}
-
-void click ()
-{
-	start_game ();
-	kill_this_task ();
-}
-'''
-			if 'game-continue' not in self.data:
-				self.data['game-continue'] = '''\
-void buttonon ()
-{
-	sp_pframe (current_sprite, 2);
-}
-
-void buttonoff ()
-{
-	sp_pframe (current_sprite, 1);
-}
-
-void click ()
-{
-	int game = choice ("&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"&savegameinfo;",
-		"Nevermind");
-	if (game == 11 || !game_exist (game))
-		return;
-	stopmidi ();
-	stopcd ();
-	load_game (game);
-	kill_this_task ();
-}
-'''
-			if 'game-quit' not in self.data:
-				self.data['game-quit'] = '''\
-void buttonon ()
-{
-	sp_pframe (current_sprite, 2);
-}
-
-void buttonoff ()
-{
-	sp_pframe (current_sprite, 1);
-}
-
-void click ()
-{
-	kill_game ();
-}
-'''
+		self.default = {}
+		for basedir in ['.'] + list (xdg.BaseDirectory.load_data_paths ('pydink')):
+			d = os.path.join (basedir, 'default-scripts')
+			if not os.path.exists (d):
+				continue
+			for f in os.listdir (d):
+				base, ext = os.path.splitext (f)
+				if ext != os.extsep + 'c':
+					print ('Warning: ignoring %s because of wrong extension' % os.path.join (d, f))
+					continue
+				if base.lower () in self.default:
+					continue
+				self.default[base.lower ()] = open (os.path.join (d, f)).read ()
+				if base.lower () not in self.data:
+					self.data[base.lower ()] = self.default[base.lower ()]
 	def __init__ (self, parent):
 		self.parent = parent
 		self.data = {}
@@ -2870,24 +2797,48 @@ void click ()
 		d = os.path.join (parent.root, "script")
 		if os.path.exists (d):
 			for s in os.listdir (d):
-				ext = os.extsep + 'c'
-				if not s.endswith (ext):
+				base, ext = os.path.splitext (s)
+				if ext != os.extsep + 'c':
 					continue
-				base = s[:-len (ext)]
-				nice_assert (base not in self.data, 'duplicate definition of script %s' % base)
-				self.data[base] = open (os.path.join (d, s)).read ()
+				nice_assert (base.lower () not in self.data, 'duplicate definition of script %s' % base)
+				self.data[base.lower ()] = open (os.path.join (d, s)).read ()
 		self.create_defaults ()
 	def save (self):
 		d = os.path.join (self.parent.root, "script")
 		k = set (self.data.keys ())
+		delete = set ()
+		for s in k:
+			if s in self.default and self.data[s] == self.default[s]:
+				delete.add (s)
+		k -= delete
 		if len (k) > 0:
 			os.mkdir (d)
 			for s in k:
 				open (os.path.join (d, s + os.extsep + 'c'), 'w').write (self.data[s])
-	def find_functions (self, script, funcs):
+	def handle_ifdef (self, script, defs):
+		ret = ''
+		active = 0
+		depth = 0
+		for l in script.split ('\n'):
+			r = re.match (r'^\s*#\s*endif\b', l)
+			if r:
+				if nice_assert (depth > 0, 'endif without if(n)def'):
+					depth -= 1
+				continue
+			r = re.match (r'^\s*#\s*if(n?)def\s+(\w+)\s*$', l)
+			if not r:
+				if active == depth:
+					ret += l + '\n'
+			else:
+				if active == depth and (r.group (1) == 'n' and r.group (2) not in defs or r.group (1) == '' and r.group (2) in defs):
+					active += 1
+				depth += 1
+		return ret
+	def find_functions (self, script, funcs, defs):
 		global max_args
 		my_statics = []
 		my_globals = []
+		script = self.handle_ifdef (script, defs)
 		while True:
 			t, script, isname = token (script)
 			if t is None:
@@ -2944,7 +2895,7 @@ void click ()
 			if max_args < len (args):
 				max_args = len (args)
 		funcs[''] = my_statics, my_globals
-	def compile (self, used = None):
+	def compile (self, defs, used = None):
 		'''Compile all scripts. Return a dictionary of files, each value in it is a dictionary of functions, each value is a sequence of statements.
 		It also fills the functions dictionary, which has fnames as keys and a dict of name:(retval, args) as values, plus '':[statics].
 		Statics is a list of names.'''
@@ -2956,15 +2907,15 @@ void click ()
 			ret[name.lower ()] = {}
 			functions[name.lower ()] = {}
 			filename = name
-			self.find_functions (self.data[name], functions[name.lower ()])
+			self.find_functions (self.data[name], functions[name.lower ()], defs)
 		for name in self.data:
 			filename = name
-			for f in tokenize (self.data[name.lower ()], self.parent, name.lower (), used = used):
+			for f in tokenize (self.handle_ifdef (self.data[name.lower ()], defs), self.parent, name.lower (), used = used):
 				ret[name.lower ()][f[0]] = f[2]
 		return ret
-	def find_used_sprites (self):
+	def find_used_sprites (self, defs):
 		ret = [set (), set ()]
-		self.compile (used = ret)
+		self.compile (used = ret, defs = defs)
 		return ret
 	def build (self, root):
 		# Write story/*
@@ -2977,7 +2928,7 @@ void click ()
 		for name in self.data:
 			functions[name.lower ()] = {}
 			filename = name
-			self.find_functions (self.data[name], functions[name.lower ()])
+			self.find_functions (self.data[name], functions[name.lower ()], set ())
 		if error_message != '':
 			return
 		for i in the_globals:
@@ -2990,7 +2941,7 @@ void click ()
 			nice_assert (name not in ('button6', 'main'), 'scripts must not be called button6.c (use map.c instead) or main.c')
 			filename = name
 			f = open (os.path.join (d, outname + os.extsep + 'c'), 'w')
-			f.write (preprocess (self.data[name], self.parent, name))
+			f.write (preprocess (self.handle_ifdef (self.data[name], set ()), self.parent, name))
 		# Write main.c
 		s = open (os.path.join (d, 'main' + os.extsep + 'c'), 'w')
 		s.write ('void main ()\r\n{\r\n')
