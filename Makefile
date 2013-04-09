@@ -14,8 +14,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-all: pde.gui makecache.gui
+all: all-dep
 	./pde.py
+
+all-dep: pde.gui makecache.gui
 
 %.dmod: pde.py pde.gui
 	./pde.py $(subst .dmod,,$@)
@@ -26,4 +28,11 @@ cache: makecache.py makecache.gui
 %: %.in
 	../xmlgen/xmlgen <$< >$@
 
-.PHONY: current
+clean:
+	rm -f *.pyc *.pyo
+
+release: clean all-dep
+	rm release.zip
+	zip -r release.zip $(wildcard *[^p])
+
+.PHONY: release all all-dep clean
