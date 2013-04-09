@@ -2667,8 +2667,6 @@ viewcollection = ViewCollection ()
 viewtiles = ViewTiles ()
 viewworld = ViewWorld ()
 
-the_gui = gui.Gui ('pydink', gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld })
-
 def show_open ():
 	the_gui.show_open = True
 def show_save_as ():
@@ -2729,88 +2727,92 @@ def play (n = None, x = None, y = None):
 	the_gui.statusbar = 'Done play-testing'
 
 
+events = {}
+
 # Menubar
-the_gui.file_new = new_game
-the_gui.file_open = show_open
-the_gui.open = new_game
-the_gui.file_save = save
-the_gui.file_save_as = show_save_as
-the_gui.save_as = save_as
-the_gui.file_quit = lambda: the_gui (False)
-the_gui.edit_deselect_all = deselect_all
-the_gui.edit_select_all = select_all
-the_gui.edit_invert_select = select_invert
-the_gui.jump = jump
-the_gui.jump_next = jump_next
-the_gui.dmod_edit_info = lambda: do_edit ('info', 'txt')
-the_gui.dmod_edit_start = lambda: do_edit ('start')
-the_gui.dmod_edit_intro = lambda: do_edit ('intro')
-the_gui.dmod_edit_init = lambda: do_edit ('init')
-the_gui.dmod_edit_script = lambda: do_edit (the_gui.dmod_script)
-the_gui.dmod_delete_script = do_delete_script
-the_gui.dmod_build = lambda: data.build ()
-the_gui.dmod_play = play
-the_gui.sprite_edit = edit_sprite_scripts
-the_gui.sprite_nohit = toggle_nohit
-the_gui.sprite_toggle_warp = toggle_warp
-the_gui.sprite_clear_warp = clear_warp
-the_gui.sprite_hard = toggle_hard
-the_gui.map_insert = map_insert
-the_gui.map_delete = map_delete
-the_gui.map_edit_hard = edit_map_hardness
-the_gui.map_edit = edit_map_script
-the_gui.map_indoor = toggle_indoor
-the_gui.help_about = show_about
+events['file_new'] = new_game
+events['file_open'] = show_open
+events['open'] = new_game
+events['file_save'] = save
+events['file_save_as'] = show_save_as
+events['save_as'] = save_as
+events['file_quit'] = lambda: the_gui (False)
+events['edit_deselect_all'] = deselect_all
+events['edit_select_all'] = select_all
+events['edit_invert_select'] = select_invert
+events['jump'] = jump
+events['jump_next'] = jump_next
+events['dmod_edit_info'] = lambda: do_edit ('info', 'txt')
+events['dmod_edit_start'] = lambda: do_edit ('start')
+events['dmod_edit_intro'] = lambda: do_edit ('intro')
+events['dmod_edit_init'] = lambda: do_edit ('init')
+events['dmod_edit_script'] = lambda: do_edit (the_gui.dmod_script)
+events['dmod_delete_script'] = do_delete_script
+events['dmod_build'] = lambda: data.build ()
+events['dmod_play'] = play
+events['sprite_edit'] = edit_sprite_scripts
+events['sprite_nohit'] = toggle_nohit
+events['sprite_toggle_warp'] = toggle_warp
+events['sprite_clear_warp'] = clear_warp
+events['sprite_hard'] = toggle_hard
+events['map_insert'] = map_insert
+events['map_delete'] = map_delete
+events['map_edit_hard'] = edit_map_hardness
+events['map_edit'] = edit_map_script
+events['map_indoor'] = toggle_indoor
+events['help_about'] = show_about
 
-the_gui.update_map = update_map_gui
-the_gui.update_layer = update_layer_gui
-#the_gui.update_world = update_world_gui
-#the_gui.update_tile = update_tile_gui
-the_gui.new_sprite = new_sprite
-the_gui.new_map = new_map
-the_gui.edit_map_script = edit_map_script
-the_gui.edit_map_hardness = edit_map_hardness
-the_gui.edit_script = edit_sprite_scripts
-the_gui.new_layer = new_layer
-the_gui.map_lock = map_lock
+events['update_map'] = update_map_gui
+events['update_layer'] = update_layer_gui
+#events['update_world'] = update_world_gui
+#events['update_tile'] = update_tile_gui
+events['new_sprite'] = new_sprite
+events['new_map'] = new_map
+events['edit_map_script'] = edit_map_script
+events['edit_map_hardness'] = edit_map_hardness
+events['edit_script'] = edit_sprite_scripts
+events['new_layer'] = new_layer
+events['map_lock'] = map_lock
 
-the_gui.update_sprite_name = lambda: update_sprite_gui ('name', update_sprite_name, type = str)
-the_gui.update_sprite_walk = lambda: update_sprite_gui ('walk', update_sprite_collection, type = str)
-the_gui.update_sprite_idle = lambda: update_sprite_gui ('idle', update_sprite_collection, type = str)
-the_gui.update_sprite_attack = lambda: update_sprite_gui ('attack', update_sprite_collection, type = str)
-the_gui.update_sprite_die = lambda: update_sprite_gui ('die', update_sprite_collection, type = str)
-the_gui.update_sprite_seq = lambda: update_sprite_gui ('seq', update_sprite_seq, type = str)
-the_gui.update_sprite_touchseq = lambda: update_sprite_gui ('touchseq', update_sprite_seq, type = str)
-the_gui.update_sprite_warp = lambda: update_sprite_gui ('warp', update_sprite_warp)
-the_gui.update_sprite_warpmap = lambda: update_sprite_gui ('warpmap', update_sprite_warp_detail)
-the_gui.update_sprite_warpx = lambda: update_sprite_gui ('warpx', update_sprite_warp_detail)
-the_gui.update_sprite_warpy = lambda: update_sprite_gui ('warpy', update_sprite_warp_detail)
-the_gui.update_sprite_nohit = lambda: update_sprite_bool ('nohit')
-the_gui.update_sprite_hard = lambda: update_sprite_bool ('hard')
-the_gui.update_sprite_crop = update_sprite_crop
-the_gui.update_sprite_left = lambda: update_sprite_gui ('left', update_sprite_crop_detail)
-the_gui.update_sprite_top = lambda: update_sprite_gui ('top', update_sprite_crop_detail)
-the_gui.update_sprite_right = lambda: update_sprite_gui ('right', update_sprite_crop_detail)
-the_gui.update_sprite_bottom = lambda: update_sprite_gui ('bottom', update_sprite_crop_detail)
-the_gui.update_sprite_sound = lambda: update_sprite_gui ('sound', type = str)
-the_gui.update_sprite_frame = lambda: update_sprite_gui ('frame')
-the_gui.update_sprite_brain = lambda: update_sprite_gui ('brain', type = str)
-the_gui.update_sprite_script = lambda: update_sprite_gui ('script', type = str)
-the_gui.update_sprite_vision = lambda: update_sprite_gui ('vision')
-the_gui.update_sprite_speed = lambda: update_sprite_gui ('speed')
-the_gui.update_sprite_timing = lambda: update_sprite_gui ('timing')
-the_gui.update_sprite_hitpoints = lambda: update_sprite_gui ('hitpoints')
-the_gui.update_sprite_strength = lambda: update_sprite_gui ('strength')
-the_gui.update_sprite_defense = lambda: update_sprite_gui ('defense')
-the_gui.update_sprite_experience = lambda: update_sprite_gui ('experience')
-the_gui.update_sprite_touch_damage = lambda: update_sprite_gui ('touch_damage')
-the_gui.update_sprite_gold = lambda: update_sprite_gui ('gold')
-the_gui.update_sprite_x = lambda: update_sprite_gui ('x')
-the_gui.update_sprite_y = lambda: update_sprite_gui ('y')
-the_gui.update_sprite_size = lambda: update_sprite_gui ('size')
-the_gui.update_sprite_que = lambda: update_sprite_gui ('que')
-the_gui.update_sprite_layer = update_sprite_layer
-the_gui.update_sprite_map = lambda: update_sprite_gui ('map')
+events['update_sprite_name'] = lambda: update_sprite_gui ('name', update_sprite_name, type = str)
+events['update_sprite_walk'] = lambda: update_sprite_gui ('walk', update_sprite_collection, type = str)
+events['update_sprite_idle'] = lambda: update_sprite_gui ('idle', update_sprite_collection, type = str)
+events['update_sprite_attack'] = lambda: update_sprite_gui ('attack', update_sprite_collection, type = str)
+events['update_sprite_die'] = lambda: update_sprite_gui ('die', update_sprite_collection, type = str)
+events['update_sprite_seq'] = lambda: update_sprite_gui ('seq', update_sprite_seq, type = str)
+events['update_sprite_touchseq'] = lambda: update_sprite_gui ('touchseq', update_sprite_seq, type = str)
+events['update_sprite_warp'] = lambda: update_sprite_gui ('warp', update_sprite_warp)
+events['update_sprite_warpmap'] = lambda: update_sprite_gui ('warpmap', update_sprite_warp_detail)
+events['update_sprite_warpx'] = lambda: update_sprite_gui ('warpx', update_sprite_warp_detail)
+events['update_sprite_warpy'] = lambda: update_sprite_gui ('warpy', update_sprite_warp_detail)
+events['update_sprite_nohit'] = lambda: update_sprite_bool ('nohit')
+events['update_sprite_hard'] = lambda: update_sprite_bool ('hard')
+events['update_sprite_crop'] = update_sprite_crop
+events['update_sprite_left'] = lambda: update_sprite_gui ('left', update_sprite_crop_detail)
+events['update_sprite_top'] = lambda: update_sprite_gui ('top', update_sprite_crop_detail)
+events['update_sprite_right'] = lambda: update_sprite_gui ('right', update_sprite_crop_detail)
+events['update_sprite_bottom'] = lambda: update_sprite_gui ('bottom', update_sprite_crop_detail)
+events['update_sprite_sound'] = lambda: update_sprite_gui ('sound', type = str)
+events['update_sprite_frame'] = lambda: update_sprite_gui ('frame')
+events['update_sprite_brain'] = lambda: update_sprite_gui ('brain', type = str)
+events['update_sprite_script'] = lambda: update_sprite_gui ('script', type = str)
+events['update_sprite_vision'] = lambda: update_sprite_gui ('vision')
+events['update_sprite_speed'] = lambda: update_sprite_gui ('speed')
+events['update_sprite_timing'] = lambda: update_sprite_gui ('timing')
+events['update_sprite_hitpoints'] = lambda: update_sprite_gui ('hitpoints')
+events['update_sprite_strength'] = lambda: update_sprite_gui ('strength')
+events['update_sprite_defense'] = lambda: update_sprite_gui ('defense')
+events['update_sprite_experience'] = lambda: update_sprite_gui ('experience')
+events['update_sprite_touch_damage'] = lambda: update_sprite_gui ('touch_damage')
+events['update_sprite_gold'] = lambda: update_sprite_gui ('gold')
+events['update_sprite_x'] = lambda: update_sprite_gui ('x')
+events['update_sprite_y'] = lambda: update_sprite_gui ('y')
+events['update_sprite_size'] = lambda: update_sprite_gui ('size')
+events['update_sprite_que'] = lambda: update_sprite_gui ('que')
+events['update_sprite_layer'] = update_sprite_layer
+events['update_sprite_map'] = lambda: update_sprite_gui ('map')
+
+the_gui = gui.Gui ('pydink', gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld }, events = events)
 
 the_gui.about = {
 	'name': 'PyDink',
