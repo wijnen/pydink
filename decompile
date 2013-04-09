@@ -63,19 +63,20 @@ try:
 	for s in target.seq.custom_seqs:
 		# Convert frames to png and change paths.
 		for f in s.frames[1:]:
-			file = dink.filepart (*f.cache)
-			im = Image.open (file).convert ('RGBA')
-			ar = numpy.array (im)
-			sentinel = 255 if s.type == 'black' else 4 * 255	# alpha is always 255 at this point.
-			alpha = Image.fromarray (numpy.array (numpy.sum (ar, 2) != sentinel, dtype = numpy.uint8) * 255)
-			im.putalpha (alpha)
-			base = os.path.splitext (os.path.basename (f.cache[0]))[0]
-			dirname = os.path.join (root, 'seq', base[:-2])
-			filename = os.path.join (dirname, base[-2:] + os.extsep + 'png')
-			if not os.path.exists (dirname):
-				os.makedirs (dirname)
-			im.save (filename)
-			f.cache = (filename, 0, os.stat (filename).st_size)
+			if f.cache:
+				file = dink.filepart (*f.cache)
+				im = Image.open (file).convert ('RGBA')
+				ar = numpy.array (im)
+				sentinel = 255 if s.type == 'black' else 4 * 255	# alpha is always 255 at this point.
+				alpha = Image.fromarray (numpy.array (numpy.sum (ar, 2) != sentinel, dtype = numpy.uint8) * 255)
+				im.putalpha (alpha)
+				base = os.path.splitext (os.path.basename (f.cache[0]))[0]
+				dirname = os.path.join (root, 'seq', base[:-2])
+				filename = os.path.join (dirname, base[-2:] + os.extsep + 'png')
+				if not os.path.exists (dirname):
+					os.makedirs (dirname)
+				im.save (filename)
+				f.cache = (filename, 0, os.stat (filename).st_size)
 	# }}}
 
 	# {{{ Read and parse sound.

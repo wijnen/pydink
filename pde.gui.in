@@ -66,20 +66,19 @@ gtk
 					VBox expand=:False
 						Notebook show_tabs=:True switch_page=set_mode expand=:False
 							VBox label=:DMod name=dmod_num set_page=set_dmod_edit
-								Table columns=2 expand=:False
+								Table columns=3 expand=:False
 									'Preview
 									FileChooserButton action=:open filename=preview
 									'Splash
 									FileChooserButton action=:open filename=splash
-									Button right=:2 clicked=dmod_edit_info
+									Button right=:3 clicked=dmod_edit_info
 										'Edit DMod info
-									Button right=:2 clicked=dmod_edit_start
-										'Edit start.c
-									Button right=:2 clicked=dmod_edit_intro
-										'Edit intro.c
-									Button right=:2 clicked=dmod_edit_init
-										'Edit init.c
-									Button right=:2 clicked=dmod_play
+									ComboBoxEntryText content=set_scripts text=dmod_script
+									Button clicked=dmod_edit_script
+										'Edit
+									Button clicked=dmod_delete_script
+										'Delete
+									Button right=:3 clicked=dmod_play
 										'Play DMod
 							VBox label=:Sprite name=sprite_num set_page=set_sprite_edit
 								ComboBoxText changed=new_sprite value=sprite text=sprite_text content=set_spritelist expand=:False

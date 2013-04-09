@@ -23,6 +23,7 @@ import dink
 import gtk
 import glib
 import struct
+import Image
 # }}}
 
 class GtkDink (dink.Dink): # {{{
@@ -87,6 +88,16 @@ class GtkDink (dink.Dink): # {{{
 				return None
 			tile = self.load_pixbuf (t, self.hard_scale)
 			self.cache_add ('h', name, tile)
+		return tile
+	def get_hard_tiles_PIL (self, name):
+		tile = self.cache_get ('P', name)
+		if tile == None:
+			t = self.tile.get_hard_file (name)
+			if t == None:
+				self.cache_add ('P', name, None)
+				return None
+			tile = Image.open (dink.filepart (*t[:3]))
+			self.cache_add ('P', name, tile)
 		return tile
 	def get_color (self, c):
 		return self.colors[c if 0 <= c < len (self.colors) else 0]

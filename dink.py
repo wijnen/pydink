@@ -231,7 +231,11 @@ def readlines (f):
 
 def get (d, member, default = None):
 	if member not in d:
-		nice_assert (default is not None and default not in (int, str), 'member %s has no default, but is missing in file' % member)
+		if not nice_assert (default is not None and default not in (int, str), 'member %s has no default, but is missing in file' % member):
+			if default == str:
+				return d, ''
+			else:
+				return d, 0
 		return d, default
 	if default is None:
 		ret = d[member]
@@ -378,10 +382,11 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	add_item
 	add_magic
 	create_sprite
-	editor_type
+	editor_kill
+	editor_layer
 	get_rand_sprite_with_this_brain
 	get_sprite_with_this_brain
-	playmidi
+	playmusic
 	playsound
 	preload_seq
 	sp
@@ -398,6 +403,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 
 	return before, expression result.'''
 	global current_tmp
+	bt = ''
 	a = list (args)
 	nice_assert (len (a) == 0 or a[-1] != -1 or internal_functions[name][-1] not in 'SI', 'last argument of %s may be omitted, but must not be -1' % name)
 	if len (a) < len (internal_functions[name]):
@@ -425,10 +431,24 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 			if not nice_assert (s is not None, 'invalid sequence in create_sprite: %s' % a[3][1][0]):
 				return '', ''
 			a[3] = ('const', s.code)
+	elif name == 'editor_layer':
+		name = 'editor_type'
+		if not nice_assert (a[1][0] == 'const', 'layer for editor_layer must be a compile-time constant value when compiling'):
+			return '', ''
+		# TODO
+	elif name == 'editor_kill':
+		name = 'editor_type'
+		if a[1][0] != 'const' or a[1][1] >= 4:
+			a[1] = ('const', 6)
+		elif a[1][1] >= 2:
+			a[1] = ('const', 7)
+		else:
+			a[1] = ('const', 8)
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
 		a[0] = ('const', make_brain (a[0][1][0]))
-	elif name == 'playmidi':
+	elif name == 'playmusic':
 		a[0] = ('const', dink.sound.find_music (a[0][1][0]))
+		name = 'playmidi'
 	elif name == 'playsound':
 		a[0] = ('const', dink.sound.find_sound (a[0][1][0]))
 	elif name == 'preload_seq':
@@ -472,9 +492,14 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	elif name in ('fade_up_stop', 'fade_down_stop'):
 		# These are not supported by original Dink; use the "normal" ones instead. (Note: for fade_down, this behaves as fade_down_stop.)
 		name = name[:-5]
+	elif name == 'activate_bow':
+		bt += indent + 'activate_bow();\r\n'
+		name = 'get_last_bow_power'
+		c = dink.seq.find_collection (a[0][1][0])
+		nice_assert (c['code'] == 100, 'Original dink only supports collection 100 for activate_bow')
+		a = []
 	elif name in ('create_view', 'set_view', 'kill_view', 'get_item_seq', 'get_item_frame', 'get_magic_seq', 'get_magic_frame'):
 		error ("'%s' cannot be used when building for original Dink" % name)
-	bt = ''
 	at = []
 	for i in a:
 		b, e = build_expr (dink, fname, i, indent, as_bool = False)
@@ -679,7 +704,7 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 				return b + indent + 'int &tmp%d;\r\n' % tmp + indent + '&tmp%d = &result;\r\n' % tmp, '&tmp%d' % tmp
 
 internal_functions = {
-		'activate_bow': '',
+		'activate_bow': 'c',
 		'add_exp': 'ii',
 		'add_item': 'sqi',
 		'add_magic': 'sqi',
@@ -704,7 +729,8 @@ internal_functions = {
 		'draw_status': '',
 		'editor_seq': 'iI',
 		'editor_frame': 'iI',
-		'editor_type': 'iI',
+		'editor_kill': 'ii',
+		'editor_layer': 'ii',
 		'fade_down': '',
 		'fade_down_stop': '',
 		'fade_up': '',
@@ -718,7 +744,6 @@ internal_functions = {
 		'get_item_seq': 'i',
 		'get_magic_frame': 'i',
 		'get_magic_seq': 'i',
-		'get_last_bow_power': '',
 		'get_rand_sprite_with_this_brain': '*i',
 		'get_sprite_with_this_brain': '*i',
 		'get_version': '',
@@ -740,7 +765,7 @@ internal_functions = {
 		'load_screen': '',
 		'move': 'iiii',
 		'move_stop': 'iiii',
-		'playmidi': 's',
+		'playmusic': 's',
 		'playsound': 'siiii',
 		'preload_seq': 'q',
 		'push_active': 'i',
@@ -792,7 +817,6 @@ internal_functions = {
 		'sp_nohard': 'iI',
 		'sp_hitpoints': 'iI',
 		'sp_kill': 'ii',
-		'sp_move_nohard': 'iI',
 		'sp_mx': 'iI',
 		'sp_my': 'iI',
 		'sp_noclip': 'iI',
@@ -801,7 +825,6 @@ internal_functions = {
 		'sp_nohit': 'iI',
 		'sp_notouch': 'iI',
 		'sp_pframe': 'iI',
-		'sp_picfreeze': 'ii',
 		'sp_pseq': 'iQ',
 		'sp_que': 'iI',
 		'sp_range': 'iI',
@@ -1563,6 +1586,12 @@ class Sprite: #{{{
 			maxy = (self.y + boundingbox[3]) / (50 * 8)
 			ret += [r for r in (y * 32 + x + 1 for y in range (miny, maxy + 1) for x in range (minx, maxx + 1)) if r in world.map]
 		return ret
+	def is_bg (self):
+		return self.parent.layer_background[self.layer]
+	def is_fg (self):
+		return not self.parent.layer_background[self.layer] and self.parent.layer_visible[self.layer]
+	def is_visible (self):
+		return self.parent.layer_visible[self.layer]
 	def register (self, world = None):
 		if world is None:
 			world = self.parent.world
@@ -1765,7 +1794,8 @@ class World: #{{{
 				continue
 			for s in os.listdir (layerdir):
 				r = re.match ('(([^.].+?)(-\d+)?)\.txt$', s)
-				nice_assert (r, 'sprite has incorrect filename')
+				if not nice_assert (r, 'sprite has incorrect filename'):
+					continue
 				filename = os.path.join (layerdir, s)
 				info = readlines (open (filename))
 				s = r.group (1)
@@ -2321,8 +2351,12 @@ class Seq: #{{{
 				seq.frames += [None] * (frame + 1 - len (seq.frames))
 			if seq.frames[frame] is None:
 				seq.frames[frame] = self.makeframe ()
-			seq.frames[frame].cache = (filename, 0, os.stat (filename).st_size)
-			seq.frames[frame].size = Image.open (filename).size
+			try:
+				seq.frames[frame].size = Image.open (filename).size
+				seq.frames[frame].cache = (filename, 0, os.stat (filename).st_size)
+			except IOError:
+				seq.frames[frame].size = (0, 0)
+				seq.frames[frame].cache = None
 		filename = os.path.join (sd, 'info' + os.extsep + 'txt')
 		if os.path.exists (filename):
 			infofile = open (filename)
@@ -2375,9 +2409,11 @@ class Seq: #{{{
 				seq.frames[f].delay = None
 			if seq.frames[f].cache is None:
 				info, source = get (info, 'source-%d' % f, str)
-				source = source.split ()
-				seq.frames[f].source = [source[0], int (source[1])]
-				nice_assert (len (seq.frames[f].source) == 2, 'frame source must be two numbers')
+				if source != '':
+					source = source.split ()
+					seq.frames[f].source = [source[0], int (source[1])]
+				else:
+					seq.frames[f].source = None
 		if seq.position is None or seq.hardbox is None:
 			bb = None
 			for f in range (1, frames):
@@ -2551,7 +2587,10 @@ class Seq: #{{{
 		put (f, 'frames', 0 if seq.frames[-1].source is None else len (seq.frames), 0)
 		for frame in range (1, len (seq.frames)):
 			if seq.frames[frame].source is None:
-				open (os.path.join (d, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (seq.frames[frame].cache[0], 'rb').read ())
+				if seq.frames[frame].cache:
+					open (os.path.join (d, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (seq.frames[frame].cache[0], 'rb').read ())
+				else:
+					sys.stderr.write ('warning: sequence has no image: %s' % seq.name)
 			put (f, 'position-%d' % frame, '' if seq.frames[frame].position == seq.position else '%d %d' % tuple (seq.frames[frame].position), '')
 			put (f, 'hardbox-%d' % frame, '' if seq.frames[frame].hardbox == seq.hardbox else '%d %d %d %d' % tuple (seq.frames[frame].hardbox), '')
 			put (f, 'special-%d' % frame, seq.frames[frame].special, False)
@@ -2774,7 +2813,7 @@ class Sound: #{{{
 class Script: #{{{
 	def create_defaults (self):
 		self.default = {}
-		for basedir in ['.'] + list (xdg.BaseDirectory.load_data_paths ('pydink')):
+		for basedir in [os.path.realpath (os.path.dirname (sys.argv[0]))] + list (xdg.BaseDirectory.load_data_paths ('pydink')):
 			d = os.path.join (basedir, 'default-scripts')
 			if not os.path.exists (d):
 				continue

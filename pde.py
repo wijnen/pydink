@@ -533,6 +533,8 @@ class ViewMap (View): # {{{
 		lst.sort (key = lambda x: x[0][1] - x[1].que)
 		# Now draw them all in the right order. First the pixbufs, then hardness, then wireframe information.
 		for s in lst:
+			if s[2] is None:
+				continue
 			# Visibility -1 is not present; visibility is 0, 1 or 2.
 			alpha = [0, 0x80, 0xff][visibility (s[1].layer)]
 			if alpha == 0:
@@ -567,6 +569,8 @@ class ViewMap (View): # {{{
 				self.draw_tile_hard ((x * screenzoom - offset[0], y * screenzoom - offset[1]), (origin[0] + x, origin[1] + y))
 		# Sprite hardness.
 		for spr in lst:
+			if spr[2] is None:
+				continue
 			vis = visibility (spr[1].layer)
 			if spr[0][0] == None:
 				# This is a warp target.
@@ -598,6 +602,8 @@ class ViewMap (View): # {{{
 					self.buffer.draw_line (gc, x, y - s, x, y + s)
 				self.buffer.draw_arc (gc, False, x - a, y - a, a * 2, a * 2, 0, 64 * 360)
 		for spr in lst:
+			if spr[2] is None:
+				continue
 			if spr[3]:
 				continue
 			vis = visibility (spr[1].layer)
@@ -1287,9 +1293,10 @@ class ViewMap (View): # {{{
 					pos = (sp.x - 20, sp.y) # 20, because sprite positions are relative to map origin; first tile starts at (20,0).
 					if point:
 						seq = data.seq.find_seq (sp.seq)
-						(hotx, hoty), (left, top, right, bottom), box = data.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
-						if rx[0] >= left and ry[0] >= top and rx[0] < right and ry[0] < bottom:
-							try_add (pos[1] - sp.que, sp, False, pos)
+						if seq:
+							(hotx, hoty), (left, top, right, bottom), box = data.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
+							if rx[0] >= left and ry[0] >= top and rx[0] < right and ry[0] < bottom:
+								try_add (pos[1] - sp.que, sp, False, pos)
 					else:
 						if pos[0] >= rx[0] and pos[0] < rx[1] and pos[1] >= ry[0] and pos[1] < ry[1]:
 							try_add (pos[1] - sp.que, sp, False, pos)
@@ -2314,7 +2321,7 @@ def update_world_gui ():
 	View.update (viewmap)
 
 def do_edit (s, ext = 'c'):
-	if s == '':
+	if s == '' or data is None:
 		return
 	name = os.path.join (tmpdir, s + os.extsep + ext)
 	if s not in data.script.data:
@@ -2323,7 +2330,22 @@ def do_edit (s, ext = 'c'):
 		# Create the empty file.
 		if not os.path.exists (name):
 			open (name, 'w')
+		the_gui.set_scripts = data.script.data.keys ()
 	os.system (the_gui.script_editor.replace ('$SCRIPT', name))
+
+def do_delete_script ():
+	if data is None:
+		return
+	script = the_gui.dmod_script
+	if script not in data.script.data:
+		the_gui.statusbar = "Cannot delete script %s: it doesn't exist" % script
+	else:
+		del data.script.data[script]
+		the_gui.statusbar = "Deleted script %s" % script
+		# Remove the file.
+		os.unlink (os.path.join (tmpdir, script + os.extsep + 'c'))
+		# Update the list.
+		the_gui.set_scripts = data.script.data.keys ()
 
 def do_edit_hard (h, map):
 	if h == '' or map not in data.world.map:
@@ -2612,6 +2634,7 @@ def new_game (root = None):
 	the_gui.active_layer = 1
 	updating = False
 	viewmap.update ()
+	the_gui.set_scripts = data.script.data.keys ()
 
 def new_layer ():
 	#the_gui.statusbar = 'Active layer: %d' % the_gui.active_layer
@@ -2709,6 +2732,7 @@ def play (n = None, x = None, y = None):
 # Menubar
 the_gui.file_new = new_game
 the_gui.file_open = show_open
+the_gui.open = new_game
 the_gui.file_save = save
 the_gui.file_save_as = show_save_as
 the_gui.save_as = save_as
@@ -2722,6 +2746,8 @@ the_gui.dmod_edit_info = lambda: do_edit ('info', 'txt')
 the_gui.dmod_edit_start = lambda: do_edit ('start')
 the_gui.dmod_edit_intro = lambda: do_edit ('intro')
 the_gui.dmod_edit_init = lambda: do_edit ('init')
+the_gui.dmod_edit_script = lambda: do_edit (the_gui.dmod_script)
+the_gui.dmod_delete_script = do_delete_script
 the_gui.dmod_build = lambda: data.build ()
 the_gui.dmod_play = play
 the_gui.sprite_edit = edit_sprite_scripts
