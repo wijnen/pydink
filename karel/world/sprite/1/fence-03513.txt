@@ -1,0 +1,4 @@
+x = 1727
+y = 643
+frame = 4
+hard = no

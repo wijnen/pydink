@@ -1,0 +1,6 @@
+x = 1954
+y = 125
+seq = garden
+frame = 17
+script = flower
+touch_damage = -1

@@ -1,0 +1,5 @@
+x = 808
+y = 1274
+seq = greenmerchant 3
+base_walk = greenmerchant
+hard = no

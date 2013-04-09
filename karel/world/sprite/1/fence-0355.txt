@@ -1,0 +1,4 @@
+x = 1331
+y = 533
+frame = 3
+hard = no

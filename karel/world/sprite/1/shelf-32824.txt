@@ -1,0 +1,5 @@
+x = 4330
+y = 4091
+script = food
+que = 17
+hard = no

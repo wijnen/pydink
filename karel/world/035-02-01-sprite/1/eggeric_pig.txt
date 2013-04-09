@@ -1,0 +1,6 @@
+x = 1723
+y = 463
+seq = pig 1
+brain = pig
+base_walk = pig
+hard = no

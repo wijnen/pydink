@@ -1,0 +1,4 @@
+x = 1397
+y = 572
+frame = 3
+hard = no

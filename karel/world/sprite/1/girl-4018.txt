@@ -1,0 +1,7 @@
+x = 9799
+y = 5045
+seq = girl 1
+brain = person
+script = hello
+base_walk = girl
+hard = no

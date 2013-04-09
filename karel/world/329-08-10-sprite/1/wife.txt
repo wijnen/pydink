@@ -1,0 +1,10 @@
+x = 5301
+y = 4145
+seq = bluemaiden 3
+base_walk = bluemaiden
+que = -12
+hard = no
+left = 36
+top = 9
+right = 49
+bottom = 19

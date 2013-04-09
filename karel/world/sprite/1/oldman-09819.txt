@@ -1,0 +1,5 @@
+x = 648
+y = 1570
+seq = oldman 9
+base_walk = oldman
+hard = no

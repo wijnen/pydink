@@ -1,0 +1,5 @@
+x = 1586
+y = 345
+frame = 3
+que = 133
+hard = no

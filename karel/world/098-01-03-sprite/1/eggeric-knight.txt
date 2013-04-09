@@ -1,0 +1,11 @@
+x = 1020
+y = 1429
+seq = goldknight 1
+brain = monster
+script = eggeric-fight
+base_walk = goldknight
+base_attack = goldknightattack
+hard = no
+hitpoints = 50
+strength = 10
+touch_damage = 5

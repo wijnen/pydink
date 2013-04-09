@@ -1,0 +1,5 @@
+x = 4317
+y = 4083
+frame = 5
+size = 84
+hard = no

@@ -1,0 +1,4 @@
+x = 1983
+y = 156
+frame = 4
+hard = no

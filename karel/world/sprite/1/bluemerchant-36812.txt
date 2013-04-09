@@ -1,0 +1,7 @@
+x = 9363
+y = 4685
+seq = bluemerchant 1
+brain = person
+script = hello
+base_walk = bluemerchant
+hard = no

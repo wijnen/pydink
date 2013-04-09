@@ -1,0 +1,4 @@
+x = 1463
+y = 608
+frame = 3
+hard = no

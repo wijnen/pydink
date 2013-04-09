@@ -1,0 +1,6 @@
+x = 4359
+y = 4607
+frame = 2
+script = paper4
+que = -15
+hard = no

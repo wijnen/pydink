@@ -1,0 +1,4 @@
+x = 1976
+y = 216
+frame = 2
+hard = no

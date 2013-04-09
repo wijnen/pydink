@@ -1,0 +1,4 @@
+x = 1916
+y = 298
+frame = 4
+hard = no

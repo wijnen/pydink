@@ -1,0 +1,6 @@
+x = 4362
+y = 4514
+frame = 6
+script = scroll1
+que = -16
+hard = no

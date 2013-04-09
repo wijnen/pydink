@@ -1,0 +1,4 @@
+x = 4699
+y = 4098
+script = bottles
+hard = no

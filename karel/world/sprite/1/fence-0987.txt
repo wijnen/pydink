@@ -1,0 +1,4 @@
+x = 1109
+y = 1555
+frame = 2
+hard = no

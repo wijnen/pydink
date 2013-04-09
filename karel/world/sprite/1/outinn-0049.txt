@@ -1,0 +1,4 @@
+x = 1881
+y = 43
+frame = 10
+hard = no

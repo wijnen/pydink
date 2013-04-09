@@ -1,0 +1,4 @@
+x = 327
+y = 193
+seq = food
+frame = 31

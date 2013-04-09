@@ -1,0 +1,5 @@
+x = 4228
+y = 4713
+seq = innwalls
+frame = 23
+hard = no

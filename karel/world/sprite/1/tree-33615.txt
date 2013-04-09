@@ -1,0 +1,4 @@
+x = 9050
+y = 4359
+frame = 9
+hard = no

@@ -1,0 +1,6 @@
+x = 1647
+y = 528
+seq = soldier 1
+script = adelbrecht2
+base_walk = soldier
+hard = no

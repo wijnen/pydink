@@ -1,0 +1,7 @@
+x = 9670
+y = 4479
+seq = oldman 1
+brain = person
+script = hello
+base_walk = oldman
+hard = no

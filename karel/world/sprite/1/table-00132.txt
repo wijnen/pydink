@@ -1,0 +1,5 @@
+x = 193
+y = 377
+frame = 7
+que = 73
+hard = no

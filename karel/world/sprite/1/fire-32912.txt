@@ -1,0 +1,5 @@
+x = 5190
+y = 4085
+brain = repeat
+script = fire
+hard = no

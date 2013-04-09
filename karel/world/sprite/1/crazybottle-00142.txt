@@ -1,0 +1,5 @@
+x = 200
+y = 343
+brain = repeat
+script = apotion
+hard = no

@@ -1,0 +1,6 @@
+x = 1454
+y = 477
+seq = duck 1
+brain = duck
+base_walk = duck
+hard = no

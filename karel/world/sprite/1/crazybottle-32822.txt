@@ -1,0 +1,5 @@
+x = 4729
+y = 4186
+script = apotion
+que = -35
+hard = no

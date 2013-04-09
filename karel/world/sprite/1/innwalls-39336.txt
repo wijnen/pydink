@@ -1,0 +1,5 @@
+x = 4925
+y = 4819
+frame = 30
+que = 24
+hard = no

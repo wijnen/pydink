@@ -1,0 +1,5 @@
+x = 5117
+y = 4572
+frame = 24
+script = fountain
+hard = no

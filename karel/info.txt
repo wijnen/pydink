@@ -1,0 +1,18 @@
+preview = preview
+splash = splash
+
+karel
+Copyright 2011 Bas Wijnen <wijnen@debian.org>
+
+Dink gets banished from the kingdom and turns to stealing (only
+from the rich, of course). One night he meets a strange person...
+
+This is an interactive film. You don't really have much influence
+over the story, you just get to play a few scenes. The story is
+one of the oldest written stories in the world: Charlemagne and
+Elbegast (original Dutch name: Karel ende Elegast). If you don't
+know the story (well), I won't spoil it for you here. :-)
+
+This dmod is written as a test for my new dmod editor. Feel free
+to use it for anything you want. I'd appreciate it if you give me
+credit where appropriate.

@@ -1,0 +1,6 @@
+x = 4304
+y = 4464
+frame = 4
+script = books2
+que = 12
+hard = no

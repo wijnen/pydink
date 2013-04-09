@@ -1,0 +1,5 @@
+x = 425
+y = 255
+brain = repeat
+script = apotion
+hard = no

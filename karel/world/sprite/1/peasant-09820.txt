@@ -1,0 +1,5 @@
+x = 1172
+y = 1539
+seq = peasant 7
+base_walk = peasant
+hard = no

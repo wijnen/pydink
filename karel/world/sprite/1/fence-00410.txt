@@ -1,0 +1,4 @@
+x = 1977
+y = 80
+frame = 3
+hard = no

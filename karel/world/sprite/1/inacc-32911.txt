@@ -1,0 +1,6 @@
+x = 5189
+y = 4091
+frame = 5
+script = fireplace
+que = 9
+hard = no

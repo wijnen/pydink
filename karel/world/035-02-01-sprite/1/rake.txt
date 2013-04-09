@@ -1,0 +1,6 @@
+x = 1603
+y = 547
+seq = tool
+frame = 3
+que = 34
+hard = no

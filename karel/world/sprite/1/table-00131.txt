@@ -1,0 +1,5 @@
+x = 192
+y = 293
+frame = 7
+que = 72
+hard = no

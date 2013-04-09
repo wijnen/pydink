@@ -1,0 +1,4 @@
+x = 194
+y = 313
+frame = 11
+hard = no

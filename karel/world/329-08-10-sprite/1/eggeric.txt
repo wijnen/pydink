@@ -1,0 +1,8 @@
+x = 5287
+y = 4167
+seq = merchant 3
+base_walk = merchant
+hard = no
+left = 33
+right = 45
+bottom = 19

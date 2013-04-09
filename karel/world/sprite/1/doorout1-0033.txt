@@ -1,0 +1,5 @@
+x = 1577
+y = 334
+script = egdeur
+warp = 361 482 320
+touch_seq = doorout1

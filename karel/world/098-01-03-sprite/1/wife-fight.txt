@@ -1,0 +1,5 @@
+x = 669
+y = 1294
+seq = bluemaiden 3
+base_walk = bluemaiden
+hard = no

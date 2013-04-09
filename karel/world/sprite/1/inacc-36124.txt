@@ -1,0 +1,6 @@
+x = 5249
+y = 4415
+frame = 3
+script = bedblock
+hard = no
+touch_damage = -1

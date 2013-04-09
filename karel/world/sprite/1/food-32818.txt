@@ -1,0 +1,6 @@
+x = 4407
+y = 4188
+frame = 14
+script = shopping
+que = -21
+hard = no

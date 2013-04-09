@@ -1,0 +1,5 @@
+x = 4634
+y = 4613
+script = paper1
+que = -15
+hard = no

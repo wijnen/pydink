@@ -1,0 +1,6 @@
+x = 4447
+y = 4605
+frame = 4
+script = gold
+que = -15
+hard = no

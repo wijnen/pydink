@@ -1,0 +1,6 @@
+x = 5355
+y = 4494
+seq = blueknight 1
+script = statue
+base_walk = blueknight
+base_attack = blueknightattack

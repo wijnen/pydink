@@ -1,0 +1,6 @@
+x = 1114
+y = 1571
+seq = redknight 7
+base_walk = redknight
+base_attack = redknightattack
+hard = no

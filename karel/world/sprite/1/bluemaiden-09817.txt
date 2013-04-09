@@ -1,0 +1,5 @@
+x = 751
+y = 1274
+seq = brownmom 3
+base_walk = bluemaiden
+hard = no

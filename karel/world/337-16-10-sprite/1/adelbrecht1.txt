@@ -1,0 +1,8 @@
+x = 9924
+y = 4307
+seq = soldier 1
+brain = person
+script = adelbrecht1
+base_walk = soldier
+base_attack = soldier
+hard = no
