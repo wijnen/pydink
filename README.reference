@@ -1,12 +1,15 @@
 This is a reference of all the functions which can be used in the PyDink
 editor.  They are listed in an order which is deemed appropriate for getting
-aquainted with them. You should be able to try each of them while only knowing
+aquainted with them.  You should be able to try each of them while only knowing
 about the preceding functions.
+
+This list is very incomplete.  Complain to me or read the source for a full
+list.
 
 ctrl-q		quit the program
 ctrl-s		save the dmod
 ctrl-shift-s	save the dmod under a different name (save as)
-=		show world view. click to show normal view on that spot.
+=		show world view.  click to show normal view on that spot.
 ctrl-insert	on empty map screen: create new map screen
 ctrl-insert	on existing map screen: use tiles of this screen as template
 		for future map screen creation.
@@ -32,4 +35,3 @@ ctrl-num	move selected sprites to layer num (0=background)
 num		set active layer to num
 keypad, then left mouse button		change sequence for selected sprites.
 middle mouse button click		paste selected sprites at cursor
-
