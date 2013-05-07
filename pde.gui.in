@@ -50,6 +50,7 @@ gtk
 					MenuItem title="Toggle select warp" action=sprite_toggle_warp
 					MenuItem title="Clear warp" action=sprite_clear_warp
 					MenuItem title="Toggle hard" action=sprite_hard
+					MenuItem title="Toggle use tile hardness" action=sprite_use_hard
 				Menu title=Map
 					MenuItem title="Insert map" action=map_insert
 					MenuItem title="Delete map" action=map_delete
@@ -68,9 +69,9 @@ gtk
 							VBox label=:DMod name=dmod_num set_page=set_dmod_edit
 								Table columns=3 expand=:False
 									'Preview
-									FileChooserButton action=:open filename=preview
+									FileChooserButton right=:3 action=:open filename=preview
 									'Splash
-									FileChooserButton action=:open filename=splash
+									FileChooserButton right=:3 action=:open filename=splash
 									Button right=:3 clicked=dmod_edit_info
 										'Edit DMod info
 									ComboBoxEntryText content=set_scripts text=dmod_script
@@ -88,11 +89,6 @@ gtk
 											Table columns=2
 												'Name
 												Entry changed=update_sprite_name value=name
-												'Map
-												HBox
-													SpinButton range=:0,768 value-changed=update_sprite_map value=map
-													Button clicked=map_lock expand=:False
-														'Current
 												'Brain
 												ComboBoxEntryText changed=update_sprite_brain text=brain
 													'none
@@ -118,10 +114,10 @@ gtk
 													Entry changed=update_sprite_script value=script
 													Button clicked=edit_script
 														'Edit
+												CheckButton right=:2 toggled=update_sprite_use_hard value=use_hard
+													'Use tile hardness
 										Frame label=:Presentation expand=:False
 											Table columns=2
-												'Layer
-												SpinButton range=:0,9 value-changed=update_sprite_layer value=layer
 												'Vision
 												SpinButton range=:0,255 value-changed=update_sprite_vision value=vision
 												'Speed
@@ -131,23 +127,23 @@ gtk
 												'Sound
 												ComboBoxText changed=update_sprite_sound content=set_sounds_list value=sound text=sound_text
 										Frame label=:Combat expand=:False
-											Table columns=2
+											Table columns=4
 												'Hitpoints
 												SpinButton range=:0,10000 value-changed=update_sprite_hitpoints value=hitpoints
 												'Strength
 												SpinButton range=:0,10000 value-changed=update_sprite_strength value=strength
+												'Touch damage
+												SpinButton range=:-1,10000 value-changed=update_sprite_touch_damage value=touch_damage
 												'Defense
 												SpinButton range=:0,10000 value-changed=update_sprite_defense value=defense
 												'Experience
 												SpinButton range=:0,10000 value-changed=update_sprite_experience value=experience
-												'Touch damage
-												SpinButton range=:-1,10000 value-changed=update_sprite_touch_damage value=touch_damage
-												CheckButton right=:2 toggled=update_sprite_nohit value=nohit
-													'Nohit
 												'Gold
 												SpinButton range=:-100000,100000 value-changed=update_sprite_gold value=gold
 									VBox set_label=:Extra
 										Table columns=2 expand=:False
+											'Layer
+											SpinButton range=:0,9 value-changed=update_sprite_layer value=layer
 											'X
 											SpinButton range=:-1000000,1000000 value-changed=update_sprite_x value=x
 											'Y
@@ -161,13 +157,20 @@ gtk
 											'Que
 											SpinButton range=:-10000,10000 value-changed=update_sprite_que value=que
 											'Walk
-											ComboBoxText changed=update_sprite_walk value=basewalk content=set_walk_list text=basewalk_text
+											ComboBoxText changed=update_sprite_walk value=base_walk content=set_walk_list text=base_walk_text
 											'Idle
-											ComboBoxText changed=update_sprite_idle value=baseidle content=set_idle_list text=baseidle_text
+											ComboBoxText changed=update_sprite_idle value=base_idle content=set_idle_list text=base_idle_text
 											'Attack
-											ComboBoxText changed=update_sprite_attack value=baseattack content=set_attack_list text=baseattack_text
+											ComboBoxText changed=update_sprite_attack value=base_attack content=set_attack_list text=base_attack_text
 											'Die
-											ComboBoxText changed=update_sprite_die value=basedeath content=set_death_list text=basedeath_text
+											ComboBoxText changed=update_sprite_die value=base_death content=set_death_list text=base_death_text
+											CheckButton right=:2 toggled=update_sprite_nohit value=nohit
+												'Nohit
+											'Map
+											HBox
+												SpinButton range=:0,768 value-changed=update_sprite_map value=map
+												Button clicked=map_lock expand=:False
+													'Current
 									VBox set_label=:Warp/box
 										Table columns=2 expand=:False
 											CheckButton right=:2 value=warp toggled=update_sprite_warp
@@ -313,7 +316,7 @@ gtk
 									ComboBoxText changed=update_map text=map_music content=set_music_list
 									CheckButton right=:2 value=indoor toggled=update_map
 										'Indoor
-						Label expand=:True
+						HSeparator expand=:True
 						HBox expand=:False
 							'Active Layer
 							SpinButton range=:0,9 value-changed=new_layer value=active_layer

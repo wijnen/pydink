@@ -67,10 +67,9 @@ def make_avg ():
 		if s[1]:
 			# Don't paste warp points.
 			continue
-		# subtract the 20 pixels after computing the average.
 		avg = avg[0] + s[0].x, avg[1] + s[0].y
 		l += 1
-	return (avg[0] / l - 20) * screenzoom / 50, avg[1] / l * screenzoom / 50
+	return (avg[0] / l) * screenzoom / 50, avg[1] / l * screenzoom / 50
 
 def make_dist (a, b):
 	# Make sure it cannot be 0 by adding 1.
@@ -316,6 +315,7 @@ class View (gtk.DrawingArea): # {{{
 		if self.panning:
 			self.offset = [self.offset[x] - diff[x] for x in range (2)]
 			self.clamp_offset ()
+			update_maps ()
 		self.update ()
 	def pos_from_event (self, e):
 		return [(self.offset[x] + int (e[x])) / screenzoom for x in range (2)]
@@ -432,6 +432,12 @@ class View (gtk.DrawingArea): # {{{
 				copybuffer.add ((i[0], i[1], i[2], s[0], s[1], s[2]))
 			copystart = select.start
 			the_gui.setmap = True
+		elif ctrl and not shift and key == gtk.keysyms.Prior:		# Zoom in.
+			viewmap.zoom_screen (True)
+		elif ctrl and not shift and key == gtk.keysyms.Next:		# Zoom out.
+			viewmap.zoom_screen (False)
+		elif ctrl and not shift and key == gtk.keysyms.Home:		# Restore zoom.
+			viewmap.zoom_screen (50)
 		else:
 			return False
 		return True
@@ -533,16 +539,14 @@ class ViewMap (View): # {{{
 		lst.sort (key = lambda x: x[0][1] - x[1].que)
 		# Now draw them all in the right order. First the pixbufs, then hardness, then wireframe information.
 		for s in lst:
-			if s[2] is None:
+			if s[2] is None or s[0][0] == None:
+				# There is no seq, or this is a warp target.
 				continue
 			# Visibility -1 is not present; visibility is 0, 1 or 2.
 			alpha = [0, 0x80, 0xff][visibility (s[1].layer)]
 			if alpha == 0:
 				continue
-			if s[0][0] == None:
-				# This is a warp target.
-				continue
-			(x, y), (left, top, right, bottom), box = data.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+			(x, y), (left, top, right, bottom), box = data.seq.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
 			box = [x * screenzoom / 50 for x in box]
 			w = (right - left) * screenzoom / 50
 			h = (bottom - top) * screenzoom / 50
@@ -559,6 +563,24 @@ class ViewMap (View): # {{{
 					pb.composite (newpb, 0, 0, w, h, 0, 0, 1, 1, gtk.gdk.INTERP_NEAREST, alpha)
 					pb = newpb
 				self.buffer.draw_pixbuf (None, pb, 0, 0, left * screenzoom / 50, top * screenzoom / 50)
+		for s in lst:
+			# Draw per-sprite tile hardness
+			if s[2] is None or s[0][0] == None or not s[1].use_hard:
+				# There is no seq, or this is a warp target, or we don't want sprite hardness.
+				continue
+			hard = data.get_hard_seq (s[2], s[1].frame)
+			if not hard:
+				continue
+			(x, y), (left, top, right, bottom), box = data.seq.get_box (s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+			box = [x * screenzoom / 50 for x in box]
+			w = (right - left) * screenzoom / 50
+			h = (bottom - top) * screenzoom / 50
+			hard = hard.subpixbuf (box[0], box[1], box[2] - box[0], box[3] - box[1])
+			hard = hard.scale_simple (w, h, gtk.gdk.INTERP_NEAREST)
+			newpb = gtk.gdk.Pixbuf (gtk.gdk.COLORSPACE_RGB, True, 8, w, h)
+			newpb.fill (0x00000000)
+			hard.composite (newpb, 0, 0, w, h, 0, 0, 1, 1, gtk.gdk.INTERP_NEAREST, 0x80)
+			self.buffer.draw_pixbuf (None, newpb, 0, 0, left * screenzoom / 50, top * screenzoom / 50)
 		# Tile hardness.
 		origin = [x / screenzoom for x in self.offset]
 		offset = [x % screenzoom for x in self.offset]
@@ -581,7 +603,7 @@ class ViewMap (View): # {{{
 				gc = self.warpbggc if vis < 2 else self.warpgc
 			else:
 				gc = self.bggc if vis < 2 else self.hardgc
-			(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+			(x, y), (left, top, right, bottom), box = data.seq.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 			w = (right - left) * screenzoom / 50
 			h = (bottom - top) * screenzoom / 50
 			if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
@@ -602,7 +624,7 @@ class ViewMap (View): # {{{
 					self.buffer.draw_line (gc, x, y - s, x, y + s)
 				self.buffer.draw_arc (gc, False, x - a, y - a, a * 2, a * 2, 0, 64 * 360)
 		for spr in lst:
-			if spr[2] is None:
+			if spr[0][0] is not None and spr[2] is None:
 				continue
 			if spr[3]:
 				continue
@@ -610,7 +632,7 @@ class ViewMap (View): # {{{
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
 				if spr[1].layer == the_gui.active_layer:
-					(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					(x, y), (left, top, right, bottom), box = data.seq.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 					w = (right - left) * screenzoom / 50
 					h = (bottom - top) * screenzoom / 50
 					if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
@@ -627,7 +649,7 @@ class ViewMap (View): # {{{
 				continue
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
-				(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+				(x, y), (left, top, right, bottom), box = data.seq.get_box (spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 				w = (right - left) * screenzoom / 50
 				h = (bottom - top) * screenzoom / 50
 				if w > 0 and h > 0 and left * screenzoom / 50 >= -w and top * screenzoom / 50 >= -h and left * screenzoom / 50 < self.screensize[0] and top * screenzoom / 50 < self.screensize[1]:
@@ -709,6 +731,7 @@ class ViewMap (View): # {{{
 		self.clamp_offset ()
 		update_maps ()
 		the_gui.statusbar = 'Screen zoom changed'
+		viewtiles.update ()
 	def finish_move (self):
 		# Panning is done with pointer button 2, and should not respond to keys.
 		if self.moveinfo is None or self.moveinfo[0] == 'pan':
@@ -870,7 +893,7 @@ class ViewMap (View): # {{{
 		ap = [p[t] * 50 / screenzoom for t in range (2)]
 		sx = ap[0] / (12 * 50)
 		sy = ap[1] / (8 * 50)
-		ox = ap[0] - sx * 12 * 50 + 20
+		ox = ap[0] - sx * 12 * 50
 		oy = ap[1] - sy * 8 * 50
 		n = sy * 32 + sx + 1
 		self.selecting = False
@@ -898,9 +921,8 @@ class ViewMap (View): # {{{
 			the_gui.statusbar = 'Syncing for playtest'
 			os.system (the_gui.sync)
 			sync ()
-			p = [(self.pointer_pos[x] + self.offset[x]) * 50 / screenzoom for x in range (2)]
-			n = (p[1] / (8 * 50)) * 32 + (p[0] / (12 * 50)) + 1
-			play (n, p[0] % (12 * 50) + 20, p[1] % (8 * 50))
+			n = (ap[1] / (8 * 50)) * 32 + (ap[0] / (12 * 50)) + 1
+			play (n, ap[0] % (12 * 50), ap[1] % (8 * 50))
 		# Edit actions (select + view).
 		elif ctrl and not shift and key == gtk.keysyms.c:	# Copy.
 			self.copy ()
@@ -984,52 +1006,52 @@ class ViewMap (View): # {{{
 			the_gui.statusbar = 'Starting move operation'
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert):	# new sprite from sequence
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewseq.update ()
 			the_gui.setseq = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_1 or key == gtk.keysyms.KP_End):		# new sprite with direction 1
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (1)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_2 or key == gtk.keysyms.KP_Down):	# new sprite with direction 2
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (2)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_3 or key == gtk.keysyms.KP_Next):	# new sprite with direction 3
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (3)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_4 or key == gtk.keysyms.KP_Left):	# new sprite with direction 4
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (4)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_5 or key == gtk.keysyms.KP_Begin):	# new sprite with direction die
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction ('die')
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_6 or key == gtk.keysyms.KP_Right):	# new sprite with direction 6
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (6)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_7 or key == gtk.keysyms.KP_Home):	# new sprite with direction 7
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (7)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_8 or key == gtk.keysyms.KP_Up):		# new sprite with direction 8
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (8)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and (key == gtk.keysyms.KP_9 or key == gtk.keysyms.KP_Prior):	# new sprite with direction 9
 			select.clear ()
-			self.newinfo = p
+			self.newinfo = ap
 			viewcollection.direction (9)
 			the_gui.setcollection = True
 		elif not ctrl and not shift and key == gtk.keysyms.s:
@@ -1039,7 +1061,7 @@ class ViewMap (View): # {{{
 				# - current distance from hotspot
 				# - current size value
 				avg = make_avg ()
-				dist = make_dist (avg, p)
+				dist = make_dist (avg, ap)
 				size = [x[0].size for x in spriteselect]
 				self.moveinfo = 'resize', (avg, dist, size), self.make_cancel ()
 			the_gui.statusbar = 'Starting scale operation'
@@ -1087,8 +1109,8 @@ class ViewMap (View): # {{{
 				if spr[1]:
 					continue
 				remove_warptarget (spr[0])
-				n = (p[1] / (50 * 8)) * 32 + (p[0] / (50 * 12)) + 1
-				spr[0].warp = (n, p[0] % (50 * 12) + 20, p[1] % (50 * 8))
+				n = (ap[1] / (50 * 8)) * 32 + (ap[0] / (50 * 12)) + 1
+				spr[0].warp = (n, ap[0] % (50 * 12), ap[1] % (50 * 8))
 				add_warptarget (spr[0])
 			update_editgui ()
 			the_gui.statusbar = 'Set warp target'
@@ -1122,20 +1144,16 @@ class ViewMap (View): # {{{
 		# Ctrl+cursor: start crop
 		elif ctrl and not shift and key == gtk.keysyms.Left:
 			self.start_crop ()
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			self.moveinfo = 'crop', (4, p), self.make_cancel ()
+			self.moveinfo = 'crop', (4, ap), self.make_cancel ()
 		elif ctrl and not shift and key == gtk.keysyms.Up:
 			self.start_crop ()
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			self.moveinfo = 'crop', (8, p), self.make_cancel ()
+			self.moveinfo = 'crop', (8, ap), self.make_cancel ()
 		elif ctrl and not shift and key == gtk.keysyms.Right:
 			self.start_crop ()
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			self.moveinfo = 'crop', (6, p), self.make_cancel ()
+			self.moveinfo = 'crop', (6, ap), self.make_cancel ()
 		elif ctrl and not shift and key == gtk.keysyms.Down:
 			self.start_crop ()
-			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			self.moveinfo = 'crop', (2, p), self.make_cancel ()
+			self.moveinfo = 'crop', (2, ap), self.make_cancel ()
 		elif not ctrl and not shift and key == gtk.keysyms.t:
 			the_gui.settiles = True
 		elif ctrl and not shift and key == gtk.keysyms.h:
@@ -1233,6 +1251,7 @@ class ViewMap (View): # {{{
 			data.world.map[n].tiles[target[1] % 8][target[0] % 12] = View.find_tile (self, p, select.start[2])
 	def handle_cursor (self, diff):
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
+		ap = [p[t] * 50 / screenzoom for t in range (2)]
 		if self.moveinfo == None:
 			self.offset = [self.offset[t] - diff[t] * self.screensize[t] / 4 for t in range (2)]
 			self.clamp_offset ()
@@ -1249,7 +1268,7 @@ class ViewMap (View): # {{{
 				s[0].size -= diff[1] * 10 + diff[0]
 			# adjust moveinfo to use new data, but keep old cancel data.
 			avg = make_avg ()
-			dist = make_dist (avg, p)
+			dist = make_dist (avg, ap)
 			size = [x[0].size for x in spriteselect]
 			self.moveinfo = 'resize', (avg, dist, size), self.moveinfo[2]
 			update_editgui ()
@@ -1290,11 +1309,11 @@ class ViewMap (View): # {{{
 				for sp in data.world.map[s].sprite:
 					if sp.layer != the_gui.active_layer:
 						continue
-					pos = (sp.x - 20, sp.y) # 20, because sprite positions are relative to map origin; first tile starts at (20,0).
+					pos = (sp.x, sp.y)
 					if point:
 						seq = data.seq.find_seq (sp.seq)
 						if seq:
-							(hotx, hoty), (left, top, right, bottom), box = data.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
+							(hotx, hoty), (left, top, right, bottom), box = data.seq.get_box (sp.size, (sp.x, sp.y), seq.frames[sp.frame], (sp.left, sp.top, sp.right, sp.bottom))
 							if rx[0] >= left and ry[0] >= top and rx[0] < right and ry[0] < bottom:
 								try_add (pos[1] - sp.que, sp, False, pos)
 					else:
@@ -1308,7 +1327,7 @@ class ViewMap (View): # {{{
 				for sp in warptargets[s]:
 					if sp.layer != the_gui.active_layer:
 						continue
-					pos = (sx + sp.warp[1] - 20, sy + sp.warp[2])
+					pos = (sx + sp.warp[1], sy + sp.warp[2])
 					if point:
 						if -20 <= rx[0] - pos[0] < 20 and -20 <= ry[0] - pos[1] < 20:
 							try_add (pos[1] - sp.que, sp, True, pos)
@@ -1345,7 +1364,8 @@ class ViewMap (View): # {{{
 			return
 		if e.button == 2:
 			p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
-			self.moveinfo = 'pan', p, self.make_cancel ()
+			ap = [p[t] * 50 / screenzoom for t in range (2)]
+			self.moveinfo = 'pan', ap, self.make_cancel ()
 			self.panned = False
 			return
 		x, y = [(self.offset[x] + self.pointer_pos[x]) * 50 / screenzoom for x in range (2)]
@@ -1481,7 +1501,7 @@ class ViewMap (View): # {{{
 			else:
 				# Move the warp point.
 				s = [((sp.warp[0] - 1) % 32) * (12 * 50), ((sp.warp[0] - 1) / 32) * (8 * 50)]
-				p = [(sp.warp[1] - 20, sp.warp[2])[t] + diff[t] for t in range (2)]
+				p = [(sp.warp[1], sp.warp[2])[t] + diff[t] for t in range (2)]
 				while p[0] < 0 and s[0] > 0:
 					p[0] += 12 * 50
 					s[0] -= 12 * 50
@@ -1495,7 +1515,7 @@ class ViewMap (View): # {{{
 					p[1] -= 8 * 50
 					s[1] += 8 * 50
 				remove_warptarget (sp)
-				sp.warp = ((s[1] / (8 * 50)) * 32 + (s[0] / (12 * 50)) + 1, p[0] + 20, p[1])
+				sp.warp = ((s[1] / (8 * 50)) * 32 + (s[0] / (12 * 50)) + 1, p[0], p[1])
 				add_warptarget (sp)
 		update_editgui ()
 	def do_crop (self, diff):
@@ -1536,7 +1556,7 @@ class ViewMap (View): # {{{
 		apos = [(self.pointer_pos[t] + self.offset[t]) * 50 / screenzoom for t in range (2)]
 		sx = apos[0] / (50 * 12)
 		sy = apos[1] / (50 * 8)
-		the_gui.statuslabel = '%03d/%03d,%03d' % (sx + 32 * sy + 1, apos[0] - sx * 50 * 12 + 20, apos[1] - sy * 50 * 8)
+		the_gui.statuslabel = '%03d/%03d,%03d' % (sx + 32 * sy + 1, apos[0] - sx * 50 * 12, apos[1] - sy * 50 * 8)
 		self.pointer_tile = [(self.pointer_pos[t] + self.offset[t]) / screenzoom for t in range (2)]
 		if self.moveinfo == None:
 			if not select.empty ():
@@ -1570,7 +1590,8 @@ class ViewMap (View): # {{{
 		elif self.moveinfo[0] == 'resize':
 			# moveinfo[1] is (hotspot, dist, size[]).
 			p = [self.pointer_pos[t] + self.offset[t] for t in range (2)]
-			dist = make_dist (self.moveinfo[1][0], p)
+			ap = [p[t] * 50 / screenzoom for t in range (2)]
+			dist = make_dist (self.moveinfo[1][0], ap)
 			for s in range (len (spriteselect)):
 				if spriteselect[s][1]:
 					continue
@@ -1877,6 +1898,11 @@ class ViewTiles (View): # {{{
 		ctrl = e.state & gtk.gdk.CONTROL_MASK
 		shift = e.state & gtk.gdk.SHIFT_MASK
 		return self.key_global (e.keyval, ctrl, shift) or self.key_tiles (e.keyval, ctrl, shift)
+	def get_pointed_map (self, pos = None):
+		if pos is None:
+			pos = self.pointer_pos
+		ret = [(self.offset[x] + pos[x]) / ((12, 8)[x] * screenzoom) for x in range (2)]
+		return (ret[0], ret[1], ret[0] + ret[1] * 32 + 1)
 	def move (self, widget, e):
 		ex, ey, emask = self.get_window ().get_pointer ()
 		tile = self.pointer_tile
@@ -2083,12 +2109,13 @@ def update_editgui ():
 		the_gui.brain = combine ('brain', '-')
 		the_gui.script = combine ('script', '-')
 		the_gui.speed = combine ('speed', 0)
-		the_gui.basewalk_text = combine ('base_walk', '')
-		the_gui.baseidle_text = combine ('base_idle', '')
-		the_gui.baseattack_text = combine ('base_attack', '')
+		the_gui.base_walk_text = combine ('base_walk', '')
+		the_gui.base_idle_text = combine ('base_idle', '')
+		the_gui.base_attack_text = combine ('base_attack', '')
 		the_gui.timing = combine ('timing', 0)
 		the_gui.que = combine ('que', -1)
 		the_gui.hard = combine ('hard', None)
+		the_gui.use_hard = combine ('use_hard', None)
 		crops = [(s[0].left != 0 or s[0].right != 0 or s[0].top != 0 or s[0].bottom != 0, s[0]) for s in spriteselect if not s[1]]
 		if len (crops) > 0 and all ([c[0] == crops[0][0] for c in crops[1:]]):
 			the_gui.crop = crops[0][0]
@@ -2121,7 +2148,7 @@ def update_editgui ():
 			the_gui.touchseq_text = ts
 		else:
 			the_gui.touchseq_text = '%s %d' % ts
-		the_gui.basedeath_text = combine ('base_death', '')
+		the_gui.base_death_text = combine ('base_death', '')
 		the_gui.gold = combine ('gold', 0)
 		the_gui.hitpoints = combine ('hitpoints', 0)
 		the_gui.strength = combine ('strength', 0)
@@ -2148,12 +2175,13 @@ def update_editgui ():
 	the_gui.brain = sprite.brain
 	the_gui.script = sprite.script
 	the_gui.speed = sprite.speed
-	the_gui.basewalk_text = sprite.base_walk
-	the_gui.baseidle_text = sprite.base_idle
-	the_gui.baseattack_text = sprite.base_attack
+	the_gui.base_walk_text = sprite.base_walk
+	the_gui.base_idle_text = sprite.base_idle
+	the_gui.base_attack_text = sprite.base_attack
 	the_gui.timing = sprite.timing
 	the_gui.que = sprite.que
 	the_gui.hard = sprite.hard
+	the_gui.use_hard = sprite.use_hard
 	the_gui.crop = sprite.left != 0 or sprite.right != 0 or sprite.top != 0 or sprite.bottom != 0
 	the_gui.left = sprite.left
 	the_gui.top = sprite.top
@@ -2170,7 +2198,7 @@ def update_editgui ():
 		the_gui.touchseq_text = sprite.touch_seq
 	else:
 		the_gui.touchseq_text = '%s %d' % sprite.touch_seq
-	the_gui.basedeath_text = sprite.base_death
+	the_gui.base_death_text = sprite.base_death
 	the_gui.gold = sprite.gold
 	the_gui.hitpoints = sprite.hitpoints
 	the_gui.strength = sprite.strength
@@ -2259,7 +2287,7 @@ def update_sprite_seq (sprite, name, value):
 			print ('collection not found: %s', str (seq))
 
 def update_sprite_collection (sprite, name, value):
-	collection = ([''] + collectionlist ())[value]
+	collection = ([''] + collectionlist ())[int (value)]
 	if data.seq.find_collection (collection) != None:
 		setattr (sprite, name, collection)
 	else:
@@ -2372,7 +2400,7 @@ def do_edit_hard (h, map):
 	lst.sort (key = lambda x: x[0][1] - x[1].que)
 	for spr in lst:
 		frame = spr[2].frames[spr[1].frame]
-		(x, y), (left, top, right, bottom), box = data.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+		(x, y), (left, top, right, bottom), box = data.seq.get_box (spr[1].size, spr[0], frame, (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
 		if right <= left or bottom <= top:
 			continue
 		# Draw the pixbuf.
@@ -2392,7 +2420,7 @@ def do_edit_hard (h, map):
 			continue
 		frame = spr[2].frames[spr[1].frame]
 		for x in range (frame.hardbox[2] - frame.hardbox[0]):
-			px = spr[0][0] - 20 + frame.hardbox[0] + x
+			px = spr[0][0] + frame.hardbox[0] + x
 			if not 0 <= px < 600:
 				continue
 			y = spr[0][1] + frame.hardbox[1]
@@ -2407,11 +2435,11 @@ def do_edit_hard (h, map):
 			py = spr[0][1] + frame.hardbox[1] + y
 			if not 0 <= py < 400:
 				continue
-			x = spr[0][0] + frame.hardbox[0] - 20
+			x = spr[0][0] + frame.hardbox[0]
 			if 0 <= x < 600:
 				p = x, py
 				pixels[p] = tuple ([255] + list (pixels[p])[1:])
-			x = spr[0][0] + frame.hardbox[2] - 20
+			x = spr[0][0] + frame.hardbox[2]
 			if 0 <= x < 600:
 				p = x, py
 				pixels[p] = tuple ([255] + list (pixels[p])[1:])
@@ -2440,16 +2468,18 @@ def do_edit_hard (h, map):
 	sync ()
 	viewmap.update ()
 
-def edit_map_hardness ():
+def edit_map_hardness (action = None):
 	map = get_map ()
 	if the_gui.map_hardness == '':
 		the_gui.map_hardness = '%03d' % map
 	do_edit_hard (the_gui.map_hardness, map)
 
-def edit_map_script ():
+def edit_map_script (action = None):
+	if the_gui.map_script == '':
+		the_gui.map_script = 'map%d' % get_map ()
 	do_edit (the_gui.map_script)
 
-def edit_sprite_scripts ():
+def edit_sprite_scripts (action = None):
 	if len (spriteselect) == 0:
 		s = the_gui.script
 		if s != '':
@@ -2479,7 +2509,7 @@ def edit_sprite_scripts ():
 	for s in scripts:
 		do_edit (s)
 
-def toggle_nohit ():
+def toggle_nohit (action = None):
 	for s in spriteselect:
 		if s[1]:
 			continue
@@ -2487,18 +2517,18 @@ def toggle_nohit ():
 	update_editgui ()
 	the_gui.statusbar = 'Toggled nohit property'
 
-def clear_warp ():
+def clear_warp (action = None):
 	for spr in spriteselect:
 		remove_warptarget (spr[0])
 		spr[0].warp = None
 	spriteselect[:] = [s for s in spriteselect if not s[1]]
 	update_editgui ()
 
-def toggle_warp ():
+def toggle_warp (action = None):
 	spriteselect[:] = [(s[0], s[0].warp is not None and not s[1]) for s in spriteselect]
 	update_editgui ()
 
-def toggle_hard ():
+def toggle_hard (action = None):
 	for s in spriteselect:
 		if s[1]:
 			continue
@@ -2506,14 +2536,22 @@ def toggle_hard ():
 		spr.hard = not spr.hard
 	update_editgui ()
 
-def toggle_indoor ():
+def toggle_use_hard (action = None):
+	for s in spriteselect:
+		if s[1]:
+			continue
+		spr = s[0]
+		spr.use_hard = not spr.use_hard
+	update_editgui ()
+
+def toggle_indoor (action = None):
 	n = viewmap.get_pointed_map ()[2]
 	if n not in data.world.map:
 		return
 	data.world.map[n].indoor = not data.world.map[n].indoor
 	update_editgui ()
 
-def map_insert ():
+def map_insert (action = None):
 	n = viewmap.get_pointed_map ()[2]
 	if n in data.world.map:
 		viewmap.mapsource = n
@@ -2531,7 +2569,7 @@ def map_insert ():
 	update_maps ()
 	viewmap.update ()
 
-def map_delete ():
+def map_delete (action = None):
 	n = viewmap.get_pointed_map ()[2]
 	if n not in data.world.map:
 		return
@@ -2553,7 +2591,7 @@ def map_lock (map = None):
 		if s[1]:
 			continue
 		if map is None:
-			sx = (s[0].x - 20) / 50 / 12
+			sx = s[0].x / 50 / 12
 			sy = s[0].y / 50 / 8
 			n = sy * 32 + sx + 1
 			if n not in data.world.map:
@@ -2634,7 +2672,9 @@ def new_game (root = None):
 	the_gui.active_layer = 1
 	updating = False
 	viewmap.update ()
-	the_gui.set_scripts = data.script.data.keys ()
+	scripts = data.script.data.keys ()
+	scripts.sort ()
+	the_gui.set_scripts = scripts
 
 def new_layer ():
 	#the_gui.statusbar = 'Active layer: %d' % the_gui.active_layer
@@ -2755,6 +2795,7 @@ events['sprite_nohit'] = toggle_nohit
 events['sprite_toggle_warp'] = toggle_warp
 events['sprite_clear_warp'] = clear_warp
 events['sprite_hard'] = toggle_hard
+events['sprite_use_hard'] = toggle_use_hard
 events['map_insert'] = map_insert
 events['map_delete'] = map_delete
 events['map_edit_hard'] = edit_map_hardness
@@ -2775,10 +2816,10 @@ events['new_layer'] = new_layer
 events['map_lock'] = map_lock
 
 events['update_sprite_name'] = lambda: update_sprite_gui ('name', update_sprite_name, type = str)
-events['update_sprite_walk'] = lambda: update_sprite_gui ('walk', update_sprite_collection, type = str)
-events['update_sprite_idle'] = lambda: update_sprite_gui ('idle', update_sprite_collection, type = str)
-events['update_sprite_attack'] = lambda: update_sprite_gui ('attack', update_sprite_collection, type = str)
-events['update_sprite_die'] = lambda: update_sprite_gui ('die', update_sprite_collection, type = str)
+events['update_sprite_walk'] = lambda: update_sprite_gui ('base_walk', update_sprite_collection, type = str)
+events['update_sprite_idle'] = lambda: update_sprite_gui ('base_idle', update_sprite_collection, type = str)
+events['update_sprite_attack'] = lambda: update_sprite_gui ('base_attack', update_sprite_collection, type = str)
+events['update_sprite_die'] = lambda: update_sprite_gui ('base_death', update_sprite_collection, type = str)
 events['update_sprite_seq'] = lambda: update_sprite_gui ('seq', update_sprite_seq, type = str)
 events['update_sprite_touchseq'] = lambda: update_sprite_gui ('touchseq', update_sprite_seq, type = str)
 events['update_sprite_warp'] = lambda: update_sprite_gui ('warp', update_sprite_warp)
@@ -2787,6 +2828,7 @@ events['update_sprite_warpx'] = lambda: update_sprite_gui ('warpx', update_sprit
 events['update_sprite_warpy'] = lambda: update_sprite_gui ('warpy', update_sprite_warp_detail)
 events['update_sprite_nohit'] = lambda: update_sprite_bool ('nohit')
 events['update_sprite_hard'] = lambda: update_sprite_bool ('hard')
+events['update_sprite_use_hard'] = lambda: update_sprite_bool ('use_hard')
 events['update_sprite_crop'] = update_sprite_crop
 events['update_sprite_left'] = lambda: update_sprite_gui ('left', update_sprite_crop_detail)
 events['update_sprite_top'] = lambda: update_sprite_gui ('top', update_sprite_crop_detail)

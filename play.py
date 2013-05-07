@@ -1981,6 +1981,9 @@ class Play (gtk.DrawingArea):
 			pass
 		elif name == 'load_screen':
 			view.load_screen ()
+		elif name == 'map_tile':
+			# TODO
+			pass
 		elif name in ('move', 'move_stop'):
 			if args[0] not in view.sprites:
 				yield ('return', 0)

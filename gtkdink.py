@@ -3,7 +3,7 @@
 
 # {{{ Copyright header
 # gtkdink.py - library for gtk parts of using pydink games.
-# Copyright 2011 Bas Wijnen
+# Copyright 2011-2013 Bas Wijnen
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -107,37 +107,16 @@ class GtkDink (dink.Dink): # {{{
 			ret = self.load_pixbuf (self.seq.get_file (seq, frame))
 			self.cache_add ('s', (seq.name, frame), ret)
 		return ret
-	def get_box (self, size, pos, seq, box):
-		x = pos[0] - 20
-		y = pos[1]
-		bb = seq.boundingbox
-		w = bb[2] - bb[0]
-		h = bb[3] - bb[1]
-		# Blame Seth for the computation below.
-		x_compat = w * (size - 100) / 100 / 2
-		y_compat = h * (size - 100) / 100 / 2
-		l = x - seq.position[0] - x_compat
-		t = y - seq.position[1] - y_compat
-		r = l + w * size / 100
-		b = t + h * size / 100
-		if box[0] != 0 or box[1] != 0 or box[2] != 0 or box[3] != 0:
-			box = list (box)
-			if box[0] > w:
-				box[0] = w
-			if box[1] > h:
-				box[1] = h
-			if box[2] > w:
-				box[2] = w
-			if box[3] > h:
-				box[3] = h
-			l += box[0]
-			t += box[1]
-			r += box[2] - w
-			b += box[3] - h
-			bx = box
-		else:
-			bx = [0, 0, w, h]
-		return (x, y), (l, t, r, b), bx
+	def get_hard_seq (self, seq, frame):
+		ret = self.cache_get ('S', (seq.name, frame))
+		if ret == None:
+			im = self.seq.get_hard_file (seq, frame)
+			if not im:
+				ret = None
+			else:
+				ret = self.load_pixbuf (self.seq.get_hard_file (seq, frame) + (None,))
+			self.cache_add ('S', (seq.name, frame), ret)
+		return ret
 	def load_pixbuf (self, file, use_scale = True):
 		data = open (file[0], 'rb').read (file[1] + file[2])[file[1]:]
 		try:

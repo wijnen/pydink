@@ -37,11 +37,13 @@
 #seq
 #	name-code
 #		nn.png			frame
+#		nn-hard.png		hardness for frame
 #		info.txt		delay settings, etc.
 #collection
 #	name-code
 #		dir
 #			nn.png		frame
+#			nn-hard.png	hardness for frame
 #			info.txt	delay settings, etc.
 #sound
 #	name-code.wav			sound file
@@ -56,6 +58,7 @@
 import sys
 import os
 import re
+import copy
 import Image
 import tempfile
 import shutil
@@ -386,6 +389,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	editor_layer
 	get_rand_sprite_with_this_brain
 	get_sprite_with_this_brain
+	map_tile
 	playmusic
 	playsound
 	preload_seq
@@ -404,6 +408,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	return before, expression result.'''
 	global current_tmp
 	bt = ''
+	bta = None
 	a = list (args)
 	nice_assert (len (a) == 0 or a[-1] != -1 or internal_functions[name][-1] not in 'SI', 'last argument of %s may be omitted, but must not be -1' % name)
 	if len (a) < len (internal_functions[name]):
@@ -431,11 +436,30 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 			if not nice_assert (s is not None, 'invalid sequence in create_sprite: %s' % a[3][1][0]):
 				return '', ''
 			a[3] = ('const', s.code)
+		if a[2][1] in (make_brain ('mark'), make_brain ('repeat'), make_brain ('play'), make_brain ('missile'), make_brain ('flare')):
+			bta = indent + 'sp_seq (%s, %s);\r\n', 3
 	elif name == 'editor_layer':
 		name = 'editor_type'
-		if not nice_assert (a[1][0] == 'const', 'layer for editor_layer must be a compile-time constant value when compiling'):
+		if not nice_assert (a[1][0] == 'const' and a[2][0] == 'const', 'layer and hardness for editor_layer must be a compile-time constant value when compiling'):
 			return '', ''
-		# TODO
+		layer = a[1][1]
+		hard = a[2][1]
+		if not nice_assert (0 <= layer < 10, 'layer for editor_layer must be between 0 and 9 inclusive'):
+			return '', ''
+		visible = dink.layer_visible[layer]
+		bg = dink.layer_background[layer]
+		if not visible and not bg:
+			a[1] = ('const', 1)
+		elif bg:
+			if hard:
+				a[1] = ('const', 5)
+			else:
+				a[1] = ('const', 3)
+		else:
+			if hard:
+				a[1] = ('const', 4)
+			else:
+				a[1] = ('const', 2)
 	elif name == 'editor_kill':
 		name = 'editor_type'
 		if a[1][0] != 'const' or a[1][1] >= 4:
@@ -446,6 +470,26 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 			a[1] = ('const', 8)
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
 		a[0] = ('const', make_brain (a[0][1][0]))
+	elif name == 'map_tile':
+		# mapx, mapy, tilescreen, tilex, tiley
+		if all ([x[0] == 'const' for x in a[:2]]):
+			pos = ('const', a[0][1] + a[1][1] * 12)
+		elif a[1][0] == 'const':
+			pos = ('+', (a[0], ('const', a[1][1] * 12)))
+		else:
+			pos = ('+', (a[0], ('*', (a[1], ('const', 12)))))
+		if a[2][0] == 'const':
+			a[2] = ('const', (a[2][1] - 1) * 128)
+		else:
+			a[2] = ('*', ('-', (a[2], ('const', 1)), ('const', 128)))
+		if a[4][0] == 'const':
+			a[4] = ('const', a[4][1] * 12)
+		else:
+			a[4] = ('*', (a[4], ('const', 12)))
+		if all ([x[0] == 'const' for x in a[2:]]):
+			a = [pos, ('const', a[2][1] + a[3][1] + a[4][1])]
+		else:
+			a = [pos, ('+', (a[2], ('+', (a[3], a[4]))))]
 	elif name == 'playmusic':
 		a[0] = ('const', dink.sound.find_music (a[0][1][0]))
 		name = 'playmidi'
@@ -472,6 +516,10 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	elif name == 'sp_brain':
 		if a[1][0] == '"':
 			a[1] = ('const', make_brain (a[1][1][0]))
+		if a[1][1] in (make_brain ('mark'), make_brain ('repeat'), make_brain ('play'), make_brain ('missile'), make_brain ('flare')):
+			t = current_tmp
+			current_tmp += 2
+			bta = indent + '// not using %s\r\n' + indent + 'int &tmp%d' % t + ' = %s;\r\n' + indent + 'int &tmp%d' % (t + 1) + ' = sp_pseq(&tmp%d, -1);\r\n' % t + indent + 'sp_seq(&tmp%d, &tmp%d);\r\n' % (t, t + 1), 0
 	elif name == 'sp_sound':
 		if a[1][0] == '"':
 			a[1] = ('const', dink.sound.find_sound (a[1][1][0]))
@@ -505,6 +553,10 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		b, e = build_expr (dink, fname, i, indent, as_bool = False)
 		bt += b
 		at += (e,)
+	if bta is not None:
+		t = current_tmp
+		current_tmp += 1
+		return bt + indent + 'int &tmp%d = ' % t + name + '(' + ', '.join (at) + ');\r\n' + bta[0] % ('&tmp%d' % t, at[bta[1]]), '&tmp%d' % t
 	if use_retval:
 		t = current_tmp
 		current_tmp += 1
@@ -730,7 +782,7 @@ internal_functions = {
 		'editor_seq': 'iI',
 		'editor_frame': 'iI',
 		'editor_kill': 'ii',
-		'editor_layer': 'ii',
+		'editor_layer': 'iii',
 		'fade_down': '',
 		'fade_down_stop': '',
 		'fade_up': '',
@@ -763,6 +815,7 @@ internal_functions = {
 		'kill_view': 'i',
 		'load_game': 'i',
 		'load_screen': '',
+		'map_tile': 'iiiii',
 		'move': 'iiii',
 		'move_stop': 'iiii',
 		'playmusic': 's',
@@ -1325,7 +1378,7 @@ def build_function (name, args, indent, dink, fname):
 	if isinstance (name, str):
 		return tb + indent + name + '();\r\n'
 	else:
-		return tb + indent + 'external("%s", "%s");\r\n' % name
+		return tb + indent + 'external("%s", "%s");\r\n' % (dink.script.mangle (name[0]), name[1])
 
 def build_choice (dink, fname, choices, title, indent, stop = False):
 	# choices[i][0] = expr or None
@@ -1485,7 +1538,7 @@ class Sprite: #{{{
 			else:
 				brain = the_seq.brain
 				script = the_seq.script
-				hard = the_seq.hard
+				hard = the_seq.is_hard
 			walk = ''
 			attack = ''
 			death = ''
@@ -1547,6 +1600,7 @@ class Sprite: #{{{
 		self.vision = 0
 		self.nohit = False
 		self.touch_damage = 0
+		self.use_hard = True
 	def rename (self, name, world = None):
 		if world is None:
 			world = self.parent.world
@@ -1649,6 +1703,7 @@ class Sprite: #{{{
 		info, self.vision = get (info, 'vision', 0)
 		info, self.nohit = get (info, 'nohit', False)
 		info, self.touch_damage = get (info, 'touch_damage', 0)
+		info, self.use_hard = get (info, 'use_hard', True)
 		self.register (world)
 		return info
 	def save (self):
@@ -1704,6 +1759,7 @@ class Sprite: #{{{
 		put (f, 'vision', self.vision, 0)
 		put (f, 'nohit', self.nohit, False)
 		put (f, 'touch_damage', self.touch_damage, 0)
+		put (f, 'use_hard', self.use_hard, True)
 # }}}
 
 class Map: #{{{
@@ -1815,7 +1871,7 @@ class World: #{{{
 	def write_sprite (self, spr, mdat, s):
 		sx = (s - 1) % 32
 		sy = (s - 1) / 32
-		x = spr.x - sx * 50 * 12
+		x = spr.x - sx * 50 * 12 + 20
 		y = spr.y - sy * 50 * 8
 		mdat.write (make_lsb (x, 4))
 		mdat.write (make_lsb (y, 4))
@@ -1840,7 +1896,7 @@ class World: #{{{
 			mdat.write (make_lsb (make_brain ('none'), 4))
 		else:
 			mdat.write (make_lsb (make_brain (spr.brain), 4))
-		mdat.write (make_string (spr.script, 14))
+		mdat.write (make_string (self.parent.script.mangle (spr.script), 14))
 		mdat.write ('\0' * 38)
 		mdat.write (make_lsb (spr.speed, 4))
 		def coll (which):
@@ -1927,6 +1983,36 @@ class World: #{{{
 				continue
 			seq.used = True
 		return cols, seqs
+	def build_hard (self, map):
+		'''Create an image of the hardness of the current screen.
+		Used colors: 0000, 00ff, ffff.'''
+		if map in self.parent.tile.hard:
+			ret = self.parent.tile.hard[map].copy ()
+		else:
+			ret = Image.new ('RGBA', (50 * 12, 50 * 8), (0, 0, 0, 0))
+			for y in range (8):
+				for x in range (12):
+					bmp, tx, ty = self.map[map].tiles[y][x]
+					ret.paste (self.parent.tile.tile_hard[bmp].crop ((tx * 50, ty * 50, (tx + 1) * 50, (ty + 1) * 50)), (x * 50, y * 50))
+		# Paste sprite hardness over it.
+		for s in self.map[map].sprite:
+			if not s.use_hard:
+				continue
+			seq = self.parent.seq.find_seq (s.seq)
+			if not seq or not seq.frames[s.frame].hard:
+				continue
+			sx = (map - 1) % 32
+			sy = (map - 1) / 32
+			x = s.x - sx * 50 * 12
+			y = s.y - sy * 50 * 8
+			pos, ltrb, box = self.parent.seq.get_box (s.size, (x, y), seq.frames[s.frame], (s.left, s.top, s.right, s.bottom))
+			im = self.parent.tile.seq_hard[seq.frames[s.frame].hard]
+			tmp = Image.new ('RGBA', ret.size, (0, 0, 0, 0))
+			tmp.paste (im.crop (box).resize ((ltrb[2] - ltrb[0], ltrb[3] - ltrb[1])), (ltrb[0], ltrb[1]))
+			tmp.save ('/tmp/tmp.png')
+			ret = Image.composite (tmp, ret, tmp)
+			ret.save ('/tmp/hard.png')
+		return ret
 	def build (self, root):
 		used_cols, used_seqs = self.find_used_sprites (defs = set ())
 		used_codes = set ()
@@ -1945,6 +2031,7 @@ class World: #{{{
 				used_codes.add (seq.code)
 				remove.add (i)
 		used_seqs.difference_update (remove)
+		# Now used_cols and used_seqs contain only items which need a new code.
 		next_code = 0
 		for i in used_cols:
 			collection = self.parent.seq.find_collection (i)
@@ -1959,6 +2046,7 @@ class World: #{{{
 					for d in collection:
 						if d in (1,2,3,4,'die',6,7,8,9):
 							collection[d].code = next_code + (5 if d == 'die' else d)
+							used_codes.add (next_code + (5 if d == 'die' else d))
 					break
 				next_code += 10
 		nice_assert (next_code < 1000, 'more than 1000 sequences required for collections')
@@ -1970,6 +2058,7 @@ class World: #{{{
 			while next_code in used_codes:
 				next_code += 1
 			seq.code = next_code
+			used_codes.add (next_code)
 		nice_assert (next_code < 1000, 'more than 1000 sequences used')
 		# Write dink.dat
 		ddat = open (os.path.join (root, 'dink' + os.extsep + 'dat'), "wb")
@@ -2004,7 +2093,7 @@ class World: #{{{
 					bmp, tx, ty = self.map[s].tiles[y][x]
 					mdat.write (make_lsb ((bmp - 1) * 128 + ty * 12 + tx, 4))
 					mdat.write ('\0' * 4)
-					mdat.write (make_lsb (self.parent.tile.find_hard (self.map[s].hard, x, y, bmp, tx, ty), 4))
+					mdat.write (make_lsb (self.parent.tile.hardmap[s][y][x], 4))
 					mdat.write ('\0' * 68)
 			mdat.write ('\0' * 320)
 			# sprites
@@ -2023,7 +2112,7 @@ class World: #{{{
 			n = len (self.map[s].sprite) - ignored
 			mdat.write ('\0' * 220 * (100 - n))
 			# base script
-			mdat.write (make_string (self.map[s].script, 21))
+			mdat.write (make_string (self.parent.script.mangle (self.map[s].script), 21))
 			mdat.write ('\0' * 1019)
 # }}}
 
@@ -2075,13 +2164,6 @@ class Tile: #{{{
 					tilefile = (tilefiles[n - 1], 0)
 				hardfile = os.path.join (cachedir, 'hard-%02d' % n + os.extsep + 'png')
 				self.tile[n] = (tilefile[0], (hardfile, 0, os.stat (hardfile).st_size), tilefile[1])
-	def find_hard (self, hard, x, y, bmp, tx, ty):
-		if hard != '':
-			nice_assert (hard in self.hard, 'reference to undefined hardness map %s' % hard)
-			ret = self.hardmap[hard][y][x]
-			if ret != self.tilemap[bmp][ty][tx]:
-				return ret
-		return 0
 	def save (self):
 		hfiles = []
 		for n in self.parent.world.map:
@@ -2118,8 +2200,9 @@ class Tile: #{{{
 				self.tile[i] = ((new + self.tile[i][0][0][len (old):], self.tile[i][0][1], self.tile[i][0][2]), self.tile[i][1], self.tile[i][2])
 			if self.tile[i][1][0].startswith (old):
 				self.tile[i] = (self.tile[i][0], (new + self.tile[i][1][0][len (old):], self.tile[i][1][1], self.tile[i][1][2]), self.tile[i][2])
-	def write_hard (self, image, h):
+	def write_hard (self, map, h):
 		'''Write hardness of all tiles in a given map to hard.dat (opened as h). Return map of indices used.'''
+		image = self.parent.world.build_hard (map)
 		ret = [None] * 8
 		for y in range (8):
 			ret[y] = [None] * 12
@@ -2152,6 +2235,9 @@ class Tile: #{{{
 				ret[y][x] = m
 		return ret
 	def build (self, root):
+		# Building hardness:
+		# 1. Every screen has a hardmap created; the indices are noted.
+		# 2. When building map.dat, the indices are used.
 		# Write tiles/*
 		# Write hard.dat
 		for i in self.tile:
@@ -2163,30 +2249,35 @@ class Tile: #{{{
 		# Write it in the file as well.
 		h.write ('\0' * (51 * 50 + 58))
 		self.hardmap = {}
-		self.tilemap = [None] * 42
-		for t in self.hard:
-			# Write hardness for custom hard maps.
-			self.hardmap[t] = self.write_hard (Image.open (filepart (*self.hard[t])), h)
+		# For every screen, create the hardmap and save it.  This will use sequence hardness.
+		# Preparation: load all tile and sprite hardness images.
+		self.tile_hard = {}
+		self.seq_hard = {}
+		for t in range (1, 42):
+			self.tile_hard[t] = Image.open (filepart (*self.get_hard_file (t)[:3]))
+		for s in self.parent.seq.seq:
+			seq = self.parent.seq.seq[s]
+			for f in range (1, len (seq.frames)):
+				t = seq.frames[f].hard
+				if t:
+					self.seq_hard[t] = Image.open (filepart (*t[:3]))
+		for m in self.parent.world.map:
+			self.hardmap[m] = self.write_hard (m, h)
+		del self.tile_hard
 		for n in range (1, 42):
 			if self.tile[n][2] == 1 or self.tile[n][2] == 3:
 				# Write custom tile maps.
 				if not os.path.exists (d):
 					os.mkdir (d)
 				convert_image (Image.open (filepart (*self.tile[n][0]))).save (os.path.join (d, str (t) + os.extsep + 'bmp'))
-			# Write hardness for standard tiles.
-			self.tilemap[n] = self.write_hard (Image.open (filepart (*self.tile[n][1])), h)
 		nice_assert (len (self.hmap) <= 800, 'More than 800 hardness tiles defined (%d)' % len (self.hmap))
 		h.write ('\0' * (51 * 51 + 1 + 6) * (800 - len (self.hmap)))
-		# Write hardness index for tile maps.
+		# Write hardness index for tile maps (not used).
 		for t in range (1, 42):
-			m = self.tilemap[t]
 			for y in range (8):
 				for x in range (12):
-					if m[y][x] is not None:
-						h.write (make_lsb (m[y][x], 4))
-					else:
-						# fill it with junk.
-						h.write (make_lsb (0, 4))
+					# fill it with junk.
+					h.write (make_lsb (0, 4))
 			# Fill up with junk.
 			h.write ('\0' * 32 * 4)
 		# Fill the rest with junk.
@@ -2211,6 +2302,7 @@ class Seq: #{{{
 	#	frames, list with members:
 	#		position	Hotspot position.
 	#		hardbox		Hardbox: left, top, right, bottom.
+	#		hard		Implicit tile hardness. (Same format as cache.)
 	#		special		bool, if this frame can hit.
 	#		boundingbox	Bounding box: left, top, right, bottom.
 	#		delay		Delay value for this frame.
@@ -2226,6 +2318,7 @@ class Seq: #{{{
 	#	code		int
 	#	preload		string, name of sequence to preload into this code
 	#	type		normal, notanim, black, or leftalign, or foreign
+	#	is_hard		bool, whether sprites should be hard by default
 	def __init__ (self, parent):
 		"""Load all sequence and collection declarations from cache (generated from dink.ini) and seq/info.txt"""
 		global filename
@@ -2234,6 +2327,8 @@ class Seq: #{{{
 		self.parent = parent
 		self.seq = sequences
 		self.collection = collections
+		self.orig_seqs = copy.deepcopy (self.seq)
+		self.orig_collections = copy.deepcopy (self.collection)
 		self.current_collection = None
 		self.custom_seqs = []
 		self.custom_collections = []
@@ -2315,13 +2410,13 @@ class Seq: #{{{
 		ret.name = base
 		ret.brain = 'none'
 		ret.script = ''
-		ret.hard = True
+		ret.is_hard = True
 		ret.frames = []
 		ret.repeat = False
 		ret.filepath = 'graphics\\custom\\%s-' % base
 		ret.type = 'foreign'
 		ret.preload = ''
-		ret.delay = 75
+		ret.delay = -1
 		ret.hardbox = None
 		ret.position = None
 		ret.now = False
@@ -2333,9 +2428,11 @@ class Seq: #{{{
 		ret.hardbox = None
 		ret.special = False
 		ret.boundingbox = None
-		ret.delay = 75
+		ret.delay = -1
 		ret.source = None
 		ret.cache = None
+		ret.hard = None
+		ret.size = (0, 0)
 		return ret
 	def fill_seq (self, seq, sd, collection = None):
 		global filename
@@ -2344,19 +2441,27 @@ class Seq: #{{{
 			if not f.endswith (imgext):
 				continue
 			filename = os.path.join (sd, f)
-			r = re.match (r'\d+$', f[:-len (imgext)])
+			r = re.match (r'(\d+)(-hard)?$', f[:-len (imgext)])
 			nice_assert (r, 'unexpected filename for frame image')
-			frame = int (r.group (0))
+			frame = int (r.group (1))
 			if frame >= len (seq.frames):
 				seq.frames += [None] * (frame + 1 - len (seq.frames))
 			if seq.frames[frame] is None:
 				seq.frames[frame] = self.makeframe ()
-			try:
-				seq.frames[frame].size = Image.open (filename).size
-				seq.frames[frame].cache = (filename, 0, os.stat (filename).st_size)
-			except IOError:
-				seq.frames[frame].size = (0, 0)
-				seq.frames[frame].cache = None
+			if r.group (2):
+				try:
+					seq.frames[frame].size = Image.open (filename).size
+					seq.frames[frame].hard = (filename, 0, os.stat (filename).st_size)
+				except IOError:
+					seq.frames[frame].size = (0, 0)
+					seq.frames[frame].hard = None
+			else:
+				try:
+					seq.frames[frame].size = Image.open (filename).size
+					seq.frames[frame].cache = (filename, 0, os.stat (filename).st_size)
+				except IOError:
+					seq.frames[frame].size = (0, 0)
+					seq.frames[frame].cache = None
 		filename = os.path.join (sd, 'info' + os.extsep + 'txt')
 		if os.path.exists (filename):
 			infofile = open (filename)
@@ -2367,7 +2472,7 @@ class Seq: #{{{
 		if collection is None:
 			info, seq.brain = get (info, 'brain', seq.brain)
 			info, seq.script = get (info, 'script', seq.script)
-			info, seq.hard = get (info, 'hard', seq.hard)
+			info, seq.is_hard = get (info, 'is_hard', seq.is_hard)
 		info, seq.repeat = get (info, 'repeat', seq.repeat)
 		info, seq.now = get (info, 'load-now', seq.now)
 		info, seq.preload = get (info, 'preload', seq.preload)
@@ -2404,7 +2509,7 @@ class Seq: #{{{
 				seq.frames[f].hardbox = [int (x) for x in hardbox.split ()]
 				nice_assert (len (seq.frames[f].hardbox) == 4, 'frame hardbox must be four numbers')
 			info, seq.frames[f].special = get (info, 'special-%d' % f, False)
-			info, seq.frames[f].delay = get (info, 'delay-%d' % f, 75)
+			info, seq.frames[f].delay = get (info, 'delay-%d' % f, -1)
 			if seq.frames[f].delay == -1:
 				seq.frames[f].delay = None
 			if seq.frames[f].cache is None:
@@ -2576,38 +2681,90 @@ class Seq: #{{{
 		if coll is None:
 			return -1
 		return coll['code']
-	def save_seq (self, d, f, seq):
-		put (f, 'repeat', seq.repeat, False)
-		put (f, 'load-now', seq.now, False)
-		put (f, 'preload', seq.preload, '')
-		put (f, 'type', seq.type, 'foreign')
-		put (f, 'delay', -1 if seq.delay is None else seq.delay, 75)
-		put (f, 'position', '%d %d' % (tuple (seq.position) if seq.position is not None else (0, 0)), str)
-		put (f, 'hardbox', '%d %d %d %d' % (tuple (seq.hardbox) if seq.hardbox is not None else (0, 0, 0, 0)), str)
-		put (f, 'frames', 0 if seq.frames[-1].source is None else len (seq.frames), 0)
+	def get_box (self, size, pos, frame, box):
+		'''Compute stuff for displaying a frame.
+		In:
+			size	size setting from sprite.
+			pos	x,y from sprite.
+			frame	frame as returned by find_seq().frames[f].
+			box	cropbox.
+		Out:
+			pos	copy from input.
+			region	pixel coordinates where image should be pasted (l, t, r, b).
+			box	box to cut from original image; origin is top left, not hotspot.
+		'''
+		x = pos[0]
+		y = pos[1]
+		bb = frame.boundingbox
+		w = bb[2] - bb[0]
+		h = bb[3] - bb[1]
+		# Blame Seth for the computation below.
+		x_compat = w * (size - 100) / 100 / 2
+		y_compat = h * (size - 100) / 100 / 2
+		l = x - frame.position[0] - x_compat
+		t = y - frame.position[1] - y_compat
+		r = l + w * size / 100
+		b = t + h * size / 100
+		if box[0] != 0 or box[1] != 0 or box[2] != 0 or box[3] != 0:
+			box = list (box)
+			if box[0] > w:
+				box[0] = w
+			if box[1] > h:
+				box[1] = h
+			if box[2] > w:
+				box[2] = w
+			if box[3] > h:
+				box[3] = h
+			l += box[0]
+			t += box[1]
+			r += box[2] - w
+			b += box[3] - h
+			bx = box
+		else:
+			bx = [0, 0, w, h]
+		return (x, y), (l, t, r, b), bx
+	def save_seq (self, orig, d, f, seq):
+		put (f, 'repeat', seq.repeat, orig.repeat if orig else False)
+		put (f, 'load-now', seq.now, orig.now if orig else False)
+		put (f, 'preload', seq.preload, orig.preload if orig else '')
+		put (f, 'type', seq.type, orig.type if orig else 'foreign')
+		put (f, 'delay', -1 if seq.delay is None else seq.delay, orig.delay if orig and orig.delay else -1)
+		put (f, 'position', '%d %d' % (tuple (seq.position) if seq.position is not None else (0, 0)), '%d %d' % tuple (orig.position) if orig and orig.position is not None else str)
+		put (f, 'hardbox', '%d %d %d %d' % (tuple (seq.hardbox) if seq.hardbox is not None else (0, 0, 0, 0)), '%d %d %d %d' % tuple (orig.hardbox) if orig and orig.hardbox is not None else str)
+		put (f, 'frames', 0 if seq.frames[-1].source is None else len (seq.frames), (0 if orig.frames[-1].source is None else len (orig.frames)) if orig else 0)
 		for frame in range (1, len (seq.frames)):
-			if seq.frames[frame].source is None:
-				if seq.frames[frame].cache:
-					open (os.path.join (d, '%02d' % frame + os.extsep + 'png'), 'wb').write (open (seq.frames[frame].cache[0], 'rb').read ())
+			sf = seq.frames[frame]
+			if orig:
+				of = orig.frames[frame]
+			if sf.source is None:
+				if sf.cache:
+					if not orig or sf.cache != of.cache:
+						open (os.path.join (d, '%02d' % frame + os.extsep + 'png'), 'wb').write (filepart (*sf.cache).read ())
 				else:
-					sys.stderr.write ('warning: sequence has no image: %s' % seq.name)
-			put (f, 'position-%d' % frame, '' if seq.frames[frame].position == seq.position else '%d %d' % tuple (seq.frames[frame].position), '')
-			put (f, 'hardbox-%d' % frame, '' if seq.frames[frame].hardbox == seq.hardbox else '%d %d %d %d' % tuple (seq.frames[frame].hardbox), '')
-			put (f, 'special-%d' % frame, seq.frames[frame].special, False)
-			put (f, 'delay-%d' % frame, -1 if seq.frames[frame].delay == seq.delay else seq.frames[frame].delay, -1)
-			put (f, 'source-%d' % frame, '' if seq.frames[frame].source is None else '%s %d' % tuple (seq.frames[frame].source), '')
+					sys.stderr.write ('warning: sequence has no image: %s.%d' % (seq.name, frame))
+				if sf.hard:
+					open (os.path.join (d, '%02d-hard' % frame + os.extsep + 'png'), 'wb').write (filepart (*sf.hard).read ())
+			put (f, 'position-%d' % frame, '' if sf.position == seq.position else '%d %d' % tuple (sf.position), '' if not orig or of.position == orig.position else '%d %d' % tuple (of.position))
+			put (f, 'hardbox-%d' % frame, '' if sf.hardbox == seq.hardbox else '%d %d %d %d' % tuple (sf.hardbox), '' if not orig or of.hardbox == orig.hardbox else '%d %d %d %d' % tuple (of.hardbox))
+			put (f, 'special-%d' % frame, sf.special, of.special if orig else False)
+			put (f, 'delay-%d' % frame, -1 if sf.delay is None or sf.delay == seq.delay else sf.delay, -1 if not orig or of.delay is None or of.delay == orig.delay else of.delay)
+			put (f, 'source-%d' % frame, '' if sf.source is None else '%s %d' % tuple (sf.source), '' if not orig or of.source is None else '%s %d' % tuple (of.source))
 	def save (self):
 		if len (self.custom_seqs) > 0:
 			d = os.path.join (self.parent.root, 'seq')
 			os.mkdir (d)
 			for s in self.custom_seqs:
+				if s.name in self.orig_seqs:
+					orig = self.orig_seqs[s.name]
+				else:
+					orig = None
 				sd = os.path.join (d, s.name)
 				os.mkdir (sd)
 				f = open (os.path.join (sd, 'info' + os.extsep + 'txt'), 'w')
 				put (f, 'brain', s.brain, 'none')
 				put (f, 'script', s.script, '')
-				put (f, 'hard', s.hard, True)
-				self.save_seq (sd, f, s)
+				put (f, 'is_hard', s.is_hard, orig.is_hard if orig else True)
+				self.save_seq (orig, sd, f, s)
 		if len (self.custom_collections) > 0:
 			d = os.path.join (self.parent.root, 'collection')
 			os.mkdir (d)
@@ -2622,10 +2779,14 @@ class Seq: #{{{
 				for dir in (1,2,3,4,'die',6,7,8,9):
 					if dir not in c:
 						continue
+					if c['name'] in self.orig_collections and dir in self.orig_collections[c['name']]:
+						orig = self.orig_collections[c['name']][dir]
+					else:
+						orig = None
 					cdd = os.path.join (cd, str (dir))
 					os.mkdir (cdd)
 					f = open (os.path.join (cdd, 'info' + os.extsep + 'txt'), 'w')
-					self.save_seq (cdd, f, c[dir])
+					self.save_seq (orig, cdd, f, c[dir])
 		# TODO: write changes to standard graphics.
 	def build_seq (self, ini, seq):
 		if not seq.used:
@@ -2655,7 +2816,7 @@ class Seq: #{{{
 				ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
 			if (len (seq.frames[f].hardbox) == 4 and seq.frames[f].hardbox != seq.hardbox) or (len (seq.frames[f].position) == 2 and seq.frames[f].position != seq.position):
 				ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\r\n' % (seq.code, f, seq.frames[f].position[0], seq.frames[f].position[1], seq.frames[f].hardbox[0], seq.frames[f].hardbox[1], seq.frames[f].hardbox[2], seq.frames[f].hardbox[3]))
-			if seq.frames[f].source is not None or seq.frames[f].delay != seq.delay:
+			if seq.frames[f].source is not None or (seq.frames[f].delay is not None and seq.frames[f].delay != seq.delay):
 				ini.write ('set_frame_delay %d %d %d\r\n' % (seq.code, f, int (seq.frames[f].delay)))
 			if seq.frames[f].special:
 				ini.write ('set_frame_special %d %d 1\r\n' % (seq.code, f))
@@ -2696,11 +2857,15 @@ class Seq: #{{{
 		else:
 			alpha = (255, 255, 255)
 		return seq.frames[frame].cache + (alpha,)
+	def get_hard_file (self, seq, frame):
+		return seq.frames[frame].hard
 	def rename (self, old, new):
 		for i in self.seq:
 			for f in range (1, len (self.seq[i].frames)):
 				if self.seq[i].frames[f].cache is not None and self.seq[i].frames[f].cache[0].startswith (old):
 					self.seq[i].frames[f].cache = (new + self.seq[i].frames[f].cache[0][len (old):], self.seq[i].frames[f].cache[1], self.seq[i].frames[f].cache[2])
+				if self.seq[i].frames[f].hard is not None and self.seq[i].frames[f].hard[0].startswith (old):
+					self.seq[i].frames[f].hard = (new + self.seq[i].frames[f].hard[0][len (old):], self.seq[i].frames[f].hard[1], self.seq[i].frames[f].hard[2])
 		for i in self.collection:
 			for d in self.collection[i]:
 				if d not in (1,2,3,4,'die',6,7,8,9):
@@ -2708,6 +2873,8 @@ class Seq: #{{{
 				for f in range (1, len (self.collection[i][d].frames)):
 					if self.collection[i][d].frames[f].cache is not None and self.collection[i][d].frames[f].cache[0].startswith (old):
 						self.collection[i][d].frames[f].cache = (new + self.collection[i][d].frames[f].cache[0][len (old):], self.collection[i][d].frames[f].cache[1], self.collection[i][d].frames[f].cache[2])
+					if self.collection[i][d].frames[f].hard is not None and self.collection[i][d].frames[f].hard[0].startswith (old):
+						self.collection[i][d].frames[f].hard = (new + self.collection[i][d].frames[f].hard[0][len (old):], self.collection[i][d].frames[f].hard[1], self.collection[i][d].frames[f].hard[2])
 # }}}
 
 class Sound: #{{{
@@ -2956,6 +3123,30 @@ class Script: #{{{
 		ret = [set (), set ()]
 		self.compile (used = ret, defs = defs)
 		return ret
+	def mangle (self, name):
+		if name == '' or not nice_assert (name in self.mangled, "script %s doesn't exist" % name):
+			return ''
+		return self.mangled[name]
+	def prepare_build (self, root):
+		# Mange all script names so they can be used for building.
+		self.mangled = {}
+		used = ['main', 'button6', '_start_game']
+		for name in self.data:
+			if name == 'map':
+				self.mangled[name] = 'button6'
+			else:
+				attempt = name.replace ('/', '_')
+				if len (attempt) >= 14:
+					attempt = attempt[-13:]
+				i = 0
+				orig = attempt
+				while attempt in used:
+					attempt = orig + '-%03d' % i
+					if len (attempt) >= 14:
+						attempt = attempt[-13:]
+					i += 1
+				self.mangled[name] = attempt
+			used.append (self.mangled[name])
 	def build (self, root):
 		# Write story/*
 		global filename
@@ -2973,13 +3164,8 @@ class Script: #{{{
 		for i in the_globals:
 			newmangle (i)
 		for name in self.data:
-			if name == 'map':
-				outname = 'button6'
-			else:
-				outname = name
-			nice_assert (name not in ('button6', 'main'), 'scripts must not be called button6.c (use map.c instead) or main.c')
 			filename = name
-			f = open (os.path.join (d, outname + os.extsep + 'c'), 'w')
+			f = open (os.path.join (d, self.mangle (name) + os.extsep + 'c'), 'w')
 			f.write (preprocess (self.handle_ifdef (self.data[name], set ()), self.parent, name))
 		# Write main.c
 		s = open (os.path.join (d, 'main' + os.extsep + 'c'), 'w')
@@ -3004,13 +3190,14 @@ void main ()\r
 	sp_base_walk (1, %d);\r
 	sp_base_attack (1, %d);\r
 	set_dink_speed (3);\r
-	set_mode (2);\r
+%s	set_mode (2);\r
 	wait (1);\r
 	reset_timer ();\r
 	sp_dir (1, 4);\r
 	sp_brain (1, %d);\r
 	sp_que (1, 0);\r
 	sp_noclip (1, 0);\r
+	wait (1);\r
 %s	dink_can_walk_off_screen (0);\r
 %s	load_screen ();\r
 	draw_screen ();\r
@@ -3019,7 +3206,7 @@ void main ()\r
 	fade_up ();\r
 	kill_this_task ();\r
 }\r
-''' % (self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), make_brain ('dink'), ('\texternal ("intro", "main");\r\n' if 'intro' in self.data else ''), ('\texternal ("init", "main");\r\n' if 'init' in self.data else '')))
+''' % (self.parent.seq.collection_code ('walk'), self.parent.seq.collection_code ('hit'), ('\texternal ("preinit", "main");\r\n' if 'preinit' in self.data else ''), make_brain ('dink'), ('\texternal ("intro", "main");\r\n' if 'intro' in self.data else ''), ('\texternal ("init", "main");\r\n' if 'init' in self.data else '')))
 # }}}
 
 class Images: #{{{
@@ -3083,16 +3270,16 @@ class Dink: #{{{
 			self.layer_visible = [None] * 10
 			self.layer_background = [None] * 10
 			for i in range (10):
-				info, self.layer_visible[i] = get (info, 'visible-%d' % i, i != 9)
-				info, self.layer_background[i] = get (info, 'background-%d' % i, i in (0, 9))
+				info, self.layer_visible[i] = get (info, 'visible-%d' % i, i not in (0, 9))
+				info, self.layer_background[i] = get (info, 'background-%d' % i, i in (8, 9))
 			info, d = get (info, 'depends', '')
 			self.depends = d.split ()
 			nice_assert (info == {}, 'unused data')
 		else:
 			preview = ''
 			splash = ''
-			self.layer_visible = [i != 9 for i in range (10)]
-			self.layer_background = [i in (0, 9) for i in range (10)]
+			self.layer_visible = [i not in (0, 9) for i in range (10)]
+			self.layer_background = [i in (8, 9) for i in range (10)]
 			self.depends = []
 			self.info = '''\
 %s
@@ -3166,6 +3353,8 @@ file (info.txt).
 		if os.path.exists (root):
 			shutil.rmtree (root)
 		os.mkdir (root)
+		# Mange script names.  This must be first, because the mangled names are used by world.build.
+		self.script.prepare_build (root)
 		# Write tiles/*
 		self.tile.build (root)
 		# Write images.

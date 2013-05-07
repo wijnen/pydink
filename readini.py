@@ -488,6 +488,7 @@ def read_ini (): # {{{
 			seq.frames += (None,)
 		while len (seq.frames) <= f:
 			seq.frames += (dink.Frame (),)
+			seq.frames[-1].hard = None
 	# }}}
 
 	for l in [y.lower ().split () for y in dinkini.readlines ()]:
@@ -602,6 +603,7 @@ def read_ini (): # {{{
 	#		delay		Delay value for this frame.
 	#		source		For copied frames, source; None otherwise.
 	#		cache		Tuple of filename, offset, length of location of file
+	#		hard		Hardness image (same format as cache)
 	#	name		name of the seq (copy of the dictionary key or tuple of collection name, dir)
 	#	boudingbox	bounding box: left, top, right, bottom.
 	#	delay		default delay.
@@ -613,6 +615,7 @@ def read_ini (): # {{{
 	#	code		int
 	#	preload		string, name of sequence to preload into this code
 	#	type		normal, notanim, black, or leftalign
+	#	is_hard		whether sprites of this sequence should be hard by default.
 
 	# Fill all open members of all sequences.
 	for s in sequence_codes:
@@ -637,8 +640,8 @@ def read_ini (): # {{{
 			sequence_codes[s].brain = 'none'
 		if not hasattr (sequence_codes[s], 'script'):
 			sequence_codes[s].script = ''
-		if not hasattr (sequence_codes[s], 'hard'):
-			sequence_codes[s].hard = True
+		if not hasattr (sequence_codes[s], 'is_hard'):
+			sequence_codes[s].is_hard = True
 		# Read frame information from images.
 		f = 1
 		boundingbox = [None] * 4
@@ -655,6 +658,7 @@ def read_ini (): # {{{
 			if from_dmod:
 				sequence_codes[s].from_dmod = True
 			sequence_codes[s].frames[f].cache = c
+			sequence_codes[s].frames[f].size = im.size
 			sequence_codes[s].frames[f].boundingbox = (-sequence_codes[s].frames[f].position[0], -sequence_codes[s].frames[f].position[1], im.size[0] - sequence_codes[s].frames[f].position[0], im.size[1] - sequence_codes[s].frames[f].position[1])
 			if boundingbox[0] == None or sequence_codes[s].frames[f].boundingbox[0] < boundingbox[0]:
 				boundingbox[0] = sequence_codes[s].frames[f].boundingbox[0]
@@ -724,7 +728,7 @@ def read_ini (): # {{{
 		sequences[s[0]].name = s[0]
 		sequences[s[0]].brain = s[2]
 		sequences[s[0]].script = '' if s[3] == 'none' else s[3]
-		sequences[s[0]].hard = s[4]
+		sequences[s[0]].is_hard = s[4]
 		sequences[s[0]].from_dmod = sequence_codes[s[1]].from_dmod
 		del sequence_codes[s[1]]
 
