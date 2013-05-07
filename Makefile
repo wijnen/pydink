@@ -32,7 +32,7 @@ clean:
 	rm -f *.pyc *.pyo
 
 release: clean all-dep
-	rm release.zip
+	rm -f release.zip
 	zip -r release.zip $(wildcard *[^p])
 
 .PHONY: release all all-dep clean
