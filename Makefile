@@ -22,6 +22,9 @@ all-dep: pde.gui makecache.gui
 %.dmod: pde.py pde.gui
 	./pde.py $(subst .dmod,,$@)
 
+%.world: pdw.py pdw.gui
+	./pdw.py $(subst .dmod,,$@)
+
 cache: makecache.py makecache.gui
 	./makecache.py
 

@@ -118,6 +118,8 @@ class GtkDink (dink.Dink): # {{{
 			self.cache_add ('S', (seq.name, frame), ret)
 		return ret
 	def load_pixbuf (self, file, use_scale = True):
+		if file is None:
+			return None
 		data = open (file[0], 'rb').read (file[1] + file[2])[file[1]:]
 		try:
 			pbl = gtk.gdk.PixbufLoader ()

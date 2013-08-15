@@ -71,9 +71,10 @@ import xdg.BaseDirectory
 error_message = ''
 def error (message):
 	global error_message
-	msg = '%s: Error: %s\n' % (filename, message)
+	msg = '%s:%d: Error: %s\n' % (filename, lineno, message)
 	sys.stderr.write (msg)
 	error_message += msg
+	print ('error: %s' % msg)
 
 def nice_assert (test, message):
 	if test:
@@ -213,10 +214,13 @@ for i in default_globals:
 choice_title = [None, False]
 
 def convert_image (im):
-	k = Image.eval (im.convert ('RGBA'), lambda v: [v, 254][v == 255])
-	bg = Image.new ('RGB', k.size, (255, 255, 255))
-	bg.paste (k)
-	return bg
+	try:
+		k = Image.eval (im.convert ('RGBA'), lambda v: [v, 254][v == 255])
+		bg = Image.new ('RGB', k.size, (255, 255, 255))
+		bg.paste (k)
+		return bg
+	except:
+		return None
 
 def readlines (f):
 	ret = {}
@@ -278,8 +282,15 @@ def make_string (s, size):
 	nice_assert (len (s) < size, "String %s of length %d doesn't fit in field of size %d" % (s, len (s), size))
 	return s + '\0' * (size - len (s))
 
-def token (script, allow_returning_comment = False):
+def tokenstrip (script):
+	global lineno
 	s = script.lstrip ()
+	stripped = script[:-len (s)]
+	lineno += sum ([x == '\n' for x in stripped])
+	return s
+
+def token (script, allow_returning_comment = False):
+	s = tokenstrip (script)
 	if s == '':
 		return None, None, False
 	if not allow_returning_comment:
@@ -289,24 +300,26 @@ def token (script, allow_returning_comment = False):
 				if p < 0:
 					s = ''
 					continue
-				s = s[p + 1:].lstrip ()
+				s = tokenstrip (s[p:])	# Include newline so it is counted.
 				continue
 			if s.startswith ('/*'):
 				p = s.find ('*/', 2)
 				nice_assert (p >= 0, 'unfinished comment')
-				s = s[p + 2:].lstrip ()
+				global lineno
+				lineno += sum ([x == '\n' for x in s[:p + 2]])
+				s = tokenstrip (s[p + 2:])
 				continue
 			break
 	l = ['//', '/*', '&&', '||', '==', '!=', '>=', '<=', '>', '<', '!', '+=', '-=', '/=', '*=', '=', '+', '-', '*', '/', ',', ';', '{', '}', '?', ':', '(', ')', '.']
 	for i in l:
 		if s.startswith (i):
-			return i, s[len (i):].lstrip (), False
+			return i, tokenstrip (s[len (i):]), False
 	if s[0] == '"':
 		p = s.find ('"', 1)
 		nice_assert (p >= 0, 'unfinished string')
 		n = s.find ('\n', 1)
 		nice_assert (n == -1 or n > p, 'unfinished string')
-		return s[:p + 1], s[p + 1:].lstrip (), False
+		return s[:p + 1], tokenstrip (s[p + 1:]), False
 	is_name = True
 	r = re.match ('[a-zA-Z_][a-zA-Z_0-9]*', s)
 	if r is None:
@@ -314,7 +327,7 @@ def token (script, allow_returning_comment = False):
 		r = re.match ('[0-9]+', s)
 		nice_assert (r is not None, 'unrecognized token %s' % s.split ()[0])
 	key = r.group (0)
-	return key, s[len (key):].lstrip (), is_name
+	return key, tokenstrip (s[len (key):]), is_name
 
 def push (ret, operators):
 	args = operators[-1][1]
@@ -460,6 +473,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 				a[1] = ('const', 4)
 			else:
 				a[1] = ('const', 2)
+		a.pop ();
 	elif name == 'editor_kill':
 		name = 'editor_type'
 		if a[1][0] != 'const' or a[1][1] >= 4:
@@ -1006,12 +1020,15 @@ def tokenize_expr (parent, script, used, current_vars):
 			if t == ')' and ['(', 0, 100] in operators:
 				while operators[-1] != ['(', 0, 100]:
 					ret, operators = push (ret, operators)
+				operators.pop ()
 				continue
 			if t == ',' or t == ';' or t == ')':
-				nice_assert (['(', 0, 100] not in operators, 'incomplete subexpression')
+				if not nice_assert (['(', 0, 100] not in operators, 'incomplete subexpression: %s' % repr (operators)):
+					return t + ' ' + script, ('const', 0)	# Fake return value.
 				while operators != []:
 					ret, operators = push (ret, operators)
-				nice_assert (len (ret) == 1, 'expression does not resolve to one value: %s' % repr (ret))
+				if not nice_assert (len (ret) == 1, 'expression does not resolve to one value: %s' % repr (ret)):
+					return t + ' ' + script, ('const', 0)	# Fake return value.
 				return t + ' ' + script, ret[0]
 			elif t == '||':
 				while operators != [] and operators[-1][2] < 5:
@@ -1042,7 +1059,8 @@ def tokenize_expr (parent, script, used, current_vars):
 			elif t in ['+', '-', '!']:
 				operators += ([t, 1, 0],)
 			else:
-				nice_assert (t and (isname or (t[0] >= '0' and t[0] <= '9')), 'syntax error')
+				if not nice_assert (t and (isname or (t[0] >= '0' and t[0] <= '9')), 'syntax error'):
+					return t + ' ' + script, ('const', 0)	# Fake return value.
 				if isname:
 					name = t
 					if script.startswith ('.'):
@@ -1053,7 +1071,9 @@ def tokenize_expr (parent, script, used, current_vars):
 						name = (name.lower (), t)
 						if not nice_assert (name[0] in functions and name[1] in functions[name[0]], 'function %s not found in file %s' % (name[1], name[0])):
 							print functions
-						nice_assert (script.startswith ('('), 'external function %s.%s is not called' % (name[0], name[1]))
+							return t + ' ' + script, ('const', 0)	# Fake return value.
+						if not nice_assert (script.startswith ('('), 'external function %s.%s is not called' % (name[0], name[1])):
+							return t + ' ' + script, ('const', 0)	# Fake return value.
 					if script.startswith ('('):
 						# Read away the opening parenthesis.
 						t, script, isname = token (script)
@@ -1061,7 +1081,8 @@ def tokenize_expr (parent, script, used, current_vars):
 						if isinstance (name, str):
 							if filename.lower () in functions and name in functions[filename.lower ()]:
 								# local function.
-								nice_assert (len (args) == len (functions[filename.lower ()][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[filename.lower ()][name][1])))
+								if not nice_assert (len (args) == len (functions[filename.lower ()][name][1]), 'incorrect number of arguments when calling %s (%d, needs %d)' % (name, len (args), len (functions[filename.lower ()][name][1]))):
+									return t + ' ' + script, ('const', 0)	# Fake return value.
 								ret += (['()', (filename.lower (), name), args],)
 							else:
 								# internal function.
@@ -1076,7 +1097,8 @@ def tokenize_expr (parent, script, used, current_vars):
 										ret += (['internal', name, args],)
 						else:
 							# function in other file.
-							nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1])))
+							if not nice_assert (len (args) == len (functions[name[0]][name[1]][1]), 'incorrect number of arguments when calling %s.%s (%d, needs %d)' % (name[0], name[1], len (args), len (functions[name[0]][name[1]][1]))):
+								return t + ' ' + script, ('const', 0)	# Fake return value.
 							ret += (['()', name, args],)
 						need_operator = True
 						continue
@@ -1102,6 +1124,8 @@ def check_exists (current_vars, name):
 
 def tokenize (script, dink, fname, used):
 	'''Tokenize a script completely. Return a list of functions (name, (rettype, args), definition-statement).'''
+	global lineno;
+	lineno = 1;
 	my_locals = set ()	# Local variables currently in scope.
 	my_statics = set ()
 	my_globals = set ()
@@ -1121,7 +1145,7 @@ def tokenize (script, dink, fname, used):
 			nice_assert (isname, 'invalid argument for extern or static')
 			name = t
 			t, script, isname = token (script)
-			nice_assert (t == ';', 'junk after extern')
+			nice_assert (t == ';', 'junk after extern or static')
 			nice_assert (not check_exists ((my_locals, my_statics, my_globals), name), 'duplicate definition of static or global variable %s' % name)
 			if not is_static:
 				if name not in the_globals:
@@ -2372,7 +2396,7 @@ class Seq: #{{{
 				r = re.match (r'([^.].*?)(?:-(\d+))?$', s)
 				if not r:
 					continue
-				base = r.group (1)
+				base = prefix + r.group (1)
 				if base not in self.collection:
 					self.collection[base] = self.makecollection (base)
 				if prefix == '' and r.group (2):
@@ -2813,10 +2837,12 @@ class Seq: #{{{
 			ini.write ('load_sequence%s %s %d %s\r\n' % (now, seq.filepath, seq.code, seq.type.upper ()))
 		for f in range (1, len (seq.frames)):
 			if seq.frames[f].source is not None:
-				ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
+				realseq = self.find_seq (seq.frames[f].source[0])
+				if realseq is not None:
+					ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
 			if (len (seq.frames[f].hardbox) == 4 and seq.frames[f].hardbox != seq.hardbox) or (len (seq.frames[f].position) == 2 and seq.frames[f].position != seq.position):
 				ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\r\n' % (seq.code, f, seq.frames[f].position[0], seq.frames[f].position[1], seq.frames[f].hardbox[0], seq.frames[f].hardbox[1], seq.frames[f].hardbox[2], seq.frames[f].hardbox[3]))
-			if seq.frames[f].source is not None or (seq.frames[f].delay is not None and seq.frames[f].delay != seq.delay):
+			if seq.frames[f].delay is not None and seq.frames[f].delay != seq.delay:
 				ini.write ('set_frame_delay %d %d %d\r\n' % (seq.code, f, int (seq.frames[f].delay)))
 			if seq.frames[f].special:
 				ini.write ('set_frame_special %d %d 1\r\n' % (seq.code, f))
@@ -2839,7 +2865,10 @@ class Seq: #{{{
 				if d not in (1,2,3,4,'die',6,7,8,9):
 					continue
 				for f in range (1, len (i[d].frames)):
-					convert_image (Image.open (filepart (*i[d].frames[f].cache))).save (os.path.join (root, 'graphics', 'custom', '%s-%02d' % (i[d].name, f) + os.extsep + 'bmp'))
+					try:
+						convert_image (Image.open (filepart (*i[d].frames[f].cache))).save (os.path.join (root, 'graphics', 'custom', '%s-%02d' % (i[d].name, f) + os.extsep + 'bmp'))
+					except:
+						pass
 		# Write dink.ini
 		ini = open (os.path.join (root, 'dink' + os.extsep + 'ini'), 'w')
 		for c in self.collection:
@@ -2856,7 +2885,10 @@ class Seq: #{{{
 			alpha = None
 		else:
 			alpha = (255, 255, 255)
-		return seq.frames[frame].cache + (alpha,)
+		if seq.frames[frame].cache:
+			return seq.frames[frame].cache + (alpha,)
+		else:
+			return None
 	def get_hard_file (self, seq, frame):
 		return seq.frames[frame].hard
 	def rename (self, old, new):
@@ -3042,6 +3074,8 @@ class Script: #{{{
 		return ret
 	def find_functions (self, script, funcs, defs):
 		global max_args
+		global lineno;
+		lineno = 1;
 		my_statics = []
 		my_globals = []
 		script = self.handle_ifdef (script, defs)
@@ -3051,8 +3085,8 @@ class Script: #{{{
 				break
 			if t in ('static', 'extern'):
 				is_static = t == 'static'
-				t, script, isname = token (script)
-				if nice_assert (t == 'int', 'missing "int" for global variable declaration'):
+				name, script, isname = token (script)
+				if nice_assert (name == 'int', 'missing "int" for global variable declaration'):
 					name, script, isname = token (script)
 				nice_assert (isname, 'missing variable name for global variable declaration')
 				t, script, isname = token (script)

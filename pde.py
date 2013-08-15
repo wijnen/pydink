@@ -887,6 +887,70 @@ class ViewMap (View): # {{{
 		update_editgui ()
 		self.moveinfo = None
 		the_gui.statusbar = 'Operation cancelled'
+	def key_numpad (self, key, ap = None):
+		if key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert:	# new sprite from sequence
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewseq.update ()
+			the_gui.setseq = True
+		elif key == gtk.keysyms.KP_1 or key == gtk.keysyms.KP_End:		# new sprite with direction 1
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (1)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_2 or key == gtk.keysyms.KP_Down:	# new sprite with direction 2
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (2)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_3 or key == gtk.keysyms.KP_Next:	# new sprite with direction 3
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (3)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_4 or key == gtk.keysyms.KP_Left:	# new sprite with direction 4
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (4)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_5 or key == gtk.keysyms.KP_Begin:	# new sprite with direction die
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction ('die')
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_6 or key == gtk.keysyms.KP_Right:	# new sprite with direction 6
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (6)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_7 or key == gtk.keysyms.KP_Home:	# new sprite with direction 7
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (7)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_8 or key == gtk.keysyms.KP_Up:		# new sprite with direction 8
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (8)
+			the_gui.setcollection = True
+		elif key == gtk.keysyms.KP_9 or key == gtk.keysyms.KP_Prior:	# new sprite with direction 9
+			select.clear ()
+			if ap is not None:
+				self.newinfo = ap
+			viewcollection.direction (9)
+			the_gui.setcollection = True
+		else:
+			return False
+		return True
 	def keypress (self, widget, e):
 		global copystart
 		p = [self.pointer_pos[x] + self.offset[x] for x in range (2)]
@@ -1004,56 +1068,8 @@ class ViewMap (View): # {{{
 		elif not ctrl and not shift and key == gtk.keysyms.m:		# move selected sprites
 			self.moveinfo = 'move', None, self.make_cancel ()
 			the_gui.statusbar = 'Starting move operation'
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert):	# new sprite from sequence
-			select.clear ()
-			self.newinfo = ap
-			viewseq.update ()
-			the_gui.setseq = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_1 or key == gtk.keysyms.KP_End):		# new sprite with direction 1
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (1)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_2 or key == gtk.keysyms.KP_Down):	# new sprite with direction 2
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (2)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_3 or key == gtk.keysyms.KP_Next):	# new sprite with direction 3
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (3)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_4 or key == gtk.keysyms.KP_Left):	# new sprite with direction 4
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (4)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_5 or key == gtk.keysyms.KP_Begin):	# new sprite with direction die
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction ('die')
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_6 or key == gtk.keysyms.KP_Right):	# new sprite with direction 6
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (6)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_7 or key == gtk.keysyms.KP_Home):	# new sprite with direction 7
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (7)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_8 or key == gtk.keysyms.KP_Up):		# new sprite with direction 8
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (8)
-			the_gui.setcollection = True
-		elif not ctrl and not shift and (key == gtk.keysyms.KP_9 or key == gtk.keysyms.KP_Prior):	# new sprite with direction 9
-			select.clear ()
-			self.newinfo = ap
-			viewcollection.direction (9)
-			the_gui.setcollection = True
+		elif not ctrl and not shift and self.key_numpad (key, ap):
+			pass
 		elif not ctrl and not shift and key == gtk.keysyms.s:
 			if len (spriteselect) != 0:
 				# Required info:
@@ -1668,7 +1684,7 @@ class ViewSeq (View): # {{{
 	def keypress (self, widget, e):
 		ctrl = e.state & gtk.gdk.CONTROL_MASK
 		shift = e.state & gtk.gdk.SHIFT_MASK
-		return self.key_global (e.keyval, ctrl, shift) or self.key_seq (e.keyval, ctrl, shift)
+		return self.key_global (e.keyval, ctrl, shift) or self.key_seq (e.keyval, ctrl, shift) or (not ctrl and not shift and viewmap.key_numpad (e.keyval))
 	def get_selected_sequence (self):
 		x, y = self.pointer_pos
 		s = seqlist ()
@@ -1802,7 +1818,7 @@ class ViewCollection (View): # {{{
 	def keypress (self, widget, e):
 		ctrl = e.state & gtk.gdk.CONTROL_MASK
 		shift = e.state & gtk.gdk.SHIFT_MASK
-		return self.key_global (e.keyval, ctrl, shift) or self.key_collection (e.keyval, ctrl, shift)
+		return self.key_global (e.keyval, ctrl, shift) or self.key_collection (e.keyval, ctrl, shift) or (not ctrl and not shift and viewmap.key_numpad (e.keyval))
 	def button_on (self, widget, e):
 		self.grab_focus ()
 		self.pointer_pos = int (e.x), int (e.y)
@@ -2274,7 +2290,7 @@ def update_sprite_layer ():
 	update_editgui ()
 
 def update_sprite_seq (sprite, name, value):
-	seq = fullseqlist ()[value].split ()
+	seq = fullseqlist ()[int (value)].split ()
 	if len (seq) == 1:
 		if data.seq.find_seq (seq[0]) != None:
 			setattr (sprite, name, seq[0])
