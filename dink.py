@@ -291,8 +291,6 @@ def tokenstrip (script):
 
 def token (script, allow_returning_comment = False):
 	s = tokenstrip (script)
-	if s == '':
-		return None, None, False
 	if not allow_returning_comment:
 		while True:
 			if s.startswith ('//'):
@@ -310,6 +308,8 @@ def token (script, allow_returning_comment = False):
 				s = tokenstrip (s[p + 2:])
 				continue
 			break
+	if s == '':
+		return None, None, False
 	l = ['//', '/*', '&&', '||', '==', '!=', '>=', '<=', '>', '<', '!', '+=', '-=', '/=', '*=', '=', '+', '-', '*', '/', ',', ';', '{', '}', '?', ':', '(', ')', '.']
 	for i in l:
 		if s.startswith (i):
@@ -2822,6 +2822,12 @@ class Seq: #{{{
 			now = '_now'
 		else:
 			now = ''
+		# Extra frames on top of the ones on disk must be set before loading, because after loading the number of frames is fixed.
+		for f in (x for x in range (1, len (seq.frames)) if seq.frames[x].source is not None):
+			realseq = self.find_seq (seq.frames[f].source[0])
+			if realseq is not None:
+				ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
+				ini.write ('set_frame_delay %d %d %d\r\n' % (seq.code, f, int (seq.frames[f].delay) if seq.frames[f].delay is not None else seq.delay))
 		if seq.type in ('normal', 'foreign'):
 			if seq.position is None:
 				if seq.delay is not None:
@@ -2836,10 +2842,6 @@ class Seq: #{{{
 		else:
 			ini.write ('load_sequence%s %s %d %s\r\n' % (now, seq.filepath, seq.code, seq.type.upper ()))
 		for f in range (1, len (seq.frames)):
-			if seq.frames[f].source is not None:
-				realseq = self.find_seq (seq.frames[f].source[0])
-				if realseq is not None:
-					ini.write ('set_frame_frame %d %d %d %d\r\n' % (seq.code, f, self.find_seq (seq.frames[f].source[0]).code, seq.frames[f].source[1]))
 			if (len (seq.frames[f].hardbox) == 4 and seq.frames[f].hardbox != seq.hardbox) or (len (seq.frames[f].position) == 2 and seq.frames[f].position != seq.position):
 				ini.write ('set_sprite_info %d %d %d %d %d %d %d %d\r\n' % (seq.code, f, seq.frames[f].position[0], seq.frames[f].position[1], seq.frames[f].hardbox[0], seq.frames[f].hardbox[1], seq.frames[f].hardbox[2], seq.frames[f].hardbox[3]))
 			if seq.frames[f].delay is not None and seq.frames[f].delay != seq.delay:

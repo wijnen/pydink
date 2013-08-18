@@ -2870,17 +2870,20 @@ events['update_sprite_que'] = lambda: update_sprite_gui ('que')
 events['update_sprite_layer'] = update_sprite_layer
 events['update_sprite_map'] = lambda: update_sprite_gui ('map')
 
-the_gui = gui.Gui ('pydink', gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld }, events = events)
+inputs = ('active_layer', 'base_attack', 'base_attack_text', 'base_death', 'base_death_text', 'base_idle', 'base_idle_text', 'base_walk', 'base_walk_text', 'bottom', 'brain', 'crop', 'current_map', 'defense', 'dmod_num', 'dmod_script', 'experience', 'frame', 'gold', 'hard', 'hitpoints', 'indoor', 'layer', 'layer0_background', 'layer0_presentation', 'layer0_visible', 'layer1_background', 'layer1_presentation', 'layer1_visible', 'layer2_background', 'layer2_presentation', 'layer2_visible', 'layer3_background', 'layer3_presentation', 'layer3_visible', 'layer4_background', 'layer4_presentation', 'layer4_visible', 'layer5_background', 'layer5_presentation', 'layer5_visible', 'layer6_background', 'layer6_presentation', 'layer6_visible', 'layer7_background', 'layer7_presentation', 'layer7_visible', 'layer8_background', 'layer8_presentation', 'layer8_visible', 'layer9_background', 'layer9_presentation', 'layer9_visible', 'layers_num', 'left', 'map', 'map_hardness', 'map_music', 'map_num', 'map_script', 'map_text', 'name', 'size', 'sound', 'sound_text', 'speed', 'splash', 'sprite', 'sprite_num', 'sprite_text', 'statusbar', 'statuslabel', 'strength', 'timing', 'title', 'top', 'touch_damage', 'touchseq', 'touchseq_text', 'use_hard', 'vision', 'warp', 'warpmap', 'warpx', 'warpy', 'x', 'y', 'border_gc', 'default_gc', 'empty_gc', 'grid_gc', 'hard_gc', 'invalid_gc', 'noselect_gc', 'noshow_gc', 'paste_gc', 'path_gc', 'select_gc', 'warp_gc', 'white_gc', 'hardness_editor', 'script_editor', 'nobackingstore', 'sync')
+outputs = ('about', 'error', 'nohit', 'preview', 'que', 'right', 'script', 'seq', 'seq_text', 'set_attack_list', 'set_death_list', 'set_idle_list', 'set_map_hardness_list', 'set_layer_edit', 'set_sprite_edit', 'setworld', 'setseq', 'setmap', 'settiles', 'setmap2', 'set_map_edit', 'set_map_list', 'set_music_list', 'set_num_frames', 'set_scripts', 'set_seq_list', 'set_sounds_list', 'set_spritelist', 'set_touch_list', 'set_walk_list', 'show_about', 'show_error', 'show_open', 'show_save_as', 'setcollection', 'set_dmod_edit')
+
+the_gui = gui.Gui ('pydink', gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld }, events = events, inputs = inputs, outputs = outputs)
 
 the_gui.about = {
 	'name': 'PyDink',
 	'program_name': 'pde',
 	'version': '0.2',
-	'copyright': 'Copyright 2012 Bas Wijnen <wijnen@debian.org>',
+	'copyright': 'Copyright 2012-2013 Bas Wijnen <wijnen@debian.org>',
 	'license': 'GNU Affero General Public License, version 3 or later (at your option). The full text of the license should be distributed with your package. If not, you can find it at http://www.gnu.org/licenses/agpl.html',
 	'wrap_license': True,
-	'website': 'http://a83-163-111-92.adsl.xs4all.nl/pydink',
-	'website_label': 'Get the newest version from my home server',
+	'website': 'https://github.com/wijnen/pydink',
+	'website_label': 'Get the newest version from gihub',
 	'authors': ('Bas Wijnen <wijnen@debian.org>', 'Special thanks to everyone on http://dinknetwork.com/forum.cgi', 'In particular MsDink for letting me test on her computer and Magicman for discussing the many bugs in the Dink engine', "And of course Seth for making Dink in the first place. It may be buggy as hell, but it's a great game anyway."),
 	'artists': ('Seth Robinson, http://www.rtsoft.com',)}
 

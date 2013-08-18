@@ -16,11 +16,11 @@ gtk
 	Setting name=white_gc value="white"
 	Setting name=path_gc value="green"
 	Setting name=nobackingstore value=False type=bool
-	Dialog title="PyDink error" show=:False buttons=1 run=show_error
+	Dialog title=":PyDink error" show=:False buttons=1 run=show_error
 		'Ok
 		Label value=error
-	FileChooserDialog title="Select game directory to edit" action=:create_folder show=show_open:False overwrite_confirmation=:False response=open
-	FileChooserDialog title="Select game directory to save" action=:create_folder show=show_save_as:False response=save_as
+	FileChooserDialog title=":Select game directory to edit" action=:create_folder show=show_open:False overwrite_confirmation=:False response=open
+	FileChooserDialog title=":Select game directory to save" action=:create_folder show=show_save_as:False response=save_as
 	AboutDialog setup=about show=show_about
 	Window title="title:Python Dink Editor"
 		VBox
@@ -65,7 +65,7 @@ gtk
 						External id=viewmap set_page=setmap2
 						External id=viewworld set_page=setworld
 					VBox expand=:False
-						Notebook show_tabs=:True switch_page=set_mode expand=:False
+						Notebook show_tabs=:True expand=:False
 							VBox label=:DMod name=dmod_num set_page=set_dmod_edit
 								Table columns=3 expand=:False
 									'Preview
