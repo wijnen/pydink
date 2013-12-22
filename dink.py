@@ -220,6 +220,7 @@ def convert_image (im):
 		bg.paste (k)
 		return bg
 	except:
+		print ('error converting: %s' % repr (sys.exc_value))
 		return None
 
 def readlines (f):
@@ -325,7 +326,8 @@ def token (script, allow_returning_comment = False):
 	if r is None:
 		is_name = False
 		r = re.match ('[0-9]+', s)
-		nice_assert (r is not None, 'unrecognized token %s' % s.split ()[0])
+		if not nice_assert (r is not None, 'unrecognized token %s' % s.split ()[0]):
+			return None, None, False
 	key = r.group (0)
 	return key, tokenstrip (s[len (key):]), is_name
 
@@ -336,10 +338,13 @@ def push (ret, operators):
 	op = operators.pop ()[0]
 	# Precompute constant expressions.
 	if all ([x[0] == 'const' for x in r]):
-		if len (r) == 1:
-			ret += (('const', int (eval ('%s%d' % (op, r[0][1])))),)
-		else:
-			ret += (('const', int (eval ('%d %s %d' % (r[0][1], op, r[1][1])))),)
+		try:
+			if len (r) == 1:
+				ret += (('const', int (eval ('%s%d' % (op, r[0][1])))),)
+			else:
+				ret += (('const', int (eval ('%d %s %d' % (r[0][1], op, r[1][1])))),)
+		except:
+			error ("invalid expression");
 	else:
 		ret += ([op, r],)
 	return ret, operators
@@ -373,7 +378,7 @@ def mangle (name):
 		print 'known names:', mangled_names
 		raise AssertionError ('yo!')
 		return '<<broken>>'
-	return '&m%d%s' % (mangled_names[name], name)
+	return ('&m%d%s' % (mangled_names[name], name))[:16]
 
 def newmangle (name):
 	global next_mangled
@@ -443,7 +448,8 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 			return '', ''
 		a[1] = ('const', dink.seq.find_seq (a[1][1][0]).code)
 	elif name == 'create_sprite':
-		a[2] = ('const', make_brain (a[2][1][0]))
+		if a[2][0] == '"':
+			a[2] = ('const', make_brain (a[2][1][0]))
 		if a[3][0] == '"':
 			s = dink.seq.find_seq (a[3][1][0])
 			if not nice_assert (s is not None, 'invalid sequence in create_sprite: %s' % a[3][1][0]):
@@ -483,7 +489,8 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 		else:
 			a[1] = ('const', 8)
 	elif name == 'get_rand_sprite_with_this_brain' or name == 'get_sprite_with_this_brain':
-		a[0] = ('const', make_brain (a[0][1][0]))
+		if a[0][0] == '"':
+			a[0] = ('const', make_brain (a[0][1][0]))
 	elif name == 'map_tile':
 		# mapx, mapy, tilescreen, tilex, tiley
 		if all ([x[0] == 'const' for x in a[:2]]):
@@ -550,7 +557,7 @@ def build_internal_function (name, args, indent, dink, fname, use_retval):
 	elif name == 'sp_nohard':
 		name = 'sp_hard'
 	elif name == 'show_bmp':
-		a.append (('const', 0))
+		a = [('"', ('graphics\\' + a[0][1][0] + '.bmp',)), a[1], ('const', 0)]
 	elif name in ('fade_up_stop', 'fade_down_stop'):
 		# These are not supported by original Dink; use the "normal" ones instead. (Note: for fade_down, this behaves as fade_down_stop.)
 		name = name[:-5]
@@ -679,21 +686,28 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 		else:
 			if invert:
 				return build_expr (dink, fname, ['==', expr, 0], indent, as_bool = as_bool)
-			tmp = current_tmp
 			b1, e1 = build_expr (dink, fname, expr[1][0], indent, as_bool = False)
-			current_tmp = tmp + 1
-			if e1 == '&tmp%d' % tmp:
+			if e1.startswith ('&tmp'):
 				b = b1
 			else:
+				tmp = current_tmp
+				current_tmp = tmp + 1
 				b = b1 + indent + 'int &tmp%d = ' % tmp + e1 + ';\r\n'
+				e1 = '&tmp%d' % tmp
 			b2, e2 = build_expr (dink, fname, expr[1][1], indent, as_bool = False)
-			current_tmp = tmp + 1
-			extra = '' if expr[0] in ('*', '/') else '='
-			b += b2 + indent + '&tmp%d ' % tmp + expr[0] + extra + ' ' + e2 + ';\r\n'
-			if as_bool:
-				return b, '&tmp%d != 0' % tmp
+			if e2.startswith ('&tmp'):
+				b += b2
 			else:
-				return b, '&tmp%d' % tmp
+				tmp = current_tmp
+				current_tmp = tmp + 1
+				b += b2 + indent + 'int &tmp%d = ' % tmp + e2 + ';\r\n'
+				e2 = '&tmp%d' % tmp
+			extra = '' if expr[0] in ('*', '/') else '='
+			b += indent + e1 + ' ' + expr[0] + extra + ' ' + e2 + ';\r\n'
+			if as_bool:
+				return b, '%s != 0' % e1
+			else:
+				return b, e1
 	elif expr[0] in ('&&', '||'):
 		# Turn everything into &&.
 		# a && b == a && b
@@ -759,7 +773,7 @@ def build_expr (dink, fname, expr, indent, invert = False, as_bool = None):
 		else:				# remote function call
 			tmp = current_tmp
 			current_tmp = tmp + 1
-			b = build_function (expr[1][1], expr[2], indent, dink, expr[1][0])
+			b = build_function (expr[1], expr[2], indent, dink, expr[1][0])
 			if as_bool:
 				b += indent + 'int &tmp%d;\r\n' % tmp + indent + 'if (&result != 0)\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 1;\r\n' % tmp + indent + '} else\r\n' + indent + '{\r\n' + indent + '\t&tmp%d = 0;\r\n' % tmp + indent + '}\r\n'
 				if invert:
@@ -927,7 +941,8 @@ internal_functions = {
 
 def make_direct (dink, name, args, used):
 	# Check validity of name and arguments.
-	nice_assert (name in internal_functions, 'use of undefined function %s' % name)
+	if not nice_assert (name in internal_functions, 'use of undefined function %s' % name):
+		return None
 	ia = internal_functions[name]
 	a = list (args)
 	if len (a) < len (ia) and (ia.endswith ('I') or ia.endswith ('S') or ia.endswith ('Q')):
@@ -952,12 +967,18 @@ def make_direct (dink, name, args, used):
 		elif ia[i] in ('q', 'Q'):
 			if a[i] is not None:
 				if used is not None and a[i][0] == '"' and a[i][1] != ['']:
-					used[1].add (a[i][1][0])
+					c = dink.seq.as_collection (a[i][1][0])
+					if c:
+						used[0].add (c)
+					else:
+						used[1].add (a[i][1][0])
 		else:
 			raise AssertionError ('invalid character in internal_functions %s' % ia)
 	# Find direct functions.
 	if name == 'brain_code':
-		return 'const', make_brain (args[0][1][0])
+		if args[0][0] == '"':
+			return 'const', (make_brain (args[0][1][0]))
+		return args[0]
 	elif name == 'seq_code':
 		seq = dink.seq.find_seq (args[0][1][0])
 		if not nice_assert (seq is not None, 'invalid sequence name %s' % args[0][1][0]):
@@ -1051,7 +1072,8 @@ def tokenize_expr (parent, script, used, current_vars):
 					ret, operators = push (ret, operators)
 				operators += ([t, 2, 1],)
 			else:
-				raise AssertionError ('no valid operator found in expression (%s)' % t)
+				error ('no valid operator found in expression (%s)' % t)
+				return script, ('const', 0)	# Fake return value.
 			need_operator = False
 		else:
 			if t == '(':
@@ -1069,7 +1091,7 @@ def tokenize_expr (parent, script, used, current_vars):
 						# Get the function name.
 						t, script, isname = token (script)
 						name = (name.lower (), t)
-						if not nice_assert (name[0] in functions and name[1] in functions[name[0]], 'function %s not found in file %s' % (name[1], name[0])):
+						if not nice_assert (isname and name[0] in functions and name[1] in functions[name[0]], 'function %s not found in file %s' % (name[1], name[0])):
 							print functions
 							return t + ' ' + script, ('const', 0)	# Fake return value.
 						if not nice_assert (script.startswith ('('), 'external function %s.%s is not called' % (name[0], name[1])):
@@ -1387,7 +1409,7 @@ def build_function_def (data, fname, dink, my_statics, my_globals):
 	return ret + '}\r\n'
 
 def build_function (name, args, indent, dink, fname):
-	'''Build a function call. Return (before, expression).'''
+	'''Build a function call.'''
 	global current_tmp
 	if isinstance (name, str):
 		f = functions[fname][name]
@@ -1658,9 +1680,9 @@ class Sprite: #{{{
 				# Sequence not found: no maps.
 				return ret
 			boundingbox = s.frames[self.frame].boundingbox
-			minx = (self.x - 20 + boundingbox[0]) / (50 * 12)
+			minx = (self.x + boundingbox[0]) / (50 * 12)
 			miny = (self.y + boundingbox[1]) / (50 * 8)
-			maxx = (self.x - 20 + boundingbox[2]) / (50 * 12)
+			maxx = (self.x + boundingbox[2]) / (50 * 12)
 			maxy = (self.y + boundingbox[3]) / (50 * 8)
 			ret += [r for r in (y * 32 + x + 1 for y in range (miny, maxy + 1) for x in range (minx, maxx + 1)) if r in world.map]
 		return ret
@@ -1969,7 +1991,7 @@ class World: #{{{
 	def find_used_sprites (self, defs):
 		# Initial values are all which are used by the engine.
 		cols = set (('idle', 'walk', 'hit', 'push', 'duckbloody', 'duckhead'))
-		seqs = set (('status', 'nums', 'numr', 'numb', 'nump', 'numy', 'special', 'textbox', 'spurt', 'spurtl', 'spurtr', 'health-w', 'health-g', 'health-br', 'health-r', 'level', 'title', 'arrow-l', 'arrow-r', 'shiny', 'menu'))
+		seqs = set (('status', 'nums', 'numr', 'numb', 'nump', 'numy', 'special', 'textbox', 'spurt', 'spurtl', 'spurtr', 'health-w', 'health-g', 'health-br', 'health-r', 'level', 'title', 'arrow-l', 'arrow-r', 'shiny', 'menu', 'magic1'))
 		self.parent.seq.clear_used ()
 		for spr in self.sprite:
 			c = self.parent.seq.as_collection (spr.seq)
@@ -2010,8 +2032,8 @@ class World: #{{{
 	def build_hard (self, map):
 		'''Create an image of the hardness of the current screen.
 		Used colors: 0000, 00ff, ffff.'''
-		if map in self.parent.tile.hard:
-			ret = self.parent.tile.hard[map].copy ()
+		if self.map[map].hard in self.parent.tile.hard:
+			ret = Image.open (filepart (*self.parent.tile.hard[self.map[map].hard]))
 		else:
 			ret = Image.new ('RGBA', (50 * 12, 50 * 8), (0, 0, 0, 0))
 			for y in range (8):
@@ -2060,6 +2082,7 @@ class World: #{{{
 		for i in used_cols:
 			collection = self.parent.seq.find_collection (i)
 			if collection is None:
+				print ('huh')
 				continue
 			while True:
 				for d in (1,2,3,4,'die',6,7,8,9):
@@ -2067,10 +2090,10 @@ class World: #{{{
 						break
 				else:
 					collection['code'] = next_code
-					for d in collection:
-						if d in (1,2,3,4,'die',6,7,8,9):
+					for d in (1,2,3,4,'die',6,7,8,9):
+						if d in collection:
 							collection[d].code = next_code + (5 if d == 'die' else d)
-							used_codes.add (next_code + (5 if d == 'die' else d))
+						used_codes.add (next_code + (5 if d == 'die' else d))
 					break
 				next_code += 10
 		nice_assert (next_code < 1000, 'more than 1000 sequences required for collections')
@@ -2774,10 +2797,12 @@ class Seq: #{{{
 			put (f, 'delay-%d' % frame, -1 if sf.delay is None or sf.delay == seq.delay else sf.delay, -1 if not orig or of.delay is None or of.delay == orig.delay else of.delay)
 			put (f, 'source-%d' % frame, '' if sf.source is None else '%s %d' % tuple (sf.source), '' if not orig or of.source is None else '%s %d' % tuple (of.source))
 	def save (self):
-		if len (self.custom_seqs) > 0:
+		if len ([x for x in self.custom_seqs if '.' not in x.name]) > 0:
 			d = os.path.join (self.parent.root, 'seq')
 			os.mkdir (d)
 			for s in self.custom_seqs:
+				if '.' in s.name:
+					continue
 				if s.name in self.orig_seqs:
 					orig = self.orig_seqs[s.name]
 				else:
@@ -2789,10 +2814,12 @@ class Seq: #{{{
 				put (f, 'script', s.script, '')
 				put (f, 'is_hard', s.is_hard, orig.is_hard if orig else True)
 				self.save_seq (orig, sd, f, s)
-		if len (self.custom_collections) > 0:
+		if len ([x for x in self.custom_collections if '.' not in x['name']]) > 0:
 			d = os.path.join (self.parent.root, 'collection')
 			os.mkdir (d)
 			for c in self.custom_collections:
+				if '.' in c['name']:
+					continue
 				cd = os.path.join (d, c['name'])
 				os.mkdir (cd)
 				f = open (os.path.join (cd, 'info' + os.extsep + 'txt'), 'w')
@@ -3267,7 +3294,10 @@ class Images: #{{{
 	def build (self, root):
 		for i in self.images:
 			if self.preview != i and self.splash != i:
-				convert_image (Image.open (filepart (*self.images[i]))).save (os.path.join (root, 'graphics', i + os.extsep + 'bmp'))
+				d = os.path.join (root, 'graphics')
+				if not os.path.exists (d):
+					os.mkdir (d)
+				convert_image (Image.open (filepart (*self.images[i]))).save (os.path.join (d, i + os.extsep + 'bmp'))
 		if self.preview != '':
 			convert_image (Image.open (filepart (*self.images[self.preview]))).save (os.path.join (root, 'preview' + os.extsep + 'bmp'))
 		if self.splash != '':
@@ -3365,6 +3395,7 @@ file (info.txt).
 		self.sound.save ()
 		self.script.save ()
 		f = open (os.path.join (self.root, 'info' + os.extsep + 'txt'), 'w')
+		put (f, 'depends', ' '.join (self.depends), '')
 		put (f, 'preview', self.image.preview, '')
 		put (f, 'splash', self.image.splash, '')
 		for i in range (10):

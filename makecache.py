@@ -56,7 +56,7 @@ args = a.parse_args ()
 if args.dinkdir is None or args.dmoddir is None or args.editdir is None or args.freedink is None:
 	import gui
 	with_gui = True
-	the_gui = gui.Gui (events = {'run': lambda: the_gui (False, True), 'done': lambda: the_gui (False)})
+	the_gui = gui.Gui (events = {'run': lambda: the_gui (False, True), 'done': lambda: the_gui (False)}, inputs = ('dinkdir', 'freedink', 'dmoddir', 'editdir'), outputs = ('error',))
 	the_gui.dinkdir = '/usr/share/games/dink/dink' if args.dinkdir is None else args.dinkdir
 	the_gui.dmoddir = os.path.join (os.path.expanduser ('~'), 'dmods') if args.dmoddir is None else args.dmoddir
 	the_gui.editdir = os.path.join (os.path.expanduser ('~'), 'pydink') if args.editdir is None else args.editdir

@@ -986,7 +986,7 @@ class ViewMap (View): # {{{
 			os.system (the_gui.sync)
 			sync ()
 			n = (ap[1] / (8 * 50)) * 32 + (ap[0] / (12 * 50)) + 1
-			play (n, ap[0] % (12 * 50), ap[1] % (8 * 50))
+			play (n, ap[0] % (12 * 50) + 20, ap[1] % (8 * 50))
 		# Edit actions (select + view).
 		elif ctrl and not shift and key == gtk.keysyms.c:	# Copy.
 			self.copy ()
@@ -1725,8 +1725,10 @@ class ViewSeq (View): # {{{
 				if spr[1]:
 					spr[0].touch_seq = seq
 				else:
+					spr[0].unregister ()
 					spr[0].seq = seq
 					spr[0].frame = frame
+					spr[0].register ()
 			update_editgui ()
 		elif e.button == 2:
 			x, y = viewmap.newinfo
