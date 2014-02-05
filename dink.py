@@ -69,6 +69,7 @@ import xdg.BaseDirectory
 # }}}
 # {{{ Error handling
 error_message = ''
+lineno = 0
 def error (message):
 	global error_message
 	msg = '%s:%d: Error: %s\n' % (filename, lineno, message)

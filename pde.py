@@ -482,6 +482,7 @@ class ViewMap (View): # {{{
 		self.tiles = (12 * 32, 8 * 24)	# Total number of tiles on map.
 		self.current_selection = 0	# Index of "current" sprite in selection.
 		self.set_size_request (50 * 12, 50 * 8)
+		self.update_handle = None
 	def find_tile (self, worldpos):
 		n = (worldpos[1] / 8) * 32 + (worldpos[0] / 12) + 1
 		if n in data.world.map:
@@ -493,8 +494,13 @@ class ViewMap (View): # {{{
 			if self.moveinfo is None and (worldpos[0] - self.pointer_tile[0] + select.start[0], worldpos[1] - self.pointer_tile[1] + select.start[1], select.start[2]) in select.data:
 				self.buffer.draw_rectangle (self.pastegc, False, screenpos[0] + 1, screenpos[1] + 1, screenzoom - 2, screenzoom - 2)
 	def update (self):
-		if self.buffer is None:
+		if self.update_handle is not None:
 			return
+		self.update_handle = glib.idle_add (self.do_update)
+	def do_update (self):
+		self.update_handle = None
+		if self.buffer is None:
+			return False
 		maps = View.draw_tiles (self, 0)
 		# Draw sprites.
 		lst = []
@@ -687,6 +693,7 @@ class ViewMap (View): # {{{
 				self.buffer.draw_lines (self.pathgc, (origin, (origin[0], pos[1]), pos))
 		if not the_gui.nobackingstore:
 			self.get_window ().draw_drawable (self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
+		return False
 	def make_global (self, map, pos):
 		s = (12, 8)
 		spos = ((map - 1) % 32, (map - 1) / 32)
@@ -1641,7 +1648,13 @@ class ViewSeq (View): # {{{
 		View.__init__ (self)
 		self.selected_seq = None
 		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
+		self.update_handle = None
 	def update (self):
+		if self.update_handle is not None:
+			return
+		self.update_handle = glib.idle_add (self.do_update)
+	def do_update (self):
+		self.update_handle = None
 		if self.buffer == None:
 			return
 		# TODO: clear only what is not going to be cleared
@@ -1750,7 +1763,13 @@ class ViewCollection (View): # {{{
 		self.available = []
 		self.selected_seq = None
 		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
+		self.update_handle = None
 	def update (self):
+		if self.update_handle is not None:
+			return
+		self.update_handle = glib.idle_add (self.do_update)
+	def do_update (self):
+		self.update_handle = None
 		if self.buffer == None:
 			return
 		# TODO: clear only what is not going to be cleared
@@ -1898,6 +1917,7 @@ class ViewTiles (View): # {{{
 		self.tiles = (12 * 6, 8 * 7)	# Total number of tiles
 		self.set_size_request (screenzoom * 12, screenzoom * 8)
 		self.offset = (0, 0)
+		self.update_handle = None
 	def find_tile (self, worldpos):
 		if worldpos[0] >= 0 and worldpos[0] < 6 * 12 and worldpos[1] >= 0 and worldpos[1] < 7 * 8:
 			n = (worldpos[1] / 8) * 6 + worldpos[0] / 12 + 1
@@ -1907,6 +1927,11 @@ class ViewTiles (View): # {{{
 	def draw_tile (self, screenpos, worldpos):
 		View.draw_tile (self, screenpos, worldpos, True)
 	def update (self):
+		if self.update_handle is not None:
+			return
+		self.update_handle = glib.idle_add (self.do_update)
+	def do_update (self):
+		self.update_handle = None
 		if self.buffer == None:
 			return
 		View.draw_tiles (self, 1)
@@ -1963,7 +1988,13 @@ class ViewWorld (View): # {{{
 		self.tiles = (0, 0)	# This must be defined for clamp_offset, but it isn't used.
 		self.tsize = 1
 		self.off = (0, 0)
+		self.update_handle = None
 	def update (self):
+		if self.update_handle is not None:
+			return
+		self.update_handle = glib.idle_add (self.do_update)
+	def do_update (self):
+		self.update_handle = None
 		if not self.buffer:
 			return
 		s = (32, 24)
