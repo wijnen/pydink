@@ -65,7 +65,7 @@ import shutil
 import StringIO
 import pickle
 import glib
-import xdg.BaseDirectory
+import xdgbasedir
 # }}}
 # {{{ Error handling
 error_message = ''
@@ -3042,8 +3042,7 @@ class Sound: #{{{
 class Script: #{{{
 	def create_defaults (self):
 		self.default = {}
-		for basedir in [os.path.realpath (os.path.dirname (sys.argv[0]))] + list (xdg.BaseDirectory.load_data_paths ('pydink')):
-			d = os.path.join (basedir, 'default-scripts')
+		for d in [os.path.realpath (os.path.join (os.path.dirname (sys.argv[0]), 'default-scripts'))] + list (xdgbasedir.data_files_read ('default-scripts', 'pydink')):
 			if not os.path.exists (d):
 				continue
 			for f in os.listdir (d):

@@ -1,4 +1,5 @@
 *.pyc
 *.gui
 gui.py
+xdgbasedir.py
 backup

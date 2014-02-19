@@ -33,11 +33,12 @@ is 2.7.
 Install Python before installing PyGtk, PIL, or NumPy.
 
 You will also need my python gui module from
-<http://github.com/wijnen/python-gui>.  To install it, run
-python setup.py install (from the commandline).  Windows users may prefer to
-copy the file gui.py into the pydink directory.  The problems that this causes
-(mostly related to upgrading) are no worse than what Windows programs always
-do.
+<http://github.com/wijnen/python-gui>, and the xdgbasedir module from
+<https://github.com/wijnen/python-xdgbasedir>.  To install them, run python
+setup.py install (once for each, from the commandline).  Windows users may
+prefer to copy the file gui.py into the pydink directory.  The problems that
+this causes (mostly related to upgrading) are no worse than what Windows
+programs always do.
 
 You will need to edit scripts during DMod making.  Don't use a lousy editor like
 notepad if you want to keep your sanity.  For beginners, I recommend gedit:

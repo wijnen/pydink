@@ -990,7 +990,6 @@ class ViewMap (View): # {{{
 			the_gui.statusbar = 'Built DMod'
 		elif ctrl and not shift and key == gtk.keysyms.p:	# Play.
 			the_gui.statusbar = 'Syncing for playtest'
-			os.system (the_gui.sync)
 			sync ()
 			n = (ap[1] / (8 * 50)) * 32 + (ap[0] / (12 * 50)) + 1
 			play (n, ap[0] % (12 * 50) + 20, ap[1] % (8 * 50))
@@ -2656,6 +2655,9 @@ def sync ():
 	if updating:
 		# Don't sync while updating.
 		return
+	synccmd = the_gui.sync
+	if synccmd:
+		os.system (synccmd)
 	for s in data.script.data:
 		data.script.data[s] = open (os.path.join (tmpdir, s + os.extsep + 'c')).read ()
 	data.info = open (os.path.join (tmpdir, 'info' + os.extsep + 'txt')).read ()
@@ -2773,7 +2775,7 @@ def deselect_all ():
 	View.update (viewmap)
 def select_invert ():
 	global spriteselect
-	other = [s for s in spriteselect if s.layer != the_gui.active_layer]
+	other = [s for s in spriteselect if s[0].layer != the_gui.active_layer]
 	spriteselect = [(s, False) for s in data.world.sprite if s.layer == the_gui.active_layer and (s, False) not in spriteselect] + other
 	View.update (viewmap)
 def save_as (dirname):
