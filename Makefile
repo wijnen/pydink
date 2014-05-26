@@ -1,5 +1,5 @@
 # Makefile - pydink build rules
-# Copyright 2011 Bas Wijnen
+# Copyright 2011-2014 Bas Wijnen <wijnen@debian.org>
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -29,7 +29,7 @@ cache: makecache.py makecache.gui
 	./makecache.py
 
 %: %.in
-	../xmlgen/xmlgen <$< >$@
+	xmlgen <$< >$@
 
 clean:
 	rm -f *.pyc *.pyo
