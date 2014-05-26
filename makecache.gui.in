@@ -1,16 +1,18 @@
 gtk
 	Window title=":Pydink cache generator - configuration"
-		Table columns=2
-			'Dink data
-			FileChooserButton filename=dinkdir action=:select_folder
-			'DMod directory (for built DMods)
-			FileChooserButton filename=dmoddir action=:select_folder
-			'Editing directory
-			FileChooserButton filename=editdir action=:select_folder
-			'Freedink executable
-			FileChooserButton filename=freedink action=:open
-			Button clicked=run right=:2
+		VBox
+			Table columns=2 expand=:False
+				'Dink data
+				FileChooserButton filename=dinkdir action=:select_folder
+				'DMod directory (for built DMods)
+				FileChooserButton filename=dmoddir action=:select_folder
+				'Editing directory
+				FileChooserButton filename=editdir action=:select_folder
+				'Freedink executable
+				FileChooserButton filename=freedink action=:open
+			Button clicked=run expand=:False
 				'Generate cache
-			Label value=error right=:2
-			Button clicked=done right=:2
+			ScrolledWindow
+				TextView text=error
+			Button clicked=done expand=:False
 				'Close

@@ -28,7 +28,7 @@ all-dep: pde.gui makecache.gui
 cache: makecache.py makecache.gui
 	./makecache.py
 
-%: %.in
+%.gui: %.gui.in
 	xmlgen <$< >$@
 
 clean:
