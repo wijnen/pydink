@@ -1,4 +1,4 @@
-x = 4330
+x = 4310
 y = 4091
 script = food
 que = 17

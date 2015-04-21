@@ -1,4 +1,4 @@
-x = 4304
+x = 4284
 y = 4464
 frame = 4
 script = books2

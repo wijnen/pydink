@@ -1,4 +1,4 @@
-x = 1016
+x = 996
 y = 1281
 seq = redmaiden 1
 base_walk = redmaiden

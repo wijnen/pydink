@@ -1,4 +1,4 @@
-x = 5189
+x = 5169
 y = 4091
 frame = 5
 script = fireplace

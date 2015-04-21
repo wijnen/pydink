@@ -1,4 +1,4 @@
-x = 4604
+x = 4584
 y = 4521
 frame = 9
 script = scroll2

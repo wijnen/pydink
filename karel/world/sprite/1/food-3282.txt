@@ -1,4 +1,4 @@
-x = 4644
+x = 4624
 y = 4189
 frame = 10
 script = shopping

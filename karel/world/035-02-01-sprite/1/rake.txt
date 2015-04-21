@@ -1,4 +1,4 @@
-x = 1603
+x = 1583
 y = 547
 seq = tool
 frame = 3

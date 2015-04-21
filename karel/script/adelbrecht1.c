@@ -147,7 +147,7 @@ void hit ()
 		say_stop ("`9It might be useful to break the door open...", adelbrecht);
 		say_stop ("`9Not?", adelbrecht);
 		say_stop ("`9Never mind that...", adelbrecht);
-		editor_type (sp_code ("rake"), 1);
+		editor_layer(sp_code("rake"), 0, 0);
 		sp_active (sp ("rake"), 0);
 		say_stop ("`9I'll put it away.", adelbrecht);
 		say_stop ("Right...", 1);

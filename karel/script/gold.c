@@ -8,7 +8,7 @@ void talk ()
 	gold += 1548;
 	herb = 5;
 	unfreeze (1);
-	editor_type (sp_editor_num (current_sprite), 1);
+	editor_layer(sp_editor_num(current_sprite), 0, 0);
 	int self = current_sprite;
 	script_attach (1000);
 	sp_active (self, 0);

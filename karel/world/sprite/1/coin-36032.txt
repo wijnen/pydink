@@ -1,4 +1,4 @@
-x = 4447
+x = 4427
 y = 4605
 frame = 4
 script = gold

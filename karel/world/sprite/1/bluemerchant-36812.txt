@@ -1,4 +1,4 @@
-x = 9363
+x = 9343
 y = 4685
 seq = bluemerchant 1
 brain = person

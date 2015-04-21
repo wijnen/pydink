@@ -1,4 +1,4 @@
-x = 425
+x = 405
 y = 255
 brain = repeat
 script = apotion

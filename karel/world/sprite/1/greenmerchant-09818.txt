@@ -1,4 +1,4 @@
-x = 808
+x = 788
 y = 1274
 seq = greenmerchant 3
 base_walk = greenmerchant

@@ -1,4 +1,4 @@
-x = 751
+x = 731
 y = 1274
 seq = brownmom 3
 base_walk = bluemaiden

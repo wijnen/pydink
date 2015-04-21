@@ -1,4 +1,4 @@
-x = 5117
+x = 5097
 y = 4572
 frame = 24
 script = fountain

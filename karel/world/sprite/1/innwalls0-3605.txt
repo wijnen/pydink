@@ -1,4 +1,4 @@
-x = 4228
+x = 4208
 y = 4713
 seq = innwalls
 frame = 23

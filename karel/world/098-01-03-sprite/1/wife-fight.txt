@@ -1,4 +1,4 @@
-x = 669
+x = 649
 y = 1294
 seq = bluemaiden 3
 base_walk = bluemaiden

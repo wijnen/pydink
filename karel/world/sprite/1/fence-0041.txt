@@ -1,4 +1,4 @@
-x = 1983
+x = 1963
 y = 156
 frame = 4
 hard = no

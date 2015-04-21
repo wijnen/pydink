@@ -1,4 +1,4 @@
-x = 1647
+x = 1627
 y = 528
 seq = soldier 1
 script = adelbrecht2

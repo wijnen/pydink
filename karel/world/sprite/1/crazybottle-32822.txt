@@ -1,4 +1,4 @@
-x = 4729
+x = 4709
 y = 4186
 script = apotion
 que = -35

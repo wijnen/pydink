@@ -1,5 +1,4 @@
-x = 5190
+x = 5170
 y = 4085
 brain = repeat
-script = fire
 hard = no

@@ -65,8 +65,9 @@ import shutil
 import StringIO
 import pickle
 import glib
-import xdgbasedir
+import fhs
 # }}}
+
 # {{{ Error handling
 error_message = ''
 lineno = 0
@@ -2661,7 +2662,7 @@ class Seq: #{{{
 			if len (parts) == 1:
 				return None
 			else:
-				if len (parts) != 2 or parts[0] not in self.collection or int (parts[1]) not in self.collection[parts[0]]:
+				if len (parts) != 2 or parts[0] not in self.collection or (int(parts[1]) if parts[1] != 'die' else parts[1]) not in self.collection[parts[0]]:
 					return None
 				return parts[0]
 		else:
@@ -3042,9 +3043,7 @@ class Sound: #{{{
 class Script: #{{{
 	def create_defaults (self):
 		self.default = {}
-		for d in [os.path.realpath (os.path.join (os.path.dirname (sys.argv[0]), 'default-scripts'))] + list (xdgbasedir.data_files_read ('default-scripts', 'pydink')):
-			if not os.path.exists (d):
-				continue
+		for d in fhs.read_data('default-scripts', packagename = 'pydink', multiple = True, opened = False):
 			for f in os.listdir (d):
 				base, ext = os.path.splitext (f)
 				if ext != os.extsep + 'c':

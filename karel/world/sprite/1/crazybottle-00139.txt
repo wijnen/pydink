@@ -1,4 +1,4 @@
-x = 192
+x = 172
 y = 257
 brain = repeat
 script = apotion

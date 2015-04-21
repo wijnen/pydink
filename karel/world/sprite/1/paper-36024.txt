@@ -1,4 +1,4 @@
-x = 4437
+x = 4417
 y = 4517
 script = paper3
 que = -16

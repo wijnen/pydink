@@ -1,5 +1,8 @@
 preview = preview
 splash = splash
+visible-0 = no
+background-0 = no
+background-8 = yes
 
 karel
 Copyright 2011 Bas Wijnen <wijnen@debian.org>

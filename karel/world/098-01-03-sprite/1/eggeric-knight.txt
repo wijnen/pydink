@@ -1,4 +1,4 @@
-x = 1020
+x = 1000
 y = 1429
 seq = goldknight 1
 brain = monster

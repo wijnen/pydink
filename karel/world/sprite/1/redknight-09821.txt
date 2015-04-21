@@ -1,4 +1,4 @@
-x = 1114
+x = 1094
 y = 1571
 seq = redknight 7
 base_walk = redknight

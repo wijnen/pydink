@@ -1,4 +1,4 @@
-x = 1723
+x = 1703
 y = 463
 seq = pig 1
 brain = pig

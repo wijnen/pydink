@@ -1,4 +1,4 @@
-x = 5249
+x = 5229
 y = 4415
 frame = 3
 script = bedblock

@@ -16,6 +16,11 @@ void buttonoff ()
 
 void click ()
 {
+	ordering.order();
+}
+
+void order()
+{
 	sp_brain (g_adelbrecht, "person");
 	sp_brain (g_dink, "person");
 	sp_brain (g_eggeric, "person");
@@ -120,5 +125,4 @@ void click ()
 	sp_brain (g_eggeric, "repeat");
 	sp_pseq (g_machteld, "bluemaiden 3");
 	sp_brain (g_machteld, "repeat");
-	sp_brain (1, "pointer");
 }

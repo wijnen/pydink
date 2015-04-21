@@ -1,4 +1,4 @@
-x = 9670
+x = 9650
 y = 4479
 seq = oldman 1
 brain = person

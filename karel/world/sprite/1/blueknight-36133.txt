@@ -1,4 +1,4 @@
-x = 4873
+x = 4853
 y = 4490
 seq = blueknight 3
 script = statue

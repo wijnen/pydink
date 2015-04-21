@@ -31,6 +31,7 @@ import re
 import Image
 import StringIO
 import dink
+import traceback
 # }}}
 
 is_setup = False
@@ -653,7 +654,13 @@ def read_ini (): # {{{
 			if fr == None:
 				break
 			use (sequence_codes[s], f)
-			im = Image.open (fr)
+			try:
+				im = Image.open (fr)
+			except:
+				print('Failed to open %s' % fr)
+				traceback.print_exc()
+				f += 1
+				continue
 			fill_frame (s, f, im)
 			if from_dmod:
 				sequence_codes[s].from_dmod = True
@@ -813,7 +820,10 @@ def read_map (data, hard, defaulthard): # {{{
 		return s[:s.find ('\0')]
 	# }}}
 	def get_seq (code, data): # {{{
-		return data.seq.find_seq (code)
+		try:
+			return data.seq.find_seq (code)
+		except:
+			return None
 	# }}}
 	def get_collection (code, data): # {{{
 		return data.seq.find_collection (code)

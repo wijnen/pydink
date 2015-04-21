@@ -1,4 +1,4 @@
-x = 4692
+x = 4672
 y = 4186
 size = 57
 brain = repeat

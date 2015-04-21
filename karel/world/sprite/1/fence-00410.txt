@@ -1,4 +1,4 @@
-x = 1977
+x = 1957
 y = 80
 frame = 3
 hard = no

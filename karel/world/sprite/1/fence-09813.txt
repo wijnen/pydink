@@ -1,4 +1,4 @@
-x = 637
+x = 617
 y = 1384
 frame = 4
 hard = no

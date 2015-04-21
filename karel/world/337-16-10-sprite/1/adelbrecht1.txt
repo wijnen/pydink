@@ -1,4 +1,4 @@
-x = 9924
+x = 9904
 y = 4307
 seq = soldier 1
 brain = person

@@ -19,7 +19,7 @@ gtk
 	Dialog title=":PyDink error" show=:False buttons=1 run=show_error
 		'Ok
 		Label value=error
-	FileChooserDialog title=":Select game directory to edit" action=:create_folder show=show_open:False overwrite_confirmation=:False response=open
+	FileChooserDialog title=":Select game directory to edit" action=:select_folder show=show_open:False overwrite_confirmation=:False response=open
 	FileChooserDialog title=":Select game directory to save" action=:create_folder show=show_save_as:False response=save_as
 	AboutDialog setup=about show=show_about
 	Window title="title:Python Dink Editor"

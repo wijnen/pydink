@@ -1,4 +1,4 @@
-x = 1954
+x = 1934
 y = 125
 seq = garden
 frame = 17

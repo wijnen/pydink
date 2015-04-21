@@ -1,4 +1,4 @@
-x = 4699
+x = 4679
 y = 4098
 script = bottles
 hard = no

@@ -27,82 +27,83 @@ import readini
 import tempfile
 import shutil
 import numpy
+import fhs
 # }}}
 
-assert len (sys.argv) == 3
-assert not os.path.exists (sys.argv[2])
-readini.set_dmoddir (sys.argv[1])
+config = fhs.init({'src': None, 'dst': None})
+assert not os.path.exists(config['dst'])
+readini.set_dmoddir(config['src'])
 
-root = tempfile.mkdtemp (prefix = 'pydink-decompile-')
+root = tempfile.mkdtemp(prefix = 'pydink-decompile-')
 try:
-	target = dink.Dink (root)
+	target = dink.Dink(root)
 
 	# {{{ Read and parse hardness.
-	print ('parsing hardness')
-	hard, defaulthard, tilefiles = readini.read_hard ()
+	print('parsing hardness')
+	hard, defaulthard, tilefiles = readini.read_hard()
 	# Build tile and hardness images.
-	print ('creating tiles')
-	os.mkdir (os.path.join (root, 'tile'))
-	for i, t in enumerate (tilefiles):
+	print('creating tiles')
+	os.mkdir(os.path.join(root, 'tile'))
+	for i, t in enumerate(tilefiles):
 		if not t[1]:
 			continue
-		im = Image.open (dink.filepart (*t[0])).convert ('RGBA')
-		filename = os.path.join (root, 'tile', '%02d.png' % (i + 1))
-		im.save (filename)
-		target.tile.tile[i + 1] = ((filename, 0, os.stat (filename).st_size), None, 1)
+		im = Image.open(dink.filepart(*t[0])).convert('RGBA')
+		filename = os.path.join(root, 'tile', '%02d.png' % (i + 1))
+		im.save(filename)
+		target.tile.tile[i + 1] = ((filename, 0, os.stat(filename).st_size), None, 1)
 		# TODO: Build hardness images.
 	# }}}
 
 	# {{{ Read and parse graphics.
-	print ('reading ini file')
-	collections, sequences, codes = readini.read_ini ()
+	print('reading ini file')
+	collections, sequences, codes = readini.read_ini()
 	target.seq.seq = sequences
 	target.seq.collection = collections
 	target.seq.custom_seqs = [sequences[x] for x in sequences if sequences[x].from_dmod]
-	print ('converting custom graphics')
+	print('converting custom graphics')
 	for s in target.seq.custom_seqs:
 		# Convert frames to png and change paths.
 		for f in s.frames[1:]:
 			if f.cache:
-				file = dink.filepart (*f.cache)
-				im = Image.open (file).convert ('RGBA')
-				ar = numpy.array (im)
+				file = dink.filepart(*f.cache)
+				im = Image.open(file).convert('RGBA')
+				ar = numpy.array(im)
 				sentinel = 255 if s.type == 'black' else 4 * 255	# alpha is always 255 at this point.
-				alpha = Image.fromarray (numpy.array (numpy.sum (ar, 2) != sentinel, dtype = numpy.uint8) * 255)
-				im.putalpha (alpha)
-				base = os.path.splitext (os.path.basename (f.cache[0]))[0]
-				dirname = os.path.join (root, 'seq', base[:-2])
-				filename = os.path.join (dirname, base[-2:] + os.extsep + 'png')
-				if not os.path.exists (dirname):
-					os.makedirs (dirname)
-				im.save (filename)
-				f.cache = (filename, 0, os.stat (filename).st_size)
+				alpha = Image.fromarray(numpy.array(numpy.sum(ar, 2) != sentinel, dtype = numpy.uint8) * 255)
+				im.putalpha(alpha)
+				base = os.path.splitext(os.path.basename(f.cache[0]))[0]
+				dirname = os.path.join(root, 'seq', base[:-2])
+				filename = os.path.join(dirname, base[-2:] + os.extsep + 'png')
+				if not os.path.exists(dirname):
+					os.makedirs(dirname)
+				im.save(filename)
+				f.cache = (filename, 0, os.stat(filename).st_size)
 	# }}}
 
 	# {{{ Read and parse sound.
-	print ('reading sound')
-	musics, sounds = readini.read_sound ()
-	target.sound.sound = target.sound.detect (None, None, sounds)
-	target.sound.music = target.sound.detect (None, None, musics)
+	print('reading sound')
+	musics, sounds = readini.read_sound()
+	target.sound.sound = target.sound.detect(None, None, sounds)
+	target.sound.music = target.sound.detect(None, None, musics)
 	# }}}
 
-	print ('reading map')
-	readini.read_map (target, hard, defaulthard)
+	print('reading map')
+	readini.read_map(target, hard, defaulthard)
 
 	# {{{ Preview and splash image.
-	print ('setting preview and splash image')
-	target.info = readini.loaddinkfile ('dmod.diz')[0].read ()
-	p = readini.loaddinkfile ('preview.bmp')
+	print('setting preview and splash image')
+	target.info = readini.loaddinkfile('dmod.diz')[0].read()
+	p = readini.loaddinkfile('preview.bmp')
 	if p[2]:
 		target.preview = p[1]
-	p = readini.loaddinkfile ('tiles\\splash.bmp')
+	p = readini.loaddinkfile('tiles\\splash.bmp')
 	if p[2]:
 		target.splash = p[1]
 	# }}}
 
-	print ('saving dmod')
-	target.save (sys.argv[2])
+	print('saving dmod')
+	target.save(config['dst'])
 finally:
-	print ('removing temporary files')
-	shutil.rmtree (root)
-	print ('done')
+	print('removing temporary files')
+	shutil.rmtree(root)
+	print('done')

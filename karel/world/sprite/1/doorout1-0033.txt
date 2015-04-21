@@ -1,4 +1,4 @@
-x = 1577
+x = 1557
 y = 334
 script = egdeur
 warp = 361 482 320

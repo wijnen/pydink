@@ -1,4 +1,4 @@
-x = 1172
+x = 1152
 y = 1539
 seq = peasant 7
 base_walk = peasant

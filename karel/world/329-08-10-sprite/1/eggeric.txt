@@ -1,4 +1,4 @@
-x = 5287
+x = 5267
 y = 4167
 seq = merchant 3
 base_walk = merchant

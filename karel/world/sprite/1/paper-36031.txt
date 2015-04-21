@@ -1,4 +1,4 @@
-x = 4634
+x = 4614
 y = 4613
 script = paper1
 que = -15

@@ -1,4 +1,4 @@
-x = 4533
+x = 4513
 y = 4516
 frame = 2
 script = paper2
