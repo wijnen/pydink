@@ -523,7 +523,11 @@ def read_ini (): # {{{
 				if l[3] == 'black' or l[3] == 'notanim' or l[3] == 'leftalign':
 					sequence_codes[s].type = l[3]
 				else:
-					sequence_codes[s].delay = int (l[3])
+					try:
+						sequence_codes[s].delay = int (l[3])
+					except:
+						err += '(ignore) warning: sequence delay is not int (and %s is not a type).\n' % l[3]
+						sequence_codes[s].type = 'notanim'
 			elif len (l) == 5:
 				sequence_codes[s].delay = int (l[3])
 				assert l[4] == 'black' or l[4] == 'notanim' or l[4] == 'leftalign'

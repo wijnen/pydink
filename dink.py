@@ -2784,7 +2784,11 @@ class Seq: #{{{
 		for frame in range (1, len (seq.frames)):
 			sf = seq.frames[frame]
 			if orig:
-				of = orig.frames[frame]
+				if frame < len(orig.frames):
+					of = orig.frames[frame]
+				else:
+					sys.stderr.write ('warning: sequence %s does not have frame %d.' % (seq.name, frame))
+					continue
 			if sf.source is None:
 				if sf.cache:
 					if not orig or sf.cache != of.cache:
