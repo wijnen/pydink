@@ -1,0 +1,43 @@
+#!/usr/bin/python3
+
+import dink
+import fhs
+import json
+
+config = fhs.init({'src': None, 'base': None, 'dst': None})
+
+src = json.loads(open(config['src']).read())
+d = dink.Dink(config['base'])
+dst = config['dst']
+
+# info
+d.info = src['info']
+# preview
+d.image.preview = src['preview']
+# splash
+d.image.splash = src['splash']
+# layer
+d.layer_visible, d.layer_background = src['layer']
+# world
+for s in d.world.sprite:
+	d.world.sprite[s].unregister()
+d.world.sprite.clear()
+d.world.map.clear()
+
+for m in src['world']:
+	if m == 'sprite':
+		continue
+	map = src['world'][m]
+	d.world.map[m] = dink.Map(d)
+	d.world.map[m].hard = map['hard']
+	d.world.map[m].script = map['script']
+	d.world.map[m].music = map['music']
+	d.world.map[m].indoor = map['indoor']
+	d.world.map[m].tiles = map['tiles']
+for s in src['world']['sprite']:
+	sspr = src['world']['sprite'][s]
+	dspr = d.world.add_sprite(s, (sspr['x'], sspr['y']), sspr['seq'], sspr['frame'])
+	for i in ('map', 'layer', 'size', 'brain', 'script', 'speed', 'base_walk', 'base_idle', 'base_attack', 'timing', 'que', 'hard', 'left', 'top', 'right', 'bottom', 'warp', 'touch_seq', 'base_death', 'gold', 'hitpoints', 'strength', 'defense', 'experience', 'sound', 'vision', 'nohit', 'touch_damage', 'use_hard'):
+		setattr(spr, i, sspr[i])
+
+d.save(dst)

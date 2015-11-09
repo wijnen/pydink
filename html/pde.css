@@ -1,0 +1,79 @@
+.main {
+	display: none;
+	width: 100%;
+}
+
+.overlay {
+	display: none;
+	width: 100%;
+}
+
+.stretch {
+	position: absolute;
+	top: 0px;
+	bottom: 0px;
+	left: 0px;
+	right: 0px;
+	z-index: -1;
+}
+
+#settings {
+	float: left;
+	padding: 1ex;
+	border: solid 1px #6f6;
+	background: rgba(0%, 0%, 0%, .5);
+	color: #8f8;
+}
+
+.invisible {
+	display: none;
+}
+
+.visible {
+	display: block;
+}
+
+input[type=text] {
+	width: 5em;
+}
+
+table {
+	table-layout: auto;
+}
+
+.status {
+	position: absolute;
+	left: 0px;
+	right: 0px;
+	bottom: 0px;
+}
+
+#radio_dmod:not(:checked) ~ #dmod_settings,
+#radio_sprite:not(:checked) ~ #sprite_settings,
+#radio_layers:not(:checked) ~ #layers_settings,
+#radio_map:not(:checked) ~ #map_settings,
+
+#radio_sprite_main:not(:checked) ~ #sprite_main,
+#radio_sprite_extra:not(:checked) ~ #sprite_extra,
+#radio_sprite_warpbox:not(:checked) ~ #sprite_warpbox
+{
+	display: none;
+}
+
+#radio_dmod:checked ~ #dmod_settings,
+#radio_sprite:checked ~ #sprite_settings,
+#radio_layers:checked ~ #layers_settings,
+#radio_map:checked ~ #map_settings,
+
+#radio_sprite_main:checked ~ #sprite_main,
+#radio_sprite_extra:checked ~ #sprite_extra,
+#radio_sprite_warpbox:checked ~ #sprite_warpbox
+{
+	display: block;
+}
+
+.frame {
+	padding: 1ex;
+	margin: 1ex;
+	border: 1px solid white;
+}

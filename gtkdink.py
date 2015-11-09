@@ -19,9 +19,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # }}}
 # {{{ Imports
+import gi
+gi.require_version('Gtk', '3.0')
 import dink
-import gtk
-import glib
+from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import GLib
 import struct
 import Image
 # }}}
@@ -31,8 +34,8 @@ class GtkDink (dink.Dink): # {{{
 		dink.Dink.__init__ (self, root)
 		self.hard_scale = hard_scale
 		self.colors = ['black', 'dark blue', 'light green', 'cyan', 'orange', 'lavender', '#cc7722', 'light grey', 'dark grey', 'sky blue', 'green', 'yellow', 'yellow', 'pink', 'yellow', 'white']
-		for c in range (len (self.colors)):
-			self.colors[c] = gtk.gdk.colormap_get_system ().alloc_color (self.colors[c])
+		#for c in range (len (self.colors)):
+		#	self.colors[c] = Gdk.colormap_get_system ().alloc_color (self.colors[c])
 		self.time = 0
 		self.scale = None
 		self.set_scale (scale, True)
@@ -54,7 +57,7 @@ class GtkDink (dink.Dink): # {{{
 			del self.cache[('h', name)]
 	def set_window (self, window):
 		self.window = window
-		self.gc = gtk.gdk.GC (self.window)
+		self.gc = Gdk.GC (self.window)
 		self.set_scale (self.scale, True)
 	def set_scale (self, scale, force = False):
 		if self.scale == scale and not force:
@@ -75,7 +78,7 @@ class GtkDink (dink.Dink): # {{{
 			pb = self.load_pixbuf (t)
 			if not pb:
 				return None
-			tile = gtk.gdk.Pixmap (self.window, pb.get_width (), pb.get_height ())
+			tile = Gdk.Pixmap (self.window, pb.get_width (), pb.get_height ())
 			tile.draw_pixbuf (self.gc, pb, 0, 0, 0, 0)
 			self.cache_add ('t', num, tile)
 		return tile
@@ -122,16 +125,16 @@ class GtkDink (dink.Dink): # {{{
 			return None
 		data = open (file[0], 'rb').read (file[1] + file[2])[file[1]:]
 		try:
-			pbl = gtk.gdk.PixbufLoader ()
+			pbl = Gdk.PixbufLoader ()
 			pbl.write (data)
 			pbl.close ()
-		except glib.GError:
+		except GLib.GError:
 			open ('/tmp/f.bmp', 'wb').write (data)
 			assert data[:2] == 'BM'
 			w, h = struct.unpack ('<II', data[0x12:0x1a])
 			bpp = struct.unpack ('<H', data[0x1c:0x1e])[0]
 			data = data[:0x22] + struct.pack ('<I', w * h * bpp / 8) + data[0x26:]
-			pbl = gtk.gdk.PixbufLoader ('bmp')
+			pbl = Gdk.PixbufLoader ('bmp')
 			pbl.write (data)
 			pbl.close ()
 		pb = pbl.get_pixbuf ()
@@ -140,7 +143,7 @@ class GtkDink (dink.Dink): # {{{
 			h = pb.get_height () * self.scale / 50
 			if h <= 0 or w <= 0:
 				return None
-			pb = pb.scale_simple (pb.get_width () * self.scale / 50, pb.get_height () * self.scale / 50, gtk.gdk.INTERP_NEAREST)
+			pb = pb.scale_simple (pb.get_width () * self.scale / 50, pb.get_height () * self.scale / 50, Gdk.INTERP_NEAREST)
 		if file[3] != None:
 			pb = pb.add_alpha (*((True,) + file[3]))
 		return pb

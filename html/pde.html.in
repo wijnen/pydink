@@ -1,0 +1,554 @@
+!DOCTYPE html
+html
+	head
+		meta http-equiv=Content-Type content='text/html; charset=utf-8'
+		title
+			'Python Dink Editor
+		link rel=stylesheet href=pde.css
+		script type=application/javascript src=builders.js
+			'
+		script type=application/javascript src=pde.js
+			'
+	body
+		div
+			div class=stretch id=content
+				canvas tabindex=0 class='main visible' onkeypress=map_keypress(event) onmousedown=map_down(event) onmouseup=map_up(event) onmousemove=map_move(event) id=map
+					'
+				canvas tabindex=0 class=overlay onkeypress=world_keypress(event) id=world width=768 height=512
+					'
+				canvas tabindex=0 class=overlay onkeypress=collection_keypress(event) onclick=collection_down(event) id=collections
+					'
+				canvas tabindex=0 class=overlay onkeypress=seq_keypress(event) onclick=seq_down(event) id=sequences
+					'
+				canvas tabindex=0 class=overlay id=tiles
+					'
+			div id=settings
+				div
+					input type=radio id=radio_dmod name=main
+					label for=radio_dmod
+						'DMod
+					input type=radio id=radio_sprite name=main checked=checked
+					label for=radio_sprite
+						'Sprite
+					input type=radio id=radio_layers name=main
+					label for=radio_layers
+						'Layers
+					input type=radio id=radio_map name=main
+					label for=radio_map
+						'Map
+					div class=tab id=dmod_settings
+						table
+							tr
+								th: Preview
+								td
+									select id=preview
+										'
+							tr
+								th: Splash
+								td
+									select id=splash
+										'
+							tr
+								th: Import
+								td
+									input type=file onchange=dmod_import() id=dmod_import
+							tr
+								td colspan=2
+									a id=dmod_export href=# onclick=dmod_export()
+										'Export DMod
+							tr
+								td
+									button type=button onclick=dmod_save()
+										'Save
+								td
+									button type=button onclick=dmod_load()
+										'Load
+					div class='tab' id=sprite_settings
+						select id=spritelist onchange=update_ui()
+							'
+						label
+							input type=checkbox id=single onchange=update_ui()
+							'Single Sprite Settings
+						div
+							input type=radio name=radio_sprite id=radio_sprite_main checked=checked
+							label for=radio_sprite_main
+								'Main
+							input type=radio name=radio_sprite id=radio_sprite_extra
+							label for=radio_sprite_extra
+								'Extra
+							input type=radio name=radio_sprite id=radio_sprite_warpbox
+							label for=radio_sprite_warpbox
+								'Warp/Box
+							div class='frame' id=sprite_main
+								table
+									tr
+										th: Name
+										td
+											input type=text id=sprite_name onkeypress='function (event) { key_sprite_name(event); }'
+									tr
+										th: Brain
+										td
+											select id=sprite_brain onchange=sprite_update()
+												option value=''
+													'-
+												option value=none
+													'None
+												option value=dink
+													'Dink
+												option value=bounce
+													'Bounce
+												option value=duck
+													'Duck
+												option value=pig
+													'Pig
+												option value=mark
+													'Mark
+												option value=repeat
+													'Repeat
+												option value=play
+													'Play
+												option value=text
+													'Text
+												option value=monster
+													'Monster
+												option value=rook
+													'Rook
+												option value=missile
+													'Missile
+												option value=resize
+													'Resize
+												option value=pointer
+													'Pointer
+												option value=button
+													'Button
+												option value=shadow
+													'Shadow
+												option value=person
+													'Person
+												option value=flare
+													'Flare
+												option value=100
+													'100
+												option value=101
+													'101
+												option value=102
+													'102
+												option value=103
+													'103
+												option value=104
+													'104
+									tr
+										th: Script
+										td
+											input type=text id=sprite_script onchange=sprite_update_script()
+									tr
+										td colspan=2
+											label
+												input type=checkbox id=sprite_use_hard onchange=sprite_update_tile_hardness()
+												'Use Tile Hardness
+									tr
+										th: Vision
+										td
+											input type=text id=sprite_vision onchange=sprite_update()
+									tr
+										th: Speed
+										td
+											input type=text id=sprite_speed onchange=sprite_update()
+									tr
+										th: Timing
+										td
+											input type=text id=sprite_timing onchange=sprite_update()
+									tr
+										th: Sound
+										td
+											select id=sprite_sound onchange=sprite_update()
+												'
+											button type=button onclick=sprite_sound_play()
+												'Play
+									tr
+										th: Strength
+										td
+											input type=text id=sprite_strength onchange=sprite_update()
+									tr
+										th: Defense
+										td
+											input type=text id=sprite_defense onchange=sprite_update()
+									tr
+										th: Hitpoints
+										td
+											input type=text id=sprite_hp onchange=sprite_update()
+									tr
+										th: Experience
+										td
+											input type=text id=sprite_exp onchange=sprite_update()
+									tr
+										th: Touch Damage
+										td
+											input type=text id=sprite_touch onchange=sprite_update()
+									tr
+										th: Gold
+										td
+											input type=text id=sprite_gold onchange=sprite_update()
+							div class='tab frame' id=sprite_extra
+								table
+									tr
+										th: X
+										td
+											input type=text id=sprite_x onchange=sprite_update()
+									tr
+										th: Y
+										td
+											input type=text id=sprite_y onchange=sprite_update()
+									tr
+										th: Sequence
+										td id=sprite_seq
+											'
+									tr
+										th: Frame
+										td
+											select id=sprite_frame onchange=sprite_update()
+												'
+									tr
+										th: Size
+										td
+											input type=text id=sprite_size onchange=sprite_update()
+									tr
+										th: Que
+										td
+											input type=text id=sprite_que onchange=sprite_update()
+									tr
+										th: Walk
+										td id=sprite_walk
+											'
+									tr
+										th: Idle
+										td id=sprite_idle
+											'
+									tr
+										th: Attack
+										td id=sprite_attack
+											'
+									tr
+										th: Die
+										td id=sprite_die
+											'
+									tr
+										td colspan=2
+											label
+												input type=checkbox id=sprite_nohit onchange=sprite_update_nohit()
+												'No Hit
+									tr
+										th: Map
+										td
+											input type=text id=sprite_map onchange=sprite_update()
+											button type=button onclick=current_map()
+												'Current
+							div class='tab frame' id=sprite_warpbox
+								table
+									tr
+										td colspan=2
+											label
+												input type=checkbox id=sprite_warp onchange=sprite_update_warp()
+												'Enable Warp
+									tr
+										th: Map
+										td
+											input type=text id=sprite_warp_map onchange=sprite_update()
+									tr
+										th: X
+										td
+											input type=text id=sprite_warp_x onchange=sprite_update()
+									tr
+										th: Y
+										td
+											input type=text id=sprite_warp_y onchange=sprite_update()
+									tr
+										th: Touch Sequence
+										td id=sprite_touch_seq
+											'
+									tr
+										td colspan=2
+											label
+												input type=checkbox id=sprite_hard onchange=sprite_update_hard()
+												'Hard
+									tr
+										th: Left
+										td
+											input type=text id=sprite_left onchange=sprite_update()
+									tr
+										th: Top
+										td
+											input type=text id=sprite_top onchange=sprite_update()
+									tr
+										th: Right
+										td
+											input type=text id=sprite_right onchange=sprite_update()
+									tr
+										th: Bottom
+										td
+											input type=text id=sprite_bottom onchange=sprite_update()
+					div class=tab id=layers_settings
+						table
+							tr
+								th: 1
+								td
+									select onchange=redraw_all(true) id=layer1
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible1
+										'Visible
+								td
+									label
+										input type=checkbox id=background1
+										'Background
+							tr
+								th: 2
+								td
+									select onchange=redraw_all(true) id=layer2
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible2
+										'Visible
+								td
+									label
+										input type=checkbox id=background2
+										'Background
+							tr
+								th: 3
+								td
+									select onchange=redraw_all(true) id=layer3
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible3
+										'Visible
+								td
+									label
+										input type=checkbox id=background3
+										'Background
+							tr
+								th: 4
+								td
+									select onchange=redraw_all(true) id=layer4
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible4
+										'Visible
+								td
+									label
+										input type=checkbox id=background4
+										'Background
+							tr
+								th: 5
+								td
+									select onchange=redraw_all(true) id=layer5
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible5
+										'Visible
+								td
+									label
+										input type=checkbox id=background5
+										'Background
+							tr
+								th: 6
+								td
+									select onchange=redraw_all(true) id=layer6
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible6
+										'Visible
+								td
+									label
+										input type=checkbox id=background6
+										'Background
+							tr
+								th: 7
+								td
+									select onchange=redraw_all(true) id=layer7
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible7
+										'Visible
+								td
+									label
+										input type=checkbox id=background7
+										'Background
+							tr
+								th: 8
+								td
+									select onchange=redraw_all(true) id=layer8
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible8
+										'Visible
+								td
+									label
+										input type=checkbox id=background8
+										'Background
+							tr
+								th: 9
+								td
+									select onchange=redraw_all(true) id=layer9
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible9
+										'Visible
+								td
+									label
+										input type=checkbox id=background9
+										'Background
+							tr
+								th: 0
+								td
+									select onchange=redraw_all(true) id=layer0
+										option value=0
+											'Visible
+										option value=1
+											'Transparent
+										option value=2
+											'Invisible
+										option value=3
+											'Ignore
+								td
+									label
+										input type=checkbox id=visible0
+										'Visible
+								td
+									label
+										input type=checkbox id=background0
+										'Background
+							tr
+								td colspan=4
+									'Invisible foreground layers are ignored
+							tr
+								td colspan=4
+									'when building a dmod
+					div class=tab id=map_settings
+						table
+							tr
+								td colspan=2
+									select id=map_current
+										'
+							tr
+								th: Hardness
+								td
+									select id=map_hard
+										'
+									button type=button onclick=edit_map_hardness()
+										'Edit
+							tr
+								th: Script
+								td
+									input type=text id=map_script
+									button type=button onclick=edit_map_script()
+										'Edit
+							tr
+								th: Music
+								td
+									select id=map_music
+										'
+									button type=button onclick=map_music_play()
+										'Play
+							tr
+								td colspan=2
+									label
+										input type=checkbox id=map_indoor
+										'Indoor
+					hr
+					div
+						'Active Layer:
+						select id=active_layer
+							option value=1
+								'1
+							option value=2
+								'2
+							option value=3
+								'3
+							option value=4
+								'4
+							option value=5
+								'5
+							option value=6
+								'6
+							option value=7
+								'7
+							option value=8
+								'8
+							option value=9
+								'9
+							option value=0
+								'0
+		div class=status
+			'

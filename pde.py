@@ -19,7 +19,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # }}}
 # {{{ Imports
-import gtk
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import GLib
 import gui
 import re
 import os
@@ -31,7 +35,6 @@ import math
 import random
 import Image
 import tempfile
-import glib
 import fhs
 #}}}
 # {{{ Utility functions
@@ -123,15 +126,15 @@ updating = True			# Flag if the edit-gui is being updated(which means don't resp
 reset_globals()
 # }}}
 
-class View(gtk.DrawingArea): # {{{
+class View(Gtk.DrawingArea): # {{{
 	components = []
 	started = None
 	collectiontype = None
 	def make_gc(self, color):
-		ret = gtk.gdk.GC(self.get_window())
-		c = gtk.gdk.colormap_get_system().alloc_color(color)
+		ret = Gdk.GC(self.get_window())
+		c = Gdk.colormap_get_system().alloc_color(color)
 		ret.set_foreground(c)
-		ret.set_line_attributes(1, gtk.gdk.LINE_SOLID, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		ret.set_line_attributes(1, Gdk.LINE_SOLID, Gdk.CAP_ROUND, Gdk.JOIN_ROUND)
 		return ret
 	def start(self, widget):
 		if View.started != None:
@@ -139,11 +142,18 @@ class View(gtk.DrawingArea): # {{{
 			View.update(self)
 			return
 		View.started = False
+		self.connect('draw', self.expose)
+		self.connect('key-press-event', self.keypress)
+		self.connect('button-press-event', self.button_on)
+		self.connect('button-release-event', self.button_off)
+		self.connect('motion-notify-event', self.move)
+		self.connect('configure-event', self.configure)
+		self.connect('enter-notify-event', self.enter)
 		data.set_window(self.get_window())
 		data.set_scale(screenzoom)
 		View.gc = self.make_gc(the_gui.default_gc)
 		View.gridgc = self.make_gc(the_gui.grid_gc)
-		View.gridgc.set_line_attributes(1, gtk.gdk.LINE_ON_OFF_DASH, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		View.gridgc.set_line_attributes(1, Gdk.LINE_ON_OFF_DASH, Gdk.CAP_ROUND, Gdk.JOIN_ROUND)
 		View.gridgc.set_dashes(0, (2, 3))
 		View.bordergc = self.make_gc(the_gui.border_gc)
 		View.invalidgc = self.make_gc(the_gui.invalid_gc)
@@ -153,21 +163,21 @@ class View(gtk.DrawingArea): # {{{
 		View.hardgc = self.make_gc(the_gui.hard_gc)
 		View.warpgc = self.make_gc(the_gui.warp_gc)
 		View.bggc = self.make_gc(the_gui.hard_gc)
-		View.bggc.set_line_attributes(1, gtk.gdk.LINE_ON_OFF_DASH, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		View.bggc.set_line_attributes(1, Gdk.LINE_ON_OFF_DASH, Gdk.CAP_ROUND, Gdk.JOIN_ROUND)
 		View.bggc.set_dashes(3, (6, 4))
 		View.warpbggc = self.make_gc(the_gui.warp_gc)
-		View.warpbggc.set_line_attributes(1, gtk.gdk.LINE_ON_OFF_DASH, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		View.warpbggc.set_line_attributes(1, Gdk.LINE_ON_OFF_DASH, Gdk.CAP_ROUND, Gdk.JOIN_ROUND)
 		View.warpbggc.set_dashes(3, (6, 4))
 		View.pastegc = self.make_gc(the_gui.paste_gc)
 		View.emptygc = self.make_gc(the_gui.empty_gc)
 		View.whitegc = self.make_gc(the_gui.white_gc)
 		View.pathgc = self.make_gc(the_gui.path_gc)
-		View.pathgc.set_line_attributes(5, gtk.gdk.LINE_SOLID, gtk.gdk.CAP_ROUND, gtk.gdk.JOIN_ROUND)
+		View.pathgc.set_line_attributes(5, Gdk.LINE_SOLID, Gdk.CAP_ROUND, Gdk.JOIN_ROUND)
 		View.started = True
 		View.configure(self, self)
 		View.update(self)
 	def __init__(self):
-		gtk.DrawingArea.__init__(self)
+		Gtk.DrawingArea.__init__(self)
 		View.components += (self,)
 		self.buffer = None		# Backing store for the screen.
 		self.pointer_pos = (0, 0)	# Current position of pointer.
@@ -177,19 +187,13 @@ class View(gtk.DrawingArea): # {{{
 		self.screensize = (0, 0)	# Size of the viewport in pixels(updated by configure).
 		self.set_can_focus(True)
 		self.connect_after('realize', self.start)
-		self.connect('expose-event', self.expose)
-		self.connect('key-press-event', self.keypress)
-		self.connect('button-press-event', self.button_on)
-		self.connect('button-release-event', self.button_off)
-		self.connect('motion-notify-event', self.move)
-		self.connect('configure-event', self.configure)
-		self.connect('enter-notify-event', self.enter)
-		self.add_events(gtk.gdk.KEY_PRESS_MASK | gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK | gtk.gdk.POINTER_MOTION_MASK | gtk.gdk.POINTER_MOTION_HINT_MASK | gtk.gdk.ENTER_NOTIFY_MASK)
+		self.add_events(Gdk.EventMask.KEY_PRESS_MASK | Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.POINTER_MOTION_HINT_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK)
 	def enter(self, widget, dummy):
 		self.grab_focus()
 	def configure(self, widget, e = None):
 		mid = [(self.offset[x] + self.screensize[x] / 2) * 50 / screenzoom for x in range(2)]
-		x, y, width, height = widget.get_allocation()
+		a = widget.get_allocation()
+		x, y, width, height = a.x, a.y, a.width, a.height
 		self.screensize = (width, height)
 		if self.screensize != (0, 0):
 			self.offset = [mid[x] * screenzoom / 50 - self.screensize[x] / 2 for x in range(2)]
@@ -198,7 +202,7 @@ class View(gtk.DrawingArea): # {{{
 		if the_gui.nobackingstore:
 			self.buffer = self.get_window()
 		else:
-			self.buffer = gtk.gdk.Pixmap(self.get_window(), width, height)
+			self.buffer = Gdk.Pixmap(self.get_window(), width, height)
 		self.clamp_offset()
 		if View.started == True:
 			self.move(None, None)
@@ -209,11 +213,11 @@ class View(gtk.DrawingArea): # {{{
 				self.offset[t] = self.tiles[t] * screenzoom - self.screensize[t]
 			if self.offset[t] < 0:
 				self.offset[t] = 0
-	def expose(self, widget, e):
+	def expose(self, widget, ctx):
 		if the_gui.nobackingstore:
 			self.update()
 		else:
-			self.get_window().draw_drawable(View.gc, self.buffer, e.area[0], e.area[1], e.area[0], e.area[1], e.area[2], e.area[3])
+			self.get_window().draw_drawable(View.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def draw_tile(self, screenpos, worldpos, screen_lines):
 		b = self.find_tile(worldpos)
 		tiles = data.get_tiles(b[0])
@@ -261,7 +265,7 @@ class View(gtk.DrawingArea): # {{{
 		else:
 			size[0] = (size[0] * newsize) / size[1]
 			size[1] = newsize
-		return pb.scale_simple(size[0], size[1], gtk.gdk.INTERP_NEAREST)
+		return pb.scale_simple(size[0], size[1], Gdk.INTERP_NEAREST)
 	def draw_tiles(self, which):
 		origin = [x / screenzoom for x in self.offset]
 		offset = [x % screenzoom for x in self.offset]
@@ -365,15 +369,15 @@ class View(gtk.DrawingArea): # {{{
 			self.buffer.draw_rectangle(self.whitegc, True, dpos[0], dpos[1], self.tilesize, self.tilesize)
 			self.buffer.draw_pixbuf(None, self.make_pixbuf50(pixbuf, self.tilesize), 0, 0, dpos[0], dpos[1])
 	def key_global(self, key, ctrl, shift):
-		if ctrl and not shift and key == gtk.keysyms.q:	# Quit.
+		if ctrl and not shift and key == Gtk.keysyms.q:	# Quit.
 			the_gui(False)
-		elif not ctrl and not shift and key == gtk.keysyms.Escape: # Cancel operation.
+		elif not ctrl and not shift and key == Gtk.keysyms.Escape: # Cancel operation.
 			the_gui.setmap = True
 		else:
 			return False
 		return True
 	def key_seq(self, key, ctrl, shift):
-		if not ctrl and not shift and key == gtk.keysyms.t: # set touch sequence.
+		if not ctrl and not shift and key == Gtk.keysyms.t: # set touch sequence.
 			for s in spriteselect:
 				if s[1]:
 					continue
@@ -383,25 +387,25 @@ class View(gtk.DrawingArea): # {{{
 			return False
 		return True
 	def key_collection(self, key, ctrl, shift):
-		if not ctrl and not shift and key == gtk.keysyms.a: # set base attack.
+		if not ctrl and not shift and key == Gtk.keysyms.a: # set base attack.
 			for s in spriteselect:
 				if s[1]:
 					continue
 				s[0].base_attack = self.get_selected_collection()
 			the_gui.setmap = True
-		elif not ctrl and not shift and key == gtk.keysyms.w: # set base walk.
+		elif not ctrl and not shift and key == Gtk.keysyms.w: # set base walk.
 			for s in spriteselect:
 				if s[1]:
 					continue
 				s[0].base_walk = self.get_selected_collection()
 			the_gui.setmap = True
-		elif not ctrl and not shift and key == gtk.keysyms.d: # set base death.
+		elif not ctrl and not shift and key == Gtk.keysyms.d: # set base death.
 			for s in spriteselect:
 				if s[1]:
 					continue
 				s[0].base_death = self.get_selected_collection()
 			the_gui.setmap = True
-		elif not ctrl and not shift and key == gtk.keysyms.i: # set base idle.
+		elif not ctrl and not shift and key == Gtk.keysyms.i: # set base idle.
 			for s in spriteselect:
 				if s[1]:
 					continue
@@ -411,7 +415,7 @@ class View(gtk.DrawingArea): # {{{
 			return False
 		return True
 	def key_home(self, key, ctrl, shift):
-		if not ctrl and not shift and key == gtk.keysyms.Home:	# center map
+		if not ctrl and not shift and key == Gtk.keysyms.Home:	# center map
 			s = (12, 8)
 			# Find screen where center is.
 			m = self.get_pointed_map()
@@ -424,20 +428,20 @@ class View(gtk.DrawingArea): # {{{
 		global copystart
 		if self.key_home(key, ctrl, shift):
 			pass
-		elif key == gtk.keysyms.t:		# return to map
+		elif key == Gtk.keysyms.t:		# return to map
 			the_gui.setmap = True
-		elif key == gtk.keysyms.y:		# yank tiles into buffer
+		elif key == Gtk.keysyms.y:		# yank tiles into buffer
 			copybuffer.clear()
 			for i in select.data:
 				s = View.find_tile(self, i, i[2])
 				copybuffer.add((i[0], i[1], i[2], s[0], s[1], s[2]))
 			copystart = select.start
 			the_gui.setmap = True
-		elif ctrl and not shift and key == gtk.keysyms.Prior:		# Zoom in.
+		elif ctrl and not shift and key == Gtk.keysyms.Prior:		# Zoom in.
 			viewmap.zoom_screen(True)
-		elif ctrl and not shift and key == gtk.keysyms.Next:		# Zoom out.
+		elif ctrl and not shift and key == Gtk.keysyms.Next:		# Zoom out.
 			viewmap.zoom_screen(False)
-		elif ctrl and not shift and key == gtk.keysyms.Home:		# Restore zoom.
+		elif ctrl and not shift and key == Gtk.keysyms.Home:		# Restore zoom.
 			viewmap.zoom_screen(50)
 		else:
 			return False
@@ -497,7 +501,7 @@ class ViewMap(View): # {{{
 	def update(self):
 		if self.update_handle is not None:
 			return
-		self.update_handle = glib.idle_add(self.do_update)
+		self.update_handle = GLib.idle_add(self.do_update)
 	def do_update(self):
 		self.update_handle = None
 		if self.buffer is None:
@@ -553,7 +557,11 @@ class ViewMap(View): # {{{
 			alpha = [0, 0x80, 0xff][visibility(s[1].layer)]
 			if alpha == 0:
 				continue
-			(x, y), (left, top, right, bottom), box = data.seq.get_box(s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+			try:
+				(x, y), (left, top, right, bottom), box = data.seq.get_box(s[1].size, s[0], s[2].frames[s[1].frame], (s[1].left, s[1].top, s[1].right, s[1].bottom))
+			except IndexError:
+				# Frame may not be available; don't abort function in that case.  TODO: draw "invalid frame" pixmap.
+				continue
 			box = [x * screenzoom / 50 for x in box]
 			w = (right - left) * screenzoom / 50
 			h = (bottom - top) * screenzoom / 50
@@ -563,11 +571,11 @@ class ViewMap(View): # {{{
 				if not pb:
 					continue
 				pb = pb.subpixbuf(box[0], box[1], box[2] - box[0], box[3] - box[1])
-				pb = pb.scale_simple(w, h, gtk.gdk.INTERP_NEAREST)
+				pb = pb.scale_simple(w, h, Gdk.INTERP_NEAREST)
 				if alpha < 0xff:
-					newpb = gtk.gdk.Pixbuf(gtk.gdk.COLORSPACE_RGB, True, 8, w, h)
+					newpb = Gdk.Pixbuf(Gdk.COLORSPACE_RGB, True, 8, w, h)
 					newpb.fill(0x00000000)
-					pb.composite(newpb, 0, 0, w, h, 0, 0, 1, 1, gtk.gdk.INTERP_NEAREST, alpha)
+					pb.composite(newpb, 0, 0, w, h, 0, 0, 1, 1, Gdk.INTERP_NEAREST, alpha)
 					pb = newpb
 				self.buffer.draw_pixbuf(None, pb, 0, 0, left * screenzoom / 50, top * screenzoom / 50)
 		for s in lst:
@@ -583,10 +591,10 @@ class ViewMap(View): # {{{
 			w = (right - left) * screenzoom / 50
 			h = (bottom - top) * screenzoom / 50
 			hard = hard.subpixbuf(box[0], box[1], box[2] - box[0], box[3] - box[1])
-			hard = hard.scale_simple(w, h, gtk.gdk.INTERP_NEAREST)
-			newpb = gtk.gdk.Pixbuf(gtk.gdk.COLORSPACE_RGB, True, 8, w, h)
+			hard = hard.scale_simple(w, h, Gdk.INTERP_NEAREST)
+			newpb = Gdk.Pixbuf(Gdk.COLORSPACE_RGB, True, 8, w, h)
 			newpb.fill(0x00000000)
-			hard.composite(newpb, 0, 0, w, h, 0, 0, 1, 1, gtk.gdk.INTERP_NEAREST, 0x80)
+			hard.composite(newpb, 0, 0, w, h, 0, 0, 1, 1, Gdk.INTERP_NEAREST, 0x80)
 			self.buffer.draw_pixbuf(None, newpb, 0, 0, left * screenzoom / 50, top * screenzoom / 50)
 		# Tile hardness.
 		origin = [x / screenzoom for x in self.offset]
@@ -610,7 +618,11 @@ class ViewMap(View): # {{{
 				gc = self.warpbggc if vis < 2 else self.warpgc
 			else:
 				gc = self.bggc if vis < 2 else self.hardgc
-			(x, y), (left, top, right, bottom), box = data.seq.get_box(spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+			try:
+				(x, y), (left, top, right, bottom), box = data.seq.get_box(spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+			except:
+				sys.stderr.write("Warning: unable to draw sprite\n")
+				continue
 			w = (right - left) * screenzoom / 50
 			h = (bottom - top) * screenzoom / 50
 			if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
@@ -639,7 +651,11 @@ class ViewMap(View): # {{{
 			if spr[0][0] != None:
 				# This is a sprite, not a warp target.
 				if spr[1].layer == the_gui.active_layer:
-					(x, y), (left, top, right, bottom), box = data.seq.get_box(spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					try:
+						(x, y), (left, top, right, bottom), box = data.seq.get_box(spr[1].size, spr[0], spr[2].frames[spr[1].frame], (spr[1].left, spr[1].top, spr[1].right, spr[1].bottom))
+					except:
+						sys.stderr.write("Warning: unable to draw sprite\n")
+						continue
 					w = (right - left) * screenzoom / 50
 					h = (bottom - top) * screenzoom / 50
 					if w > 0 and h > 0 and left >= -w and top >= -h and left < self.screensize[0] and top < self.screensize[1]:
@@ -896,61 +912,61 @@ class ViewMap(View): # {{{
 		self.moveinfo = None
 		the_gui.statusbar = 'Operation cancelled'
 	def key_numpad(self, key, ap = None):
-		if key == gtk.keysyms.KP_0 or key == gtk.keysyms.KP_Insert:	# new sprite from sequence
+		if key == Gtk.keysyms.KP_0 or key == Gtk.keysyms.KP_Insert:	# new sprite from sequence
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewseq.update()
 			the_gui.setseq = True
-		elif key == gtk.keysyms.KP_1 or key == gtk.keysyms.KP_End:		# new sprite with direction 1
+		elif key == Gtk.keysyms.KP_1 or key == Gtk.keysyms.KP_End:		# new sprite with direction 1
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(1)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_2 or key == gtk.keysyms.KP_Down:	# new sprite with direction 2
+		elif key == Gtk.keysyms.KP_2 or key == Gtk.keysyms.KP_Down:	# new sprite with direction 2
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(2)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_3 or key == gtk.keysyms.KP_Next:	# new sprite with direction 3
+		elif key == Gtk.keysyms.KP_3 or key == Gtk.keysyms.KP_Next:	# new sprite with direction 3
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(3)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_4 or key == gtk.keysyms.KP_Left:	# new sprite with direction 4
+		elif key == Gtk.keysyms.KP_4 or key == Gtk.keysyms.KP_Left:	# new sprite with direction 4
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(4)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_5 or key == gtk.keysyms.KP_Begin:	# new sprite with direction die
+		elif key == Gtk.keysyms.KP_5 or key == Gtk.keysyms.KP_Begin:	# new sprite with direction die
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction('die')
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_6 or key == gtk.keysyms.KP_Right:	# new sprite with direction 6
+		elif key == Gtk.keysyms.KP_6 or key == Gtk.keysyms.KP_Right:	# new sprite with direction 6
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(6)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_7 or key == gtk.keysyms.KP_Home:	# new sprite with direction 7
+		elif key == Gtk.keysyms.KP_7 or key == Gtk.keysyms.KP_Home:	# new sprite with direction 7
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(7)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_8 or key == gtk.keysyms.KP_Up:		# new sprite with direction 8
+		elif key == Gtk.keysyms.KP_8 or key == Gtk.keysyms.KP_Up:		# new sprite with direction 8
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
 			viewcollection.direction(8)
 			the_gui.setcollection = True
-		elif key == gtk.keysyms.KP_9 or key == gtk.keysyms.KP_Prior:	# new sprite with direction 9
+		elif key == Gtk.keysyms.KP_9 or key == Gtk.keysyms.KP_Prior:	# new sprite with direction 9
 			select.clear()
 			if ap is not None:
 				self.newinfo = ap
@@ -969,115 +985,115 @@ class ViewMap(View): # {{{
 		oy = ap[1] - sy * 8 * 50
 		n = sy * 32 + sx + 1
 		self.selecting = False
-		ctrl = e.state & gtk.gdk.CONTROL_MASK
-		shift = e.state & gtk.gdk.SHIFT_MASK
+		ctrl = e.state & Gdk.CONTROL_MASK
+		shift = e.state & Gdk.SHIFT_MASK
 		key = e.keyval
 		# File actions.
-		if ctrl and not shift and key == gtk.keysyms.o:		# Open.
+		if ctrl and not shift and key == Gtk.keysyms.o:		# Open.
 			show_open()
-		elif ctrl and not shift and key == gtk.keysyms.s:	# Save.
+		elif ctrl and not shift and key == Gtk.keysyms.s:	# Save.
 			save()
-		elif ctrl and shift and key == gtk.keysyms.S:		# Save as.
+		elif ctrl and shift and key == Gtk.keysyms.S:		# Save as.
 			show_save_as()
-		elif ctrl and not shift and key == gtk.keysyms.q:	# Quit.
+		elif ctrl and not shift and key == Gtk.keysyms.q:	# Quit.
 			the_gui(False)
 		# DMod actions.
-		elif ctrl and not shift and key == gtk.keysyms.b:	# Build.
+		elif ctrl and not shift and key == Gtk.keysyms.b:	# Build.
 			the_gui.statusbar = 'Syncing for build'
 			os.system(the_gui.sync)
 			sync()
 			the_gui.statusbar = 'Building DMod'
 			data.build()
 			the_gui.statusbar = 'Built DMod'
-		elif ctrl and not shift and key == gtk.keysyms.p:	# Play.
+		elif ctrl and not shift and key == Gtk.keysyms.p:	# Play.
 			the_gui.statusbar = 'Syncing for playtest'
 			sync()
 			n = (ap[1] / (8 * 50)) * 32 + (ap[0] / (12 * 50)) + 1
 			play(n, ap[0] % (12 * 50) + 20, ap[1] % (8 * 50))
 		# Edit actions(select + view).
-		elif ctrl and not shift and key == gtk.keysyms.c:	# Copy.
+		elif ctrl and not shift and key == Gtk.keysyms.c:	# Copy.
 			self.copy()
 			the_gui.statusbar = 'Copied tiles to buffer'
-		elif ctrl and not shift and key == gtk.keysyms.v:	# Paste.
+		elif ctrl and not shift and key == Gtk.keysyms.v:	# Paste.
 			self.paste([(self.pointer_pos[x] + self.offset[x]) / screenzoom for x in range(2)])
 			the_gui.statusbar = 'Pasted tiles from buffer'
-		elif not ctrl and not shift and key == gtk.keysyms.Escape: # Abort current action
+		elif not ctrl and not shift and key == Gtk.keysyms.Escape: # Abort current action
 			# Panning is done with pointer button 2, and should not respond to keys.
 			if self.moveinfo is not None and self.moveinfo[0] != 'pan':
 				# Reset change.
 				self.abort_move()
-		elif not ctrl and not shift and key == gtk.keysyms.Return: # Confirm operation.
+		elif not ctrl and not shift and key == Gtk.keysyms.Return: # Confirm operation.
 			self.finish_move()
-		elif ctrl and shift and key == gtk.keysyms.A:
+		elif ctrl and shift and key == Gtk.keysyms.A:
 			deselect_all()
 			the_gui.statusbar = 'Deselected all sprites'
-		elif ctrl and not shift and key == gtk.keysyms.a:
+		elif ctrl and not shift and key == Gtk.keysyms.a:
 			select_all()
 			the_gui.statusbar = 'Selected all sprites'
-		elif ctrl and not shift and key == gtk.keysyms.i:
+		elif ctrl and not shift and key == Gtk.keysyms.i:
 			select_invert()
 			the_gui.statusbar = 'Inverted sprite selection'
-		elif not ctrl and not shift and key == gtk.keysyms.j:
+		elif not ctrl and not shift and key == Gtk.keysyms.j:
 			jump()
 			the_gui.statusbar = 'Jumped to sprite selection'
-		elif not ctrl and not shift and key == gtk.keysyms.n:
+		elif not ctrl and not shift and key == Gtk.keysyms.n:
 			jump_next()
 			the_gui.statusbar = 'Jumped to next selected sprite'
-		elif not ctrl and not shift and key == gtk.keysyms.Left:
+		elif not ctrl and not shift and key == Gtk.keysyms.Left:
 			self.handle_cursor((-1, 0))
-		elif not ctrl and not shift and key == gtk.keysyms.Up:
+		elif not ctrl and not shift and key == Gtk.keysyms.Up:
 			self.handle_cursor((0, -1))
-		elif not ctrl and not shift and key == gtk.keysyms.Right:
+		elif not ctrl and not shift and key == Gtk.keysyms.Right:
 			self.handle_cursor((1, 0))
-		elif not ctrl and not shift and key == gtk.keysyms.Down:
+		elif not ctrl and not shift and key == Gtk.keysyms.Down:
 			self.handle_cursor((0, 1))
-		elif not ctrl and not shift and key == gtk.keysyms.equal:	# Map select.
+		elif not ctrl and not shift and key == Gtk.keysyms.equal:	# Map select.
 			self.moveinfo = None
 			viewworld.update()
 			the_gui.setworld = True
 			the_gui.statusbar = 'Select area to view'
-		elif ctrl and not shift and key == gtk.keysyms.Prior:		# Zoom in.
+		elif ctrl and not shift and key == Gtk.keysyms.Prior:		# Zoom in.
 			self.zoom_screen(True)
-		elif ctrl and not shift and key == gtk.keysyms.Next:		# Zoom out.
+		elif ctrl and not shift and key == Gtk.keysyms.Next:		# Zoom out.
 			self.zoom_screen(False)
-		elif ctrl and not shift and key == gtk.keysyms.Home:		# Restore zoom.
+		elif ctrl and not shift and key == Gtk.keysyms.Home:		# Restore zoom.
 			self.zoom_screen(50)
-		elif not ctrl and not shift and key == gtk.keysyms.Home:	# Center map.
+		elif not ctrl and not shift and key == Gtk.keysyms.Home:	# Center map.
 			s = (12, 8)
 			self.goto([(self.pointer_pos[x] + self.offset[x]) / s[x] / screenzoom * s[x] * 50 + s[x] / 2 * 50 for x in range(2)])
 			the_gui.statusbar = 'Map centered on screen'
 		# Sprite actions.
-		elif not ctrl and not shift and key == gtk.keysyms.e:		# Edit script(s).
+		elif not ctrl and not shift and key == Gtk.keysyms.e:		# Edit script(s).
 			edit_sprite_scripts()
 			the_gui.statusbar = 'Editing sprite scripts'
-		elif not shift and key == gtk.keysyms._0:
+		elif not shift and key == Gtk.keysyms._0:
 			self.layerkey(0, ctrl)
-		elif not shift and key == gtk.keysyms._1:
+		elif not shift and key == Gtk.keysyms._1:
 			self.layerkey(1, ctrl)
-		elif not shift and key == gtk.keysyms._2:
+		elif not shift and key == Gtk.keysyms._2:
 			self.layerkey(2, ctrl)
-		elif not shift and key == gtk.keysyms._3:
+		elif not shift and key == Gtk.keysyms._3:
 			self.layerkey(3, ctrl)
-		elif not shift and key == gtk.keysyms._4:
+		elif not shift and key == Gtk.keysyms._4:
 			self.layerkey(4, ctrl)
-		elif not shift and key == gtk.keysyms._5:
+		elif not shift and key == Gtk.keysyms._5:
 			self.layerkey(5, ctrl)
-		elif not shift and key == gtk.keysyms._6:
+		elif not shift and key == Gtk.keysyms._6:
 			self.layerkey(6, ctrl)
-		elif not shift and key == gtk.keysyms._7:
+		elif not shift and key == Gtk.keysyms._7:
 			self.layerkey(7, ctrl)
-		elif not shift and key == gtk.keysyms._8:
+		elif not shift and key == Gtk.keysyms._8:
 			self.layerkey(8, ctrl)
-		elif not shift and key == gtk.keysyms._9:
+		elif not shift and key == Gtk.keysyms._9:
 			self.layerkey(9, ctrl)
-		elif not ctrl and shift and key == gtk.keysyms.H:		# Toggle nohit
+		elif not ctrl and shift and key == Gtk.keysyms.H:		# Toggle nohit
 			toggle_nohit()
-		elif not ctrl and not shift and key == gtk.keysyms.m:		# move selected sprites
+		elif not ctrl and not shift and key == Gtk.keysyms.m:		# move selected sprites
 			self.moveinfo = 'move', None, self.make_cancel()
 			the_gui.statusbar = 'Starting move operation'
 		elif not ctrl and not shift and self.key_numpad(key, ap):
 			pass
-		elif not ctrl and not shift and key == gtk.keysyms.s:
+		elif not ctrl and not shift and key == Gtk.keysyms.s:
 			if len(spriteselect) != 0:
 				# Required info:
 				# - average hotspot of selected sprites
@@ -1088,7 +1104,7 @@ class ViewMap(View): # {{{
 				size = [x[0].size for x in spriteselect]
 				self.moveinfo = 'resize', (avg, dist, size), self.make_cancel()
 			the_gui.statusbar = 'Starting scale operation'
-		elif not ctrl and not shift and key == gtk.keysyms.p:
+		elif not ctrl and not shift and key == Gtk.keysyms.p:
 			tileset = viewtiles.find_tile(select.start[:2])[0]
 			if select.start[2] != 1 or select.start not in select.data or tileset < 0:
 				the_gui.statusbar = 'Not starting path, because no tile screen is selected'
@@ -1098,10 +1114,10 @@ class ViewMap(View): # {{{
 				is_horizontal = abs(offset[0]) > abs(offset[1])
 				self.moveinfo = 'path', (tileset, origin, is_horizontal), self.make_cancel()
 				the_gui.statusbar = 'Starting path operation for tileset %d' % tileset
-		elif not ctrl and not shift and key == gtk.keysyms.q:
+		elif not ctrl and not shift and key == Gtk.keysyms.q:
 			self.moveinfo = 'que', None, self.make_cancel()
 			the_gui.statusbar = 'Starting que move operation'
-		elif ctrl and not shift and key == gtk.keysyms.l:		# Lock to pointed map
+		elif ctrl and not shift and key == Gtk.keysyms.l:		# Lock to pointed map
 			p = viewmap.get_pointed_map()[2]
 			if p not in data.world.map:
 				the_gui.statusbar = 'Not locking to nonexistent map'
@@ -1116,7 +1132,7 @@ class ViewMap(View): # {{{
 					s[0].register()
 				update_editgui()
 				the_gui.statusbar = 'Locked %d sprite(s) to map %d' % (n, p)
-		elif ctrl and shift and key == gtk.keysyms.L:			# Unlock
+		elif ctrl and shift and key == Gtk.keysyms.L:			# Unlock
 			n = 0
 			for s in spriteselect:
 				if s[1]:
@@ -1127,7 +1143,7 @@ class ViewMap(View): # {{{
 				s[0].register()
 			update_editgui()
 			the_gui.statusbar = 'Unlocked %d sprite(s)' % n
-		elif ctrl and not shift and key == gtk.keysyms.w:		# Set warp.
+		elif ctrl and not shift and key == Gtk.keysyms.w:		# Set warp.
 			for spr in spriteselect:
 				if spr[1]:
 					continue
@@ -1137,16 +1153,16 @@ class ViewMap(View): # {{{
 				add_warptarget(spr[0])
 			update_editgui()
 			the_gui.statusbar = 'Set warp target'
-		elif ctrl and shift and key == gtk.keysyms.W:			# Clear warp.
+		elif ctrl and shift and key == Gtk.keysyms.W:			# Clear warp.
 			clear_warp()
 			the_gui.statusbar = 'Cleared warp target'
-		elif not ctrl and not shift and key == gtk.keysyms.w:		# Toggle select warp or object.
+		elif not ctrl and not shift and key == Gtk.keysyms.w:		# Toggle select warp or object.
 			toggle_warp()
 			the_gui.statusbar = 'Toggled warp target selection'
-		elif not ctrl and not shift and key == gtk.keysyms.h:		# Toggle sprite hardness.
+		elif not ctrl and not shift and key == Gtk.keysyms.h:		# Toggle sprite hardness.
 			toggle_hard()
 			the_gui.statusbar = 'Toggled sprite hardness'
-		elif not ctrl and not shift and key == gtk.keysyms.Delete:	# Delete sprite(s)
+		elif not ctrl and not shift and key == Gtk.keysyms.Delete:	# Delete sprite(s)
 			s = 0
 			w = 0
 			for killer in spriteselect:
@@ -1165,38 +1181,38 @@ class ViewMap(View): # {{{
 			update_editgui()
 			the_gui.statusbar = 'Deleted %d sprite(s) and %d warp target(s)' % (s, w)
 		# Ctrl+cursor: start crop
-		elif ctrl and not shift and key == gtk.keysyms.Left:
+		elif ctrl and not shift and key == Gtk.keysyms.Left:
 			self.start_crop()
 			self.moveinfo = 'crop', (4, ap), self.make_cancel()
-		elif ctrl and not shift and key == gtk.keysyms.Up:
+		elif ctrl and not shift and key == Gtk.keysyms.Up:
 			self.start_crop()
 			self.moveinfo = 'crop', (8, ap), self.make_cancel()
-		elif ctrl and not shift and key == gtk.keysyms.Right:
+		elif ctrl and not shift and key == Gtk.keysyms.Right:
 			self.start_crop()
 			self.moveinfo = 'crop', (6, ap), self.make_cancel()
-		elif ctrl and not shift and key == gtk.keysyms.Down:
+		elif ctrl and not shift and key == Gtk.keysyms.Down:
 			self.start_crop()
 			self.moveinfo = 'crop', (2, ap), self.make_cancel()
-		elif not ctrl and not shift and key == gtk.keysyms.t:
+		elif not ctrl and not shift and key == Gtk.keysyms.t:
 			the_gui.settiles = True
-		elif ctrl and not shift and key == gtk.keysyms.h:
+		elif ctrl and not shift and key == Gtk.keysyms.h:
 			edit_map_hardness()
 			the_gui.statusbar = 'Editing map hardness'
-		elif ctrl and not shift and key == gtk.keysyms.e:
+		elif ctrl and not shift and key == Gtk.keysyms.e:
 			edit_map_script()
 			the_gui.statusbar = 'Editing map script'
-		elif not ctrl and shift and key == gtk.keysyms.I:
+		elif not ctrl and shift and key == Gtk.keysyms.I:
 			toggle_indoor()
 			the_gui.statusbar = 'Toggled indoor state'
-		elif ctrl and not shift and key == gtk.keysyms.Insert:
+		elif ctrl and not shift and key == Gtk.keysyms.Insert:
 			map_insert()
-		elif ctrl and not shift and key == gtk.keysyms.Delete:
+		elif ctrl and not shift and key == Gtk.keysyms.Delete:
 			map_delete()
-		elif not ctrl and not shift and key == gtk.keysyms.y: # yank(copy) selected tiles into buffer
+		elif not ctrl and not shift and key == Gtk.keysyms.y: # yank(copy) selected tiles into buffer
 			self.copy()
-		elif not ctrl and not shift and key == gtk.keysyms.minus: # unselect all
+		elif not ctrl and not shift and key == Gtk.keysyms.minus: # unselect all
 			select.clear()
-		elif not ctrl and not shift and key == gtk.keysyms.f: # fill selected tiles with buffer
+		elif not ctrl and not shift and key == Gtk.keysyms.f: # fill selected tiles with buffer
 			if len(copybuffer) == 0:
 				return
 			tiles = list(copybuffer)
@@ -1228,7 +1244,7 @@ class ViewMap(View): # {{{
 				if tile == None:
 					tile = tiles[random.randrange(len(copybuffer))][3:6]
 				data.world.map[n].tiles[i[1] % 8][i[0] % 12] = tile
-		elif not ctrl and not shift and key == gtk.keysyms.r: # random fill tiles
+		elif not ctrl and not shift and key == Gtk.keysyms.r: # random fill tiles
 			if len(copybuffer) == 0:
 				return
 			tiles = list(copybuffer)
@@ -1374,7 +1390,7 @@ class ViewMap(View): # {{{
 		self.grab_focus()
 		self.pointer_pos = int(e.x), int(e.y)
 		self.pointer_tile = [(self.offset[x] + self.pointer_pos[x]) / screenzoom for x in range(2)]
-		if e.type != gtk.gdk.BUTTON_PRESS:
+		if e.type != Gdk.BUTTON_PRESS:
 			return
 		if self.moveinfo is not None and e.button == 1:
 			# Finish operation.
@@ -1392,8 +1408,8 @@ class ViewMap(View): # {{{
 			self.panned = False
 			return
 		x, y = [(self.offset[x] + self.pointer_pos[x]) * 50 / screenzoom for x in range(2)]
-		keep_selection = e.state & gtk.gdk.CONTROL_MASK
-		if e.state & gtk.gdk.SHIFT_MASK:
+		keep_selection = e.state & Gdk.CONTROL_MASK
+		if e.state & Gdk.SHIFT_MASK:
 			spriteselect[:] = []
 			x, y = self.pos_from_event((e.x, e.y))
 			View.tileselect(self, x, y, not keep_selection, 0)
@@ -1652,7 +1668,7 @@ class ViewSeq(View): # {{{
 	def update(self):
 		if self.update_handle is not None:
 			return
-		self.update_handle = glib.idle_add(self.do_update)
+		self.update_handle = GLib.idle_add(self.do_update)
 	def do_update(self):
 		self.update_handle = None
 		if self.buffer == None:
@@ -1695,8 +1711,8 @@ class ViewSeq(View): # {{{
 		if not the_gui.nobackingstore:
 			self.get_window().draw_drawable(self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress(self, widget, e):
-		ctrl = e.state & gtk.gdk.CONTROL_MASK
-		shift = e.state & gtk.gdk.SHIFT_MASK
+		ctrl = e.state & Gdk.CONTROL_MASK
+		shift = e.state & Gdk.SHIFT_MASK
 		return self.key_global(e.keyval, ctrl, shift) or self.key_seq(e.keyval, ctrl, shift) or (not ctrl and not shift and viewmap.key_numpad(e.keyval))
 	def get_selected_sequence(self):
 		x, y = self.pointer_pos
@@ -1711,7 +1727,7 @@ class ViewSeq(View): # {{{
 		self.grab_focus()
 		self.pointer_pos = int(e.x), int(e.y)
 		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range(2)]
-		if e.type != gtk.gdk.BUTTON_PRESS:
+		if e.type != Gdk.BUTTON_PRESS:
 			return
 		seq = self.get_selected_sequence()
 		if e.button == 1:	# perform action or change selected sequence
@@ -1767,7 +1783,7 @@ class ViewCollection(View): # {{{
 	def update(self):
 		if self.update_handle is not None:
 			return
-		self.update_handle = glib.idle_add(self.do_update)
+		self.update_handle = GLib.idle_add(self.do_update)
 	def do_update(self):
 		self.update_handle = None
 		if self.buffer == None:
@@ -1837,14 +1853,14 @@ class ViewCollection(View): # {{{
 			return None
 		return s[0]
 	def keypress(self, widget, e):
-		ctrl = e.state & gtk.gdk.CONTROL_MASK
-		shift = e.state & gtk.gdk.SHIFT_MASK
+		ctrl = e.state & Gdk.CONTROL_MASK
+		shift = e.state & Gdk.SHIFT_MASK
 		return self.key_global(e.keyval, ctrl, shift) or self.key_collection(e.keyval, ctrl, shift) or (not ctrl and not shift and viewmap.key_numpad(e.keyval))
 	def button_on(self, widget, e):
 		self.grab_focus()
 		self.pointer_pos = int(e.x), int(e.y)
 		self.pointer_tile = [self.pointer_pos[x] / self.tilesize for x in range(2)]
-		if e.type != gtk.gdk.BUTTON_PRESS:
+		if e.type != Gdk.BUTTON_PRESS:
 			return
 		seq = self.get_selected_sequence()
 		if seq == None:
@@ -1929,7 +1945,7 @@ class ViewTiles(View): # {{{
 	def update(self):
 		if self.update_handle is not None:
 			return
-		self.update_handle = glib.idle_add(self.do_update)
+		self.update_handle = GLib.idle_add(self.do_update)
 	def do_update(self):
 		self.update_handle = None
 		if self.buffer == None:
@@ -1938,8 +1954,8 @@ class ViewTiles(View): # {{{
 		if not the_gui.nobackingstore:
 			self.get_window().draw_drawable(self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress(self, widget, e):
-		ctrl = e.state & gtk.gdk.CONTROL_MASK
-		shift = e.state & gtk.gdk.SHIFT_MASK
+		ctrl = e.state & Gdk.CONTROL_MASK
+		shift = e.state & Gdk.SHIFT_MASK
 		return self.key_global(e.keyval, ctrl, shift) or self.key_tiles(e.keyval, ctrl, shift)
 	def get_pointed_map(self, pos = None):
 		if pos is None:
@@ -1965,14 +1981,14 @@ class ViewTiles(View): # {{{
 		self.grab_focus()
 		self.pointer_pos = int(e.x), int(e.y)
 		self.pointer_tile = [(self.pointer_pos[x] + self.offset[x]) / screenzoom for x in range(2)]
-		if e.type != gtk.gdk.BUTTON_PRESS:
+		if e.type != Gdk.BUTTON_PRESS:
 			return
 		if e.button == 1:
 			if self.panning:
 				self.panning = False
 			else:
 				x, y = self.pos_from_event((e.x, e.y))
-				View.tileselect(self, x, y, not e.state & gtk.gdk.CONTROL_MASK, 1)
+				View.tileselect(self, x, y, not e.state & Gdk.CONTROL_MASK, 1)
 		elif e.button == 2:
 			self.panning = True
 	def button_off(self, widget, e):
@@ -1992,7 +2008,7 @@ class ViewWorld(View): # {{{
 	def update(self):
 		if self.update_handle is not None:
 			return
-		self.update_handle = glib.idle_add(self.do_update)
+		self.update_handle = GLib.idle_add(self.do_update)
 	def do_update(self):
 		self.update_handle = None
 		if not self.buffer:
@@ -2023,8 +2039,8 @@ class ViewWorld(View): # {{{
 		if not the_gui.nobackingstore:
 			self.get_window().draw_drawable(self.gc, self.buffer, 0, 0, 0, 0, self.screensize[0], self.screensize[1])
 	def keypress(self, widget, e):
-		ctrl = e.state & gtk.gdk.CONTROL_MASK
-		shift = e.state & gtk.gdk.SHIFT_MASK
+		ctrl = e.state & Gdk.CONTROL_MASK
+		shift = e.state & Gdk.SHIFT_MASK
 		return self.key_global(e.keyval, ctrl, shift)
 	def select(self):
 		self.selecting = True
@@ -2038,7 +2054,7 @@ class ViewWorld(View): # {{{
 	def button_on(self, widget, e):
 		self.grab_focus()
 		self.pointer_pos = int(e.x), int(e.y)
-		if e.type != gtk.gdk.BUTTON_PRESS:
+		if e.type != Gdk.BUTTON_PRESS:
 			return
 		if e.button == 1:
 			self.select()
@@ -2903,7 +2919,7 @@ events['update_sprite_map'] = lambda: update_sprite_gui('map')
 inputs = ('active_layer', 'base_attack', 'base_attack_text', 'base_death', 'base_death_text', 'base_idle', 'base_idle_text', 'base_walk', 'base_walk_text', 'bottom', 'brain', 'crop', 'current_map', 'defense', 'dmod_num', 'dmod_script', 'experience', 'frame', 'gold', 'hard', 'hitpoints', 'indoor', 'layer', 'layer0_background', 'layer0_presentation', 'layer0_visible', 'layer1_background', 'layer1_presentation', 'layer1_visible', 'layer2_background', 'layer2_presentation', 'layer2_visible', 'layer3_background', 'layer3_presentation', 'layer3_visible', 'layer4_background', 'layer4_presentation', 'layer4_visible', 'layer5_background', 'layer5_presentation', 'layer5_visible', 'layer6_background', 'layer6_presentation', 'layer6_visible', 'layer7_background', 'layer7_presentation', 'layer7_visible', 'layer8_background', 'layer8_presentation', 'layer8_visible', 'layer9_background', 'layer9_presentation', 'layer9_visible', 'layers_num', 'left', 'map', 'map_hardness', 'map_music', 'map_num', 'map_script', 'map_text', 'name', 'size', 'sound', 'sound_text', 'speed', 'splash', 'sprite', 'sprite_num', 'sprite_text', 'statusbar', 'statuslabel', 'strength', 'timing', 'title', 'top', 'touch_damage', 'touchseq', 'touchseq_text', 'use_hard', 'vision', 'warp', 'warpmap', 'warpx', 'warpy', 'x', 'y', 'border_gc', 'default_gc', 'empty_gc', 'grid_gc', 'hard_gc', 'invalid_gc', 'noselect_gc', 'noshow_gc', 'paste_gc', 'path_gc', 'select_gc', 'warp_gc', 'white_gc', 'hardness_editor', 'script_editor', 'nobackingstore', 'sync')
 outputs = ('about', 'error', 'nohit', 'preview', 'que', 'right', 'script', 'seq', 'seq_text', 'set_attack_list', 'set_death_list', 'set_idle_list', 'set_map_hardness_list', 'set_layer_edit', 'set_sprite_edit', 'setworld', 'setseq', 'setmap', 'settiles', 'setmap2', 'set_map_edit', 'set_map_list', 'set_music_list', 'set_num_frames', 'set_scripts', 'set_seq_list', 'set_sounds_list', 'set_spritelist', 'set_touch_list', 'set_walk_list', 'show_about', 'show_error', 'show_open', 'show_save_as', 'setcollection', 'set_dmod_edit')
 
-the_gui = gui.Gui('pydink', gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld }, events = events, inputs = inputs, outputs = outputs)
+the_gui = gui.Gui('pydink', Gtk = { 'viewmap': viewmap, 'viewseq': viewseq, 'viewcollection': viewcollection, 'viewtiles': viewtiles, 'viewworld': viewworld }, events = events, inputs = inputs, outputs = outputs)
 
 the_gui.about = {
 	'name': 'PyDink',

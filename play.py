@@ -36,8 +36,11 @@
 # src, num, editor_num, the_statics (dictionary of variables).
 # Background sprites are drawn to the background pixmap, after that, the object is destroyed. It is impossible to adjust anything about them.
 
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+from gi.repository import Gdk
 import gtkdink
-import gtk
 import gobject
 import pango
 import sys
@@ -254,7 +257,7 @@ class Sprite:
 			raise AssertionError ('invalid state %s' % state)
 
 class View:
-	cursorkeys = (gtk.keysyms.Left, gtk.keysyms.Up, gtk.keysyms.Right, gtk.keysyms.Down)
+	cursorkeys = (Gtk.keysyms.Left, Gtk.keysyms.Up, Gtk.keysyms.Right, Gtk.keysyms.Down)
 	def __init__ (self, data):
 		self.data = data
 		self.sprites = {}
@@ -278,7 +281,7 @@ class View:
 		self.bow = [False, None, None, None]
 		self.fade = (0, True, self.data.current_time)
 		self.dink_can_walk_off_screen = False
-		self.bg = gtk.gdk.Pixmap (self.data.window, self.data.winw, self.data.winh)
+		self.bg = Gdk.Pixmap (self.data.window, self.data.winw, self.data.winh)
 		self.choice_sprites = [Sprite (self.data, x, y, brain, seq, frame, '', view = None) for x, y, brain, seq, frame in ((181, 270, 'none', 'textbox', 2), (355, 254, 'none', 'textbox', 3), (528, 270, 'none', 'textbox', 4), (165, 104, 'repeat', 'arrow-l', 4), (503, 104, 'repeat', 'arrow-r', 4))]
 		self.events += ((self.data.current_time, self.update (), -2),)
 		# Create pointer sprite.
@@ -623,7 +626,7 @@ class View:
 	def schedule_next (self):
 		if self.events == []:
 			# If for some reason dying didn't work, try again.
-			gtk.main_quit ()
+			Gtk.main_quit ()
 			return
 		if self.data.dying:
 			# Don't schedule new events when dying.
@@ -923,7 +926,7 @@ class View:
 			if box != None:
 				pb = pb.subpixbuf (box[0] * self.data.data.scale / 50, box[1] * self.data.data.scale / 50, (box[2] - box[0]) * self.data.data.scale / 50, (box[3] - box[1]) * self.data.data.scale / 50)
 			if w != pb.get_width () or h != pb.get_height ():
-				pb = pb.scale_simple (w, h, gtk.gdk.INTERP_BILINEAR)
+				pb = pb.scale_simple (w, h, Gdk.INTERP_BILINEAR)
 			target.draw_pixbuf (self.data.clipgc if clip else None, pb, 0, 0, self.data.offset + left * self.data.data.scale / 50, top * self.data.data.scale / 50)
 		else:
 			pb = 0
@@ -1218,7 +1221,7 @@ class View:
 	def keyrelease (self, event):
 		self.push_delay = 0
 		frozen = self.sprites[1].nocontrol or self.stopped or self.sprites[1].brain not in (DINKBRAIN, POINTERBRAIN) or self.sprites[1].frozen
-		if event.keyval in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
+		if event.keyval in (Gtk.keysyms.Control_R, Gtk.keysyms.Control_L):
 			self.data.control_down -= 1
 			if self.data.control_down <= 0:
 				self.data.control_down = 0
@@ -1229,7 +1232,7 @@ class View:
 			self.data.cursor[i] = False
 			if not frozen:
 				self.compute_dir ()
-		if event.keyval == gtk.keysyms.ISO_Prev_Group:
+		if event.keyval == Gtk.keysyms.ISO_Prev_Group:
 			self.shift = False
 	def compute_dir (self):
 		mx = 1 + self.data.cursor[2] - self.data.cursor[0]
@@ -1259,17 +1262,17 @@ class View:
 			if self.bow[0]:
 				self.launch ()
 	def make_button (self, keyval):
-		if keyval in (gtk.keysyms.Control_R, gtk.keysyms.Control_L):
+		if keyval in (Gtk.keysyms.Control_R, Gtk.keysyms.Control_L):
 			return BUTTON_ACTION
-		if keyval in (gtk.keysyms.Shift_R, gtk.keysyms.Shift_L):
+		if keyval in (Gtk.keysyms.Shift_R, Gtk.keysyms.Shift_L):
 			return BUTTON_MAGIC
-		if keyval == gtk.keysyms.space:
+		if keyval == Gtk.keysyms.space:
 			return BUTTON_TALK
-		if keyval == gtk.keysyms.Escape:
+		if keyval == Gtk.keysyms.Escape:
 			return BUTTON_ESCAPE
-		if keyval == gtk.keysyms.Return:
+		if keyval == Gtk.keysyms.Return:
 			return BUTTON_INVENTORY
-		if keyval == gtk.keysyms.m:
+		if keyval == Gtk.keysyms.m:
 			return BUTTON_MAP
 		if keyval in self.cursorkeys:
 			return (14, 18, 16, 12)[self.cursorkeys.index (keyval)]
@@ -1299,7 +1302,7 @@ class View:
 		self.button_response = button
 		self.handle_event (self.data.current_time, self.button_waiter_data[0], self.button_waiter_data[1])
 
-class Play (gtk.DrawingArea):
+class Play (Gtk.DrawingArea):
 	"Widget for playing dink."
 	def load_game (self):
 		self.sounds = {}
@@ -1331,9 +1334,9 @@ class Play (gtk.DrawingArea):
 		self.winw = 12 * self.data.scale + 2 * self.offset
 		self.winh = 8 * self.data.scale + 80 * self.data.scale / 50
 		self.set_size_request (self.winw, self.winh)
-		self.clipgc.set_clip_rectangle (gtk.gdk.Rectangle (self.offset, 0, self.data.scale * 12, self.data.scale * 8))
-		self.buffer = gtk.gdk.Pixmap (self.window, self.winw, self.winh)
-		self.fade_pixbuf = gtk.gdk.Pixbuf (gtk.gdk.COLORSPACE_RGB, True, 8, self.winw, self.winh)
+		self.clipgc.set_clip_rectangle (Gdk.Rectangle (self.offset, 0, self.data.scale * 12, self.data.scale * 8))
+		self.buffer = Gdk.Pixmap (self.window, self.winw, self.winh)
+		self.fade_pixbuf = Gdk.Pixbuf (Gdk.COLORSPACE_RGB, True, 8, self.winw, self.winh)
 		self.views = [View (self)]
 		self.current_view = 0
 		self.views[0].make_hardmap ()
@@ -1347,7 +1350,7 @@ class Play (gtk.DrawingArea):
 		self.schedule_next ()
 	def __init__ (self, data):
 		self.data = data
-		gtk.DrawingArea.__init__ (self)
+		Gtk.DrawingArea.__init__ (self)
 		self.set_can_focus (True)
 		self.connect_after ('realize', self.start)
 		self.control_down = 0
@@ -1362,13 +1365,13 @@ class Play (gtk.DrawingArea):
 		self.set_size_request (self.winw, self.winh)
 	def start (self, widget):
 		# Hide cursor in window.
-		pixmap = gtk.gdk.Pixmap (None, 1, 1, 1)
-		color = gtk.gdk.Color ()
-		cursor = gtk.gdk.Cursor(pixmap, pixmap, color, color, 0, 0)
+		pixmap = Gdk.Pixmap (None, 1, 1, 1)
+		color = Gdk.Color ()
+		cursor = Gdk.Cursor(pixmap, pixmap, color, color, 0, 0)
 		self.window.set_cursor (cursor)
 		# Set up GCs and pixmaps.
-		self.gc = gtk.gdk.GC (self.window)
-		self.clipgc = gtk.gdk.GC (self.window)
+		self.gc = Gdk.GC (self.window)
+		self.clipgc = Gdk.GC (self.window)
 		# Set up events.
 		self.connect ('expose-event', self.expose)
 		self.connect ('key-press-event', self.keypress)
@@ -1377,7 +1380,7 @@ class Play (gtk.DrawingArea):
 		self.connect ('button-release-event', self.button_off)
 		self.connect ('motion-notify-event', self.move)
 		self.connect ('enter-notify-event', self.enter)
-		self.add_events (gtk.gdk.KEY_PRESS_MASK | gtk.gdk.KEY_RELEASE_MASK | gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK | gtk.gdk.POINTER_MOTION_MASK | gtk.gdk.POINTER_MOTION_HINT_MASK | gtk.gdk.ENTER_NOTIFY_MASK)
+		self.add_events (Gdk.KEY_PRESS_MASK | Gdk.KEY_RELEASE_MASK | Gdk.BUTTON_PRESS_MASK | Gdk.BUTTON_RELEASE_MASK | Gdk.POINTER_MOTION_MASK | Gdk.POINTER_MOTION_HINT_MASK | Gdk.ENTER_NOTIFY_MASK)
 		self.load_game ()
 	def get_nextlevel (self):
 		levels = (100, 400, 800, 1600, 2500, 3600)
@@ -1948,7 +1951,7 @@ class Play (gtk.DrawingArea):
 			pass
 		elif name == 'kill_game':
 			self.dying = True
-			gtk.main_quit ()
+			Gtk.main_quit ()
 			yield ('kill', 0)
 		elif name == 'kill_shadow':
 			# TODO
@@ -2391,14 +2394,14 @@ pygame.mixer.init ()
 gamescale = 50
 gamename = sys.argv[1]
 game = Play (gtkdink.GtkDink (gamename, gamescale, False))
-window = gtk.Window ()
+window = Gtk.Window ()
 shortname = os.path.basename (gamename)
 if shortname == '':
 	shortname = os.path.basename (os.path.dirname (gamename))
 window.set_title ('%s - PyDink player' % os.path.basename (shortname))
 window.add (game)
-window.connect ('destroy', gtk.main_quit)
+window.connect ('destroy', Gtk.main_quit)
 window.show_all ()
-gtk.main ()
+Gtk.main ()
 pygame.mixer.music.stop ()
 pygame.mixer.quit ()

@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+
+import dink
+import sys
+import os
+import subprocess
+from PIL import Image
+import json
+import fhs
+import traceback
+
+config = fhs.init(config = {'src': None, 'dst': None})
+
+d = dink.Dink(config['src'])
+dest = config['dst']
+os.mkdir(dest)
+
+# Write tiles
+os.mkdir(os.path.join(dest, 'tiles'))
+tiles = [(False, False)]
+for t in range(1, 42):
+	f = d.tile.get_file(t)
+	if f is None:
+		tiles.append((False, False))
+		continue
+	Image.open(dink.filepart(*(f[:-1]))).save(os.path.join(dest, 'tiles', '%d' % t + os.extsep + 'png'))
+	f = d.tile.get_hard_file(t)
+	if f is None:
+		tiles.append((True, False))
+		continue
+	Image.open(dink.filepart(*(f[:-1]))).save(os.path.join(dest, 'tiles', '%d-hard' % t + os.extsep + 'png'))
+	tiles.append((True, True))
+
+# Write sequences
+os.mkdir(os.path.join(dest, 'seq'))
+os.mkdir(os.path.join(dest, 'collection'))
+
+def save_seq(dir, s, extra, name):
+	frames = []
+	for f, frame in enumerate(s.frames):
+		if frame is None:
+			if f != 0:
+				print('skipping %s %d' % (name, f))
+			frames.append(None)
+		else:
+			frames.append({'position': frame.position, 'hardbox': frame.hardbox, 'special': frame.special, 'bbox': frame.boundingbox, 'delay': frame.delay, 'source': frame.source})
+			if frame.source:
+				continue
+			img = d.seq.get_file(s, f)
+			try:
+				try:
+					im = Image.open(dink.filepart(*(img[:-1]))).convert('RGBA')
+					px = im.load()
+				except:
+					im = Image.open(dink.filepart(*(img[:-1]))).convert('RGBA')
+					im.format = 'bmp'
+					px = im.load()
+				for y in range(im.size[1]):
+					for x in range(im.size[0]):
+						if px[x, y][:3] == img[-1]:
+							px[x, y] = px[x, y][:3] + (0,)
+				im.save(os.path.join(dest, dir, '%s-%d%spng' % (name, f, extra + os.extsep)))
+			except:
+				print('failed to open image')
+				traceback.print_exc()
+			file = d.seq.get_hard_file(s, f)
+			if file is None:
+				frames[-1]['hard'] = False
+				continue
+			frames[-1]['hard'] = True
+			Image.open(dink.filepart(*(file[:-1]))).save(os.path.join(dest, dir, component, '%s-%d%s-hard%spng' % (name, f, extra, os.extsep)))
+	return frames
+
+sequences = {}
+for s in d.seq.seq:
+	sequences[s] = save_seq('seq', d.seq.seq[s], '', s)
+
+collections = {}
+for c in d.seq.collection:
+	collections[c] = {}
+	for dir in (1, 2, 3, 4, 'die', 6, 7, 8, 9):
+		if dir not in d.seq.collection[c]:
+			collections[c][dir] = None
+			continue
+		f = d.seq.find_seq((c, dir))
+		if f is None:
+			collections[c][dir] = None
+			continue
+		collections[c][dir] = save_seq('collection', f, '-' + str(dir), c)
+
+# Write music
+music = []
+os.mkdir(os.path.join(dest, 'music'))
+for m in d.sound.music:
+	if d.sound.music[m][3] == 'mid':
+		music.append([m, 'wav'])
+		convert = subprocess.Popen(('timidity', '-o%s' % os.path.join(dest, 'music', m + os.extsep + 'wav'), '-Ow', '-'), stdin = subprocess.PIPE)
+		convert.communicate(dink.filepart(*(d.sound.music[m][1])).read())
+	else:
+		music.append([m, d.sound.music[m][3]])
+		with open(os.path.join(dest, 'music', m + os.extsep + d.sound.music[m][3]), 'wb') as f:
+			f.write(dink.filepart(*(d.sound.music[m][1])).read())
+music.sort()
+
+# Write sound
+sound = []
+os.mkdir(os.path.join(dest, 'sound'))
+for s in d.sound.sound:
+	sound.append([s, d.sound.sound[s][3]])
+	with open(os.path.join(dest, 'sound', s + os.extsep + d.sound.sound[s][3]), 'wb') as f:
+		f.write(dink.filepart(*(d.sound.sound[s][1])).read())
+sound.sort()
+
+# Write scripts
+os.mkdir(os.path.join(dest, 'script'))
+for s in d.script.data:
+	with open(os.path.join(dest, 'script', s + os.extsep + 'pydinkc'), 'w') as f:
+		f.write(d.script.data[s])
+
+# Write images
+os.mkdir(os.path.join(dest, 'image'))
+for i in d.image.images:
+	with open(os.path.join(dest, 'image', i + os.extsep + 'png'), 'wb') as f:
+		f.write(dink.filepart(*(d.image.images[i])).read())
+
+# Prepare world.
+world = {'sprite': {}}
+for m in d.world.map:
+	world[m] = {'tiles': d.world.map[m].tiles, 'hard': d.world.map[m].hard, 'script': d.world.map[m].script, 'music': d.world.map[m].music, 'indoor': d.world.map[m].indoor}
+for s in d.world.sprite:
+	assert s.name not in world['sprite']
+	world['sprite'][s.name] = {x: getattr(s, x) for x in ('map', 'layer', 'x', 'y', 'seq', 'frame', 'size', 'brain', 'script', 'speed', 'base_walk', 'base_idle', 'base_attack', 'timing', 'que', 'hard', 'left', 'top', 'right', 'bottom', 'warp', 'touch_seq', 'base_death', 'gold', 'hitpoints', 'strength', 'defense', 'experience', 'sound', 'vision', 'nohit', 'touch_damage', 'use_hard')}
+
+# Write info
+with open(os.path.join(dest, 'info' + os.extsep + 'txt'), 'w') as f:
+	f.write(json.dumps({'seq': sequences, 'collections': collections, 'tiles': tiles, 'music': music, 'sound': sound, 'image': list(d.image.images.keys()), 'script': list(d.script.data.keys())}))
+with open(os.path.join(dest, 'game' + os.extsep + 'txt'), 'w') as f:
+	f.write(json.dumps({'info': d.info, 'preview': d.image.preview, 'splash': d.image.splash, 'layer': (d.layer_visible, d.layer_background), 'world': world}))
+htmldir = os.path.realpath(os.path.join(os.path.dirname(sys.argv[0]), '..', 'html'))
+for f in os.listdir(htmldir):
+	if not f.endswith(os.extsep + 'html'):
+		os.symlink(os.path.join(htmldir, f), os.path.join(dest, f))
+	else:
+		with open(os.path.join(dest, f), 'w') as html:
+			html.write(open(os.path.join(htmldir, f), 'r').read())

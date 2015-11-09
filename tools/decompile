@@ -28,6 +28,7 @@ import tempfile
 import shutil
 import numpy
 import fhs
+import traceback
 # }}}
 
 config = fhs.init({'src': None, 'dst': None})
@@ -103,6 +104,9 @@ try:
 
 	print('saving dmod')
 	target.save(config['dst'])
+except:
+	traceback.print_exc()
+	raise
 finally:
 	print('removing temporary files')
 	shutil.rmtree(root)
